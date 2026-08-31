@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @slk/db — Drizzle schema, migrations and the connection helper.
  *
  * Only `apps/web` writes through this. The sync worker reads and proposes;

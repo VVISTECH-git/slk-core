@@ -189,12 +189,84 @@ export async function applyEdits(edits: ValueEdit[]): Promise<ActionResult> {
 }
 
 /**
+ * Every column in the database that points at a lookup value.
+ *
+ * Read from Postgres's own catalogue rather than listed by hand: `design`
+ * alone has twenty-odd of them, and a merge that missed one would fail at the
+ * foreign key with a stack trace instead of doing the job. New tables that
+ * reference the vocabulary are picked up here without anyone remembering to
+ * add them.
+ */
+async function referencingColumns(): Promise<
+  { table: string; column: string }[]
+> {
+  return db.execute<{ table: string; column: string }>(sql`
+    select
+      con.conrelid::regclass::text as table,
+      att.attname                  as column
+    from pg_constraint con
+    join pg_attribute att
+      on att.attrelid = con.conrelid
+     and att.attnum = con.conkey[1]
+    where con.contype = 'f'
+      and con.confrelid = 'lookup_value'::regclass
+    order by 1, 2
+  `);
+}
+
+/**
+ * An id list as separate bound parameters.
+ *
+ * Not `= any($1)`: Drizzle binds a JavaScript array as one parameter and
+ * Postgres then reads the first uuid as a malformed array literal.
+ */
+function idList(ids: string[]) {
+  return sql.join(
+    ids.map((id) => sql`${id}`),
+    sql`, `,
+  );
+}
+
+/** How many rows across the whole database point at each of these values. */
+export async function countUsage(
+  valueIds: string[],
+): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  for (const id of valueIds) counts[id] = 0;
+
+  if (valueIds.length === 0) return counts;
+
+  const ids = idList(valueIds);
+
+  for (const { table, column } of await referencingColumns()) {
+    // `parent_value_id` is the vocabulary describing itself, not a record
+    // using the value, so it does not count as usage.
+    if (table === "lookup_value") continue;
+
+    const rows = await db.execute<{ id: string; n: number }>(sql`
+      select ${sql.identifier(column)} as id, count(*)::int as n
+      from ${sql.identifier(table)}
+      where ${sql.identifier(column)} in (${ids})
+      group by 1
+    `);
+
+    for (const row of rows) {
+      counts[row.id] = (counts[row.id] ?? 0) + row.n;
+    }
+  }
+
+  return counts;
+}
+
+/**
  * Folds one or more values into a survivor.
  *
  * This is what half the Correction Log is: Kanchi into Kanchipuram, Crepe silk
- * into Crepe, Fabric Painting into Hand Painting. Anything pointing at a
- * merged-away value is repointed at the survivor first, so nothing is
- * orphaned.
+ * into Crepe, Fabric Painting into Hand Painting.
+ *
+ * Merging means the two were always the same thing, so every record pointing
+ * at a losing value is repointed at the survivor before it is removed. Doing
+ * it any other way either orphans records or trips a foreign key.
  */
 export async function mergeValues(
   survivorId: string,
@@ -225,21 +297,40 @@ export async function mergeValues(
     };
   }
 
+  const columns = await referencingColumns();
+  const ids = idList(mergedIds);
+  let moved = 0;
+
   await db.transaction(async (tx) => {
-    // Children of a merged value become children of the survivor.
-    await tx
-      .update(lookupValue)
-      .set({ parentValueId: survivorId, updatedAt: new Date() })
-      .where(inArray(lookupValue.parentValueId, mergedIds));
+    for (const { table, column } of columns) {
+      // RETURNING so the row count is real — an UPDATE without it reports
+      // nothing, and "0 records moved" on a merge that moved twelve is worse
+      // than saying nothing at all.
+      const updated = await tx.execute(sql`
+        update ${sql.identifier(table)}
+        set ${sql.identifier(column)} = ${survivorId}
+        where ${sql.identifier(column)} in (${ids})
+        returning 1
+      `);
+
+      // Self-references are the vocabulary's own parent links, not records.
+      if (table !== "lookup_value") moved += updated.length;
+    }
 
     await tx.delete(lookupValue).where(inArray(lookupValue.id, mergedIds));
   });
 
   revalidatePath("/vocabulary");
+  revalidatePath("/records");
 
   const names = merged.map((m) => `"${m.label}"`).join(", ");
 
-  return { ok: true, message: `Merged ${names} into "${survivor.label}".` };
+  return {
+    ok: true,
+    message:
+      `Merged ${names} into "${survivor.label}".` +
+      (moved > 0 ? ` ${moved} record${moved === 1 ? "" : "s"} moved across.` : ""),
+  };
 }
 
 export interface PastePreview {

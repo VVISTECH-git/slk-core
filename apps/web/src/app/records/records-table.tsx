@@ -183,7 +183,16 @@ export function RecordsTable({
           </button>
 
           {showColumns && (
-            <div className="absolute right-0 z-20 mt-1 w-56 rounded-lg border border-rule-2 bg-surface p-2 shadow-lg">
+            <>
+              {/* Clicking anywhere else closes the menu, which is what every
+                  dropdown does and what people expect. */}
+              <button
+                type="button"
+                aria-label="Close columns menu"
+                onClick={() => setShowColumns(false)}
+                className="fixed inset-0 z-10 cursor-default"
+              />
+              <div className="absolute right-0 z-20 mt-1 w-56 rounded-lg border border-rule-2 bg-surface p-2 shadow-lg">
               {COLUMNS.map((c) => (
                 <label
                   key={c.key}
@@ -205,7 +214,8 @@ export function RecordsTable({
                   {c.label}
                 </label>
               ))}
-            </div>
+              </div>
+            </>
           )}
         </div>
       </header>

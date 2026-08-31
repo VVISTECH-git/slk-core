@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Loads the controlled vocabulary into whichever database DATABASE_URL points
  * at.
  *

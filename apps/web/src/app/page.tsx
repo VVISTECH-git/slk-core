@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 export default function Home() {
-  // Nothing to land on until the catalogue exists; the vocabulary is what is
-  // actually built.
-  redirect("/vocabulary");
+  // The first screen in the sidebar. Landing anywhere else leaves the nav
+  // with nothing highlighted.
+  redirect("/records");
 }

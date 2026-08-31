@@ -78,6 +78,13 @@
       "when": 1788260600000,
       "tag": "0010_locations_everywhere",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788260700000,
+      "tag": "0011_product_and_item_codes",
+      "breakpoints": true
     }
   ]
 }

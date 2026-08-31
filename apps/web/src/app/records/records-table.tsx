@@ -42,6 +42,7 @@ const COLUMNS = [
   { key: "fibreType", label: "Fiber Type", width: 178 },
   { key: "regionalStyle", label: "Region Style", width: 126 },
   { key: "craftTechnique", label: "Craft Technique", width: 148 },
+  { key: "productCode", label: "Product Code", width: 118 },
   { key: "code", label: "Design Code", width: 150 },
   { key: "audienceType", label: "Audience", width: 96 },
   { key: "colour", label: "Colour", width: 150 },
@@ -55,6 +56,7 @@ const COLUMNS = [
   { key: "craftSubType", label: "Craft Sub Type", width: 210 },
   { key: "motifCategory", label: "Motif Category", width: 140 },
   { key: "motif", label: "Motif", width: 120 },
+  { key: "motifCode", label: "Motif Code", width: 104 },
   { key: "borderHeight", label: "Border Height", width: 124 },
   { key: "palluDesign", label: "Pallu Design", width: 126 },
   { key: "blouseAvailable", label: "Blouse Availability", width: 148 },
@@ -84,6 +86,7 @@ const OFF_BY_DEFAULT = new Set<ColumnKey>([
   "palluDesign",
   "blouseAvailable",
   "descriptor",
+  "motifCode",
 ]);
 
 const NUMERIC = new Set<ColumnKey>(["quantity", "price"]);
@@ -466,7 +469,7 @@ export function RecordsTable({
                 onClick={() => setShowColumns(false)}
                 className="fixed inset-0 z-10 cursor-default"
               />
-              <div className="absolute right-0 z-20 mt-1 w-56 rounded-lg border border-rule-2 bg-surface p-2 shadow-lg">
+              <div className="absolute right-0 z-20 mt-1 flex max-h-[calc(100vh-9rem)] w-56 flex-col overflow-y-auto rounded-lg border border-rule-2 bg-surface p-2 shadow-lg">
               {COLUMNS.map((c) => (
                 <label
                   key={c.key}
@@ -1266,7 +1269,7 @@ function FilterPanel({
         className="fixed inset-0 z-10 cursor-default"
       />
 
-      <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-rule-2 bg-surface p-2 shadow-lg">
+      <div className="absolute right-0 z-20 mt-1 max-h-[calc(100vh-9rem)] w-72 overflow-y-auto rounded-lg border border-rule-2 bg-surface p-2 shadow-lg">
         {columns.map((c) => {
           const chosen = filters[c.key] ?? [];
           const values = valuesFor(c.key);

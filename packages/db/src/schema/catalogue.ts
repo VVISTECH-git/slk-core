@@ -9,6 +9,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 import { lookupValue } from "./lookup";
@@ -168,6 +169,56 @@ export const colourway = pgTable(
   ],
 );
 
+/**
+ * One consignment of one colourway — what arrived, on a day, into a place.
+ *
+ * The design code describes what somebody entered and repeats; two people
+ * looking at the same Kalamkari saree will name different motifs, and SLK's
+ * rule is that whatever they enter is accepted rather than argued over. So
+ * identity comes from counting instead:
+ *
+ *   design code   what it is, as entered. Repeats. Internal.
+ *   product code  this consignment. The same goods next month get another.
+ *   item code     one physical saree.
+ *
+ * Ten pieces arriving on Tuesday are one product code and ten item codes.
+ */
+export const batch = pgTable(
+  "batch",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    colourwayId: uuid("colourway_id")
+      .notNull()
+      .references(() => colourway.id, { onDelete: "restrict" }),
+
+    /** 300001 and up, from a sequence. Assigned once, never recomputed. */
+    code: text("code").notNull(),
+
+    /**
+     * What was counted in. The ledger remains the authority on how much is on
+     * hand now; this is what arrived that day and does not change afterwards.
+     */
+    qty: integer("qty").notNull(),
+    locationId: uuid("location_id").references(() => location.id, {
+      onDelete: "restrict",
+    }),
+
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    reference: text("reference"),
+    note: text("note"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("batch_code_key").on(t.code),
+    index("batch_colourway_idx").on(t.colourwayId, t.receivedAt),
+  ],
+);
+
 export const piece = pgTable(
   "piece",
   {
@@ -176,7 +227,15 @@ export const piece = pgTable(
       .notNull()
       .references(() => colourway.id, { onDelete: "cascade" }),
 
-    /** DESIGNCODE-COLOURTOKEN-NNN, printed on the QR label. Frozen. */
+    /**
+     * The consignment it arrived in, so a piece can name where it came
+     * from. Nullable for the pieces that predate consignments.
+     */
+    batchId: uuid("batch_id").references((): AnyPgColumn => batch.id, {
+      onDelete: "restrict",
+    }),
+
+    /** The item code — 500001 and up, printed on the QR label. Frozen. */
     code: text("code").notNull(),
     serial: integer("serial").notNull(),
 
@@ -240,6 +299,18 @@ export const movement = pgTable(
     qty: integer("qty").notNull(),
 
     kind: text("kind").notNull(),
+
+    /**
+     * The consignment this movement recorded the arrival of.
+     *
+     * Only ever set on a `received` movement — selling or transferring moves
+     * stock that already exists, and the saree keeps the codes it arrived
+     * with. Nullable because everything before consignments existed has none,
+     * and inventing one would be inventing a delivery.
+     */
+    batchId: uuid("batch_id").references((): AnyPgColumn => batch.id, {
+      onDelete: "restrict",
+    }),
 
     fromLocationId: uuid("from_location_id").references(() => location.id, {
       onDelete: "restrict",

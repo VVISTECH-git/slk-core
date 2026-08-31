@@ -1326,15 +1326,6 @@ function RecordMovement({
       ? internal.filter((l) => holding.includes(l.name))
       : internal;
 
-  if (record.isSerialised) {
-    return (
-      <Note>
-        This design is tagged piece by piece, so its count is the number of
-        pieces. Stock moves by scanning them rather than by typing a quantity.
-      </Note>
-    );
-  }
-
   if (internal.length === 0) {
     return (
       <Note>

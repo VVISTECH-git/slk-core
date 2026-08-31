@@ -44,6 +44,11 @@ export type RecordRow = {
   blouseAvailable: string | null;
   descriptor: string | null;
 
+  /** The newest consignment of this colourway — 300001 and up. */
+  productCode: string | null;
+  /** Two letters from the motif category: Fauna FA, Birds BI. */
+  motifCode: string | null;
+
   colour: string | null;
   colourHex: string | null;
   uom: string | null;
@@ -73,6 +78,8 @@ export async function loadRecords(): Promise<RecordRow[]> {
       audience.label                                    as "audienceType",
       colour.label                                      as colour,
       colour.meta ->> 'hex'                             as "colourHex",
+      motif_cat.meta ->> 'abbr'                          as "motifCode",
+      latest.code                                       as "productCode",
       coalesce(silk_sub.label, cotton_sub.label)        as "subFamily",
       weave.label                                       as "weaveStructure",
       fabric.label                                      as "fabricType",
@@ -115,6 +122,13 @@ export async function loadRecords(): Promise<RecordRow[]> {
     left join lookup_value pallu              on pallu.id = d.pallu_design_id
     left join lookup_value blouse             on blouse.id = d.blouse_available_id
     left join lookup_value descriptor         on descriptor.id = d.descriptor_id
+    -- The most recent consignment of this colourway. A colourway can have
+    -- many; the grid shows one row per colourway, so it shows the newest.
+    left join lateral (
+      select b.code from batch b
+      where b.colourway_id = cw.id
+      order by b.received_at desc, b.code desc limit 1
+    ) latest on true
     left join colourway_on_hand oh            on oh.colourway_id = cw.id
     left join (
       select colourway_id, count(*) as n from piece group by colourway_id

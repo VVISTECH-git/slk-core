@@ -501,23 +501,43 @@ async function recordOpeningStock(
 
   if (usable.length === 0) return null;
 
-  await db.insert(movement).values(
-    usable.map((line) => ({
+  // Each line is its own consignment, because each is a separate quantity
+  // landing in a separate place — which is exactly what a product code
+  // identifies.
+  const codes: string[] = [];
+
+  for (const line of usable) {
+    const consignment = await openConsignment(
+      db,
       colourwayId,
+      line.qty,
+      line.locationId,
+      null,
+      "Opening stock",
+    );
+
+    codes.push(consignment.code);
+
+    await db.insert(movement).values({
+      colourwayId,
+      batchId: consignment.id,
       qty: line.qty,
       kind: "received",
       fromLocationId: source.id,
       toLocationId: line.locationId,
       occurredAt: new Date(),
       reason: "Opening stock",
-    })),
-  );
+    });
+  }
 
   const total = usable.reduce((sum, line) => sum + line.qty, 0);
 
-  return usable.length === 1
-    ? `${total} into ${byId.get(usable[0]!.locationId)?.name}.`
-    : `${total} across ${usable.length} locations.`;
+  const where =
+    usable.length === 1
+      ? `into ${byId.get(usable[0]!.locationId)?.name}`
+      : `across ${usable.length} locations`;
+
+  return `${total} ${where} — product ${codes.join(", ")}.`;
 }
 
 /**
@@ -805,17 +825,22 @@ export async function recordMovement(
 
   if (cw === undefined) return { ok: false, message: "That record no longer exists." };
 
-  const [serialised] = await db.execute<{ isSerialised: boolean }>(sql`
-    select is_serialised as "isSerialised" from design where id = ${cw.designId}
-  `);
+  /*
+    Serialised designs used to be refused here, on the grounds that their
+    count is the number of tagged pieces and stock should move by scanning
+    one. That was true when nothing could mint a piece — but receiving is now
+    exactly what mints them, so refusing a receipt meant a saree could never
+    acquire the pieces the rule was protecting.
 
-  if (serialised?.isSerialised === true) {
-    return {
-      ok: false,
-      message:
-        "This design is tagged piece by piece. Its count is the number of pieces, so stock moves by scanning them rather than by typing a quantity.",
-    };
-  }
+    Receiving a serialised design mints one piece per unit, each with its own
+    item code, alongside the movement. The two agree because they are written
+    together.
+
+    Sending one out is still by quantity rather than by scan, which is a
+    smaller compromise: the count stays right, but which specific saree left
+    is not recorded. That wants the scanning flow, and until it exists,
+    refusing would mean serialised stock could arrive and never leave.
+  */
 
   const locations = await db.select().from(location);
   const byId = new Map(locations.map((l) => [l.id, l]));
@@ -879,15 +904,27 @@ export async function recordMovement(
     }
   }
 
+  const reference = draft.reference.trim() === "" ? null : draft.reference.trim();
+  const note = draft.note.trim() === "" ? null : draft.note.trim();
+
+  // Receiving opens a consignment; everything else moves stock that already
+  // exists. Selling does not mint a product code, and neither does a
+  // transfer — the saree keeps the codes it arrived with.
+  const consignment =
+    draft.kind === "received"
+      ? await openConsignment(db, colourwayId, qty, to, reference, note)
+      : null;
+
   await db.insert(movement).values({
     colourwayId,
+    batchId: consignment?.id ?? null,
     qty,
     kind: draft.kind,
     fromLocationId: from,
     toLocationId: to,
     occurredAt: new Date(),
-    reference: draft.reference.trim() === "" ? null : draft.reference.trim(),
-    note: draft.note.trim() === "" ? null : draft.note.trim(),
+    reference,
+    note,
   });
 
   revalidatePath("/records");
@@ -899,6 +936,119 @@ export async function recordMovement(
         ? `into ${byId.get(to)?.name}`
         : `out of ${byId.get(from)?.name}`;
 
-  return { ok: true, message: `${spec.label} ${qty} ${where}.` };
+  return {
+    ok: true,
+    message:
+      consignment === null
+        ? `${spec.label} ${qty} ${where}.`
+        : `${spec.label} ${qty} ${where} — product ${consignment.code}` +
+          (consignment.items.length > 0
+            ? `, items ${consignment.items[0]}–${consignment.items.at(-1)}.`
+            : "."),
+  };
 }
 
+
+/* ----------------------------------------------------------------- codes */
+
+/**
+ * A consignment: one product code, and one item code per piece.
+ *
+ * Called wherever stock arrives — the opening quantities on a new record, and
+ * Received on the Stock tab. Both are the same event, so both mint the same
+ * things.
+ *
+ * The codes come from Postgres sequences rather than from `max(code) + 1`.
+ * Two people receiving at once would both read the same maximum and both try
+ * to write it; a sequence hands out a number to one caller at a time and
+ * never repeats, which is what a code printed on a label needs.
+ */
+async function openConsignment(
+  tx: typeof db,
+  colourwayId: string,
+  qty: number,
+  locationId: string,
+  reference: string | null,
+  note: string | null,
+): Promise<{ id: string; code: string; items: string[] }> {
+  const [batch] = await tx.execute<{ id: string; code: string }>(sql`
+    insert into batch (colourway_id, code, qty, location_id, reference, note)
+    values (
+      ${colourwayId},
+      nextval('product_code_seq')::text,
+      ${qty}, ${locationId}, ${reference}, ${note}
+    )
+    returning id, code
+  `);
+
+  if (batch === undefined) {
+    throw new Error("could not open a consignment");
+  }
+
+  // Item codes only for designs tagged piece by piece. For everything else a
+  // quantity is the whole truth and minting rows to represent identical
+  // metres of cloth would be inventing distinctions that do not exist.
+  const [design] = await tx.execute<{ isSerialised: boolean }>(sql`
+    select d.is_serialised as "isSerialised"
+    from colourway cw join design d on d.id = cw.design_id
+    where cw.id = ${colourwayId}
+  `);
+
+  if (design?.isSerialised !== true) {
+    return { id: batch.id, code: batch.code, items: [] };
+  }
+
+  const [next] = await tx.execute<{ max: number }>(sql`
+    select coalesce(max(serial), 0)::int as max from piece
+    where colourway_id = ${colourwayId}
+  `);
+
+  const items = await tx.execute<{ code: string }>(sql`
+    insert into piece (colourway_id, batch_id, code, serial)
+    select
+      ${colourwayId},
+      ${batch.id},
+      nextval('item_code_seq')::text,
+      ${next?.max ?? 0} + g
+    from generate_series(1, ${qty}) as g
+    returning code
+  `);
+
+  return { id: batch.id, code: batch.code, items: items.map((i) => i.code) };
+}
+
+/** Consignments of one colourway, newest first. */
+export async function loadConsignments(colourwayId: string): Promise<
+  {
+    id: string;
+    code: string;
+    qty: number;
+    location: string | null;
+    receivedAt: string;
+    reference: string | null;
+    items: string[];
+  }[]
+> {
+  const rows = await db.execute<{
+    id: string;
+    code: string;
+    qty: number;
+    location: string | null;
+    receivedAt: string;
+    reference: string | null;
+    items: string[] | null;
+  }>(sql`
+    select b.id, b.code, b.qty, l.name as location,
+           to_char(b.received_at, 'DD Mon YYYY') as "receivedAt",
+           b.reference,
+           array_remove(array_agg(p.code order by p.serial), null) as items
+    from batch b
+    left join location l on l.id = b.location_id
+    left join piece p on p.batch_id = b.id
+    where b.colourway_id = ${colourwayId}
+    group by b.id, l.name
+    order by b.received_at desc, b.code desc
+  `);
+
+  return rows.map((r) => ({ ...r, items: r.items ?? [] }));
+}

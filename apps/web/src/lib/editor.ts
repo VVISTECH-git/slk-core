@@ -90,7 +90,8 @@ export async function loadRecord(
     first query was fetching. A subquery on an indexed primary key costs
     nothing and dissolves the dependency, so nothing has to wait.
   */
-  const [rows, siblings, totalsRows, byLocation, movements] = await Promise.all([
+  const [rows, siblings, totalsRows, byLocation, movements, consignments] =
+    await Promise.all([
     db.execute<Record<string, unknown>>(sql`
       select
         cw.id as id, d.id as "designId", d.code, d.name,
@@ -118,6 +119,7 @@ export async function loadRecord(
     loadTotals(colourwayId),
     loadByLocation(colourwayId),
     loadMovements(colourwayId),
+    loadConsignments(colourwayId),
   ]);
 
   const row = rows[0];
@@ -147,6 +149,7 @@ export async function loadRecord(
     attributes,
     siblings,
     stock: { ...totals!, byLocation },
+    consignments,
     movements,
   };
 }
@@ -201,5 +204,29 @@ function loadMovements(colourwayId: string) {
     where m.colourway_id = ${colourwayId}
     order by m.occurred_at desc, m.id desc
     limit 8
+  `);
+}
+
+/**
+ * What arrived and when, newest first, with the item codes minted under each.
+ *
+ * `array_remove` because a consignment of unserialised cloth has no pieces,
+ * and the left join then aggregates a single null — `{null}` is not an empty
+ * list, and would render as one blank item code.
+ */
+function loadConsignments(colourwayId: string) {
+  return db.execute<RecordDetail["consignments"][number]>(sql`
+    select
+      b.id, b.code, b.qty,
+      l.name                                        as location,
+      to_char(b.received_at, 'DD Mon YYYY')         as "receivedAt",
+      b.reference, b.note,
+      array_remove(array_agg(p.code order by p.serial), null) as items
+    from batch b
+    left join location l on l.id = b.location_id
+    left join piece p    on p.batch_id = b.id
+    where b.colourway_id = ${colourwayId}
+    group by b.id, l.name
+    order by b.received_at desc, b.code desc
   `);
 }

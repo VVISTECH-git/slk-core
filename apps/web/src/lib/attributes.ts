@@ -96,6 +96,25 @@ export interface RecordDetail {
     adjusted: number;
     byLocation: { location: string; qty: number }[];
   };
+  /**
+   * What arrived, and when — newest first.
+   *
+   * Each consignment is one product code and the item codes minted under it.
+   * The Stock tab's totals say how much is here now; this says what came in
+   * and against which invoice, which is the question a supplier query
+   * actually asks.
+   */
+  consignments: {
+    id: string;
+    code: string;
+    qty: number;
+    location: string | null;
+    receivedAt: string;
+    reference: string | null;
+    note: string | null;
+    items: string[];
+  }[];
+
   movements: {
     id: number;
     kind: string;

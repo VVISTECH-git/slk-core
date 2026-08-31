@@ -1008,6 +1008,16 @@ function StockTab({
       )}
 
       <h3 className="mt-6 mb-2 text-[15px] font-semibold text-ink">
+        Consignments Received
+      </h3>
+      <p className="mb-2 text-[12px] leading-relaxed text-muted">
+        Each delivery has its own product code, and the pieces in it their own
+        item codes. The counts above say what is here now; this says what came
+        in and against which invoice.
+      </p>
+      <Consignments consignments={record.consignments} unit={unit} />
+
+      <h3 className="mt-6 mb-2 text-[15px] font-semibold text-ink">
         Record A Movement
       </h3>
       <p className="mb-2 text-[12px] leading-relaxed text-muted">
@@ -1505,6 +1515,119 @@ function RecordMovement({
         {error !== null && (
           <span className="text-[13px] text-brick">{error}</span>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What arrived, and when.
+ *
+ * The tiles above say how much is here now; this says what came in, against
+ * which invoice, and what it was called. Those are different questions —
+ * "how many Deer sarees do we have" is answered by the count, and "what did
+ * the March delivery consist of" is answered here.
+ *
+ * Item codes are folded away because ten of them is a wall of numbers that
+ * says nothing until somebody is looking for one particular saree — and when
+ * they are, it is the only thing on the screen that matters.
+ */
+function Consignments({
+  consignments,
+  unit,
+}: {
+  consignments: RecordDetail["consignments"];
+  unit: string;
+}) {
+  const [open, setOpen] = useState<string | null>(null);
+
+  if (consignments.length === 0) {
+    return (
+      <p className="text-[13.5px] text-muted">
+        Nothing recorded as received yet. Stock entered before consignments
+        existed has no product code — it is still counted, it just cannot say
+        which delivery it came in.
+      </p>
+    );
+  }
+
+  const total = consignments.reduce((sum, c) => sum + c.qty, 0);
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-rule bg-surface">
+      <div className="flex items-baseline gap-3 border-b border-rule bg-surface-2 px-4 py-1.5 text-[11.5px] font-medium text-muted">
+        <span className="w-24">Product Code</span>
+        <span className="w-14 text-right">Qty</span>
+        <span className="w-28">Into</span>
+        <span className="w-24">Received</span>
+        <span>Reference</span>
+      </div>
+
+      {consignments.map((c) => (
+        <div key={c.id} className="border-b border-rule last:border-b-0">
+          <button
+            type="button"
+            onClick={() => setOpen(open === c.id ? null : c.id)}
+            // Only worth opening when there is something inside. Unserialised
+            // cloth arrives as a quantity, not as pieces.
+            disabled={c.items.length === 0}
+            className={`flex w-full items-baseline gap-3 px-4 py-2.5 text-left text-[13px] ${
+              c.items.length > 0 ? "hover:bg-surface-2" : "cursor-default"
+            }`}
+          >
+            <span className="w-24 font-mono text-[13px] font-medium text-ink">
+              {c.code}
+            </span>
+            <span className="w-14 text-right tabular-nums text-ink-2">
+              {c.qty}
+            </span>
+            <span className="w-28 truncate text-ink-2">{c.location ?? "—"}</span>
+            <span className="w-24 text-muted">{c.receivedAt}</span>
+            <span className="min-w-0 flex-1 truncate text-muted">
+              {c.reference ?? c.note ?? "—"}
+            </span>
+
+            {c.items.length > 0 && (
+              <span className="flex-none text-[12px] text-faint">
+                {open === c.id ? "Hide" : `${c.items.length} items`}
+              </span>
+            )}
+          </button>
+
+          {open === c.id && (
+            <div className="border-t border-rule bg-surface-2 px-4 py-2.5">
+              <p className="mb-1.5 text-[11.5px] text-muted">
+                Item codes — one per {unit.replace(/s$/, "")}, each on its own
+                label.
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {c.items.map((item) => (
+                  <span
+                    key={item}
+                    className="rounded bg-surface px-1.5 py-0.5 font-mono text-[12px] text-ink-2"
+                  >
+                    {item}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+
+      <div className="flex items-baseline gap-3 border-t border-rule-2 bg-surface-2 px-4 py-2 text-[13px] font-medium">
+        <span className="w-24 text-ink-2">
+          {consignments.length} consignment{consignments.length === 1 ? "" : "s"}
+        </span>
+        <span className="w-14 text-right tabular-nums text-ink">{total}</span>
+        {/*
+          Received all time, not on hand. Some of it has since been sold, and
+          saying "total" without saying total of what is how a number gets
+          misread.
+        */}
+        <span className="text-[12px] font-normal text-muted">
+          received all time
+        </span>
       </div>
     </div>
   );

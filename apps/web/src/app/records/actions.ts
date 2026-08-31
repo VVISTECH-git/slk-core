@@ -1017,38 +1017,3 @@ async function openConsignment(
   return { id: batch.id, code: batch.code, items: items.map((i) => i.code) };
 }
 
-/** Consignments of one colourway, newest first. */
-export async function loadConsignments(colourwayId: string): Promise<
-  {
-    id: string;
-    code: string;
-    qty: number;
-    location: string | null;
-    receivedAt: string;
-    reference: string | null;
-    items: string[];
-  }[]
-> {
-  const rows = await db.execute<{
-    id: string;
-    code: string;
-    qty: number;
-    location: string | null;
-    receivedAt: string;
-    reference: string | null;
-    items: string[] | null;
-  }>(sql`
-    select b.id, b.code, b.qty, l.name as location,
-           to_char(b.received_at, 'DD Mon YYYY') as "receivedAt",
-           b.reference,
-           array_remove(array_agg(p.code order by p.serial), null) as items
-    from batch b
-    left join location l on l.id = b.location_id
-    left join piece p on p.batch_id = b.id
-    where b.colourway_id = ${colourwayId}
-    group by b.id, l.name
-    order by b.received_at desc, b.code desc
-  `);
-
-  return rows.map((r) => ({ ...r, items: r.items ?? [] }));
-}

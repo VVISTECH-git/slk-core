@@ -22,6 +22,7 @@ export {
   designCode,
   designName,
   pieceCode,
+  titleCase,
   type DesignCodeParts,
   type DesignNameParts,
 } from "./naming";

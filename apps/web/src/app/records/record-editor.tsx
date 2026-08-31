@@ -2,6 +2,8 @@
 
 import { useMemo, useState, useTransition } from "react";
 
+import { titleCase } from "@slk/domain";
+
 import type { AttributeKey, Option, Options, RecordDetail } from "@/lib/editor";
 
 import {
@@ -283,9 +285,11 @@ export function RecordEditor({
                 <Note>
                   These attributes belong to the <strong>design</strong>, which has{" "}
                   {record.siblings.length} colours —{" "}
-                  {record.siblings.map((s) => s.colour ?? "unset").join(", ")}. A change
-                  here applies to all of them. Colour, prices and stock are for this one
-                  only.
+                  {record.siblings
+                    .map((s) => titleCase(s.colour) || "unset")
+                    .join(", ")}
+                  . A change here applies to all of them. Colour, prices and stock are
+                  for this one only.
                 </Note>
               )}
 
@@ -573,7 +577,7 @@ function Combo({
         <option value="">{placeholder ?? "Choose…"}</option>
         {values.map((o) => (
           <option key={o.id} value={o.id}>
-            {o.label}
+            {titleCase(o.label)}
           </option>
         ))}
       </select>
@@ -662,9 +666,7 @@ function StockTab({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {tiles.map((t) => (
           <div key={t.k} className="rounded-lg border border-rule bg-surface px-4 py-3">
-            <div className="font-mono text-[10px] tracking-[0.1em] text-faint uppercase">
-              {t.k}
-            </div>
+            <div className="text-[12px] font-medium text-muted">{t.k}</div>
             <div className={`text-[22px] font-semibold tabular-nums ${t.tone ?? "text-ink"}`}>
               {t.v}
             </div>
@@ -722,7 +724,7 @@ function StockTab({
               className={`flex flex-wrap items-baseline gap-x-3 px-4 py-2 text-[13px] ${i > 0 ? "border-t border-rule" : ""}`}
             >
               <span className="w-24 font-mono text-[11.5px] text-faint">{m.occurredAt}</span>
-              <span className="w-20 text-ink">{m.kind}</span>
+              <span className="w-20 text-ink">{titleCase(m.kind)}</span>
               <span className="w-10 text-right tabular-nums text-ink-2">{m.qty}</span>
               <span className="text-muted">{m.reason ?? "—"}</span>
               <span className="ml-auto font-mono text-[11px] text-faint">

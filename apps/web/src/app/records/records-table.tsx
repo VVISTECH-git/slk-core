@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { colourSwatch, isPaleSwatch } from "@slk/domain";
+import { colourSwatch, isPaleSwatch, titleCase } from "@slk/domain";
 
 import type { Options, RecordDetail } from "@/lib/editor";
 import type { RecordRow } from "@/lib/records";
@@ -61,6 +61,10 @@ function cell(row: RecordRow, key: ColumnKey): string {
       return row.priceMinor === null ? "" : money(row.priceMinor);
     case "quantity":
       return String(row.quantity);
+    // Stored lower case because the workbook has it that way; read as a
+    // proper name.
+    case "colour":
+      return titleCase(row.colour);
     default:
       return row[key] ?? "";
   }
@@ -334,7 +338,7 @@ export function RecordsTable({
                     <th
                       key={c.key}
                       style={c.width ? { width: c.width } : undefined}
-                      className={`border-b border-rule px-3 py-2.5 text-left font-mono text-[10px] tracking-[0.1em] whitespace-nowrap text-faint uppercase ${
+                      className={`border-b border-rule px-3 py-2.5 text-left text-[12px] font-medium whitespace-nowrap text-muted ${
                         NUMERIC.has(c.key) ? "text-right" : ""
                       }`}
                     >
@@ -383,7 +387,7 @@ export function RecordsTable({
                     </th>
                   );
                 })}
-                <th className="w-[190px] border-b border-rule px-4 py-2.5 text-right font-mono text-[10px] tracking-[0.1em] text-faint uppercase">
+                <th className="w-[190px] border-b border-rule px-4 py-2.5 text-right text-[12px] font-medium text-muted">
                   Actions
                 </th>
               </tr>

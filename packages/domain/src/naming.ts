@@ -7,6 +7,25 @@
  * string and not something derived on read.
  */
 
+/**
+ * For display only.
+ *
+ * The workbook stores `colour` and `descriptor` in lower case and the
+ * database keeps them that way, because that is what the source says. People
+ * reading a catalogue should still see "Bottle Green", not "bottle green".
+ * Everything else in the vocabulary is already cased as it should read, so
+ * only the first letter of each word is touched and the rest is left alone —
+ * "Sico (Silk-Cotton Blend)" survives unchanged.
+ */
+export function titleCase(value: string | null | undefined): string {
+  if (!value) return "";
+
+  return value.replace(
+    /(^|[\s(/-])([a-z])/g,
+    (_match, before: string, letter: string) => before + letter.toUpperCase(),
+  );
+}
+
 /** First three letters, ignoring spaces and punctuation. */
 export function abbr3(value: string | null | undefined, fallback = "GEN"): string {
   if (!value) return fallback;

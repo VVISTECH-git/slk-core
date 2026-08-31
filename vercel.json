@@ -2,16 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
 
-  "//regions": [
-    "Run beside the database, not beside nothing in particular.",
-    "The Neon instance is ep-late-paper-azdochaz.c-3.ap-southeast-1.aws.neon.tech —",
-    "Singapore. With no region set, Vercel put the functions in iad1, Washington",
-    "DC, so every query went India → Virginia → Singapore → Virginia → India.",
-    "One query against a record that does not exist took 655ms warm; opening a",
-    "record runs five, which is where the six seconds came from.",
-    "sin1 is Singapore, so the function and the database are in the same place",
-    "and the only long hop left is the user's own, once, instead of once per query."
-  ],
   "regions": ["sin1"],
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then pnpm --filter @slk/db run db:migrate; fi && pnpm turbo run build --filter=@slk/web",

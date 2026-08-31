@@ -90,7 +90,35 @@ Sample stock is not real stock and has no business in a deployed database. If
 you do want the demo catalogue there to show someone, load it locally and
 copy it across deliberately.
 
-## 5 · After that
+## 5 · Run the functions next to the database
+
+`vercel.json` pins `"regions": ["sin1"]`. That is not a preference; it is most
+of the app's speed.
+
+The Neon instance lives in `ap-southeast-1` — Singapore. With no region set,
+Vercel runs functions in `iad1`, Washington DC, and every query then goes
+India → Virginia → Singapore → Virginia → India. Measured on the deployed
+site before it was fixed: one request to `/records/<id>` for an id that does
+not exist took **2,558ms cold and 655ms warm**. The same query against a
+local database takes **1.7ms**. Nothing was slow; it was just far away.
+
+Opening a record ran five queries one after another, so it cost five
+crossings — about six seconds.
+
+Two things follow, and both matter if the database ever moves:
+
+- **The region has to follow the database.** If the Neon instance is moved,
+  change `regions` to match it in the same commit. They are one decision.
+- **Queries that do not depend on each other should not wait for each other.**
+  `loadRecord` runs its five together. That is worth doing regardless of
+  distance, but at 600ms a round trip it is the difference between a screen
+  that opens and one that does not.
+
+Note that `vercel.json` is validated against a schema and unknown top-level
+keys **fail the deployment** — including a `"//comment"` key, which is why
+this explanation is here and not in the file.
+
+## 6 · After that
 
 Pushing to `main` deploys. Any other branch gets its own preview URL, which is
 the safe way to look at a change before it reaches the live address.

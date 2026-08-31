@@ -524,7 +524,21 @@ export function RecordsTable({
                             setOpening({ id: row.id, action });
                             startLoading(async () => {
                               try {
-                                done((await copyRecord(row.id)).message);
+                                const result = await copyRecord(row.id);
+
+                                // A copy is not a usable record until it has
+                                // a colour — that is the whole reason it
+                                // exists. Landing back on the table with a
+                                // blank swatch and no way to see where the
+                                // colour is set is not finishing the job.
+                                if (result.ok && result.colourwayId) {
+                                  setToast(result.message);
+                                  router.refresh();
+                                  open(result.colourwayId, "basic", "basic");
+                                  return;
+                                }
+
+                                done(result.message);
                               } finally {
                                 setOpening(null);
                               }

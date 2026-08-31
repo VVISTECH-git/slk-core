@@ -20,6 +20,17 @@ export const ATTRIBUTES = {
   productType: { list: "product_type", column: "product_type_id", label: "Product Type" },
   homeProductType: { list: "home_product_type", column: "home_product_type_id", label: "Product Type" },
   garmentType: { list: "garment_type", column: "garment_type_id", label: "Product Sub Type" },
+
+  /**
+   * How the thing is sold, and so what a price is a price *of*.
+   *
+   * Never chosen. The workbook states it on the same row as the product type
+   * — Fabric is sold by the Metre, everything else by the Piece — and that
+   * relationship is carried in `parent_value_id`, so it is derived from
+   * Product Type and stored alongside it. A record where the two disagreed
+   * would be a record whose price meant nothing.
+   */
+  uom: { list: "uom", column: "uom_id", label: "Sold By" },
   homeWeavingCategory: { list: "home_weaving_category", column: "home_weaving_category_id", label: "Weaving Category" },
   productionMethod: { list: "production_method", column: "production_method_id", label: "Production Method" },
   audienceType: { list: "audience_type", column: "audience_type_id", label: "Audience" },

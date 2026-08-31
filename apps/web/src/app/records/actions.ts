@@ -19,6 +19,8 @@ export interface ActionResult {
   message: string;
   /** Field key → what is wrong with it, so the editor can point at a tab. */
   errors?: Record<string, string>;
+  /** A record the caller should open next — see copyRecord. */
+  colourwayId?: string;
 }
 
 /** Everything the editor can change, as it arrives from the form. */
@@ -355,7 +357,13 @@ export async function copyRecord(colourwayId: string): Promise<ActionResult> {
 
   return {
     ok: made !== undefined,
-    message: "Copied. Give it a colour and a price, then save.",
+    message: "Copied. Choose its colour.",
+    // The copy exists precisely to become a different colour, and it is not a
+    // usable record until it has one — it shows in the table as a blank
+    // swatch and a dash. Handing the id back lets the caller open it straight
+    // away rather than leaving someone to find the row and work out that the
+    // colour is set somewhere else.
+    colourwayId: made?.id,
   };
 }
 

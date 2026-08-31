@@ -150,6 +150,16 @@ export function RecordEditor({
 
   const isSaree = !isHome && productType === "Saree";
   const isGarment = !isHome && Boolean(attributes.garmentType);
+
+  /**
+   * What a price is a price of.
+   *
+   * "Retail Price ₹1,000" says nothing on its own for a length of cloth. The
+   * unit belongs next to the number, and it is not a separate question —
+   * Product Type already answers it.
+   */
+  const uom = labelOf("uom", attributes.uom);
+  const perUnit = uom === null ? "" : ` per ${uom}`;
   const fibre = labelOf("fibre_type", attributes.fibreType);
   const craft = labelOf("craft_technique", attributes.craftTechnique);
 
@@ -201,6 +211,17 @@ export function RecordEditor({
         next.craftSubType = null;
       }
       if (key === "motifCategory") next.motif = null;
+
+      // Unit of measure follows the product type rather than being asked for.
+      // Fabric is sold by the Metre and everything else by the Piece, and the
+      // vocabulary already says so — the UOM is the product type's parent
+      // value. Deriving it is what stops a record priced per metre from
+      // claiming to be sold per piece.
+      if (key === "productType" || key === "homeProductType") {
+        const list = key === "productType" ? "product_type" : "home_product_type";
+        const chosen = options[list]?.find((o) => o.id === value);
+        next.uom = chosen?.parentId ?? null;
+      }
 
       // Changing industry changes which columns apply. Clearing the other
       // side here rather than on save means the record never briefly holds
@@ -555,6 +576,15 @@ export function RecordEditor({
                   <label key={p.key} className="block">
                     <span className="mb-1 block text-[12.5px] text-ink-2">
                       {p.label}
+                      {/*
+                        "per Metre" rather than a generic "per qty": the unit
+                        is known, and naming it is the whole point. Fabric
+                        priced at ₹1,000 means something quite different from
+                        a saree at ₹1,000.
+                      */}
+                      {perUnit !== "" && (
+                        <span className="font-normal text-muted">{perUnit}</span>
+                      )}
                       {p.key === "retail" && <Required />}
                     </span>
                     <input
@@ -872,9 +902,16 @@ function StockTab({
         ))}
       </div>
 
-      <h3 className="mt-6 mb-2 text-[15px] font-semibold text-ink">Where It Is</h3>
+      <h3 className="mt-6 mb-2 text-[15px] font-semibold text-ink">
+        Stock Availability Details
+      </h3>
       {stock.byLocation.length > 0 ? (
         <div className="overflow-hidden rounded-lg border border-rule bg-surface">
+          {/* A column of bare numbers with no heading makes the reader guess. */}
+          <div className="flex justify-between border-b border-rule bg-surface-2 px-4 py-1.5 text-[11.5px] font-medium text-muted">
+            <span>Location</span>
+            <span>Available</span>
+          </div>
           {stock.byLocation.map((l, i) => (
             <div
               key={l.location}
@@ -886,6 +923,12 @@ function StockTab({
               </span>
             </div>
           ))}
+          <div className="flex justify-between border-t border-rule-2 bg-surface-2 px-4 py-2 text-[13px] font-medium">
+            <span className="text-ink-2">Total</span>
+            <span className="tabular-nums text-ink">
+              {stock.onHand} {stock.onHand === 1 ? unit.replace(/s$/, "") : unit}
+            </span>
+          </div>
         </div>
       ) : (
         <p className="text-[13.5px] text-muted">Nothing on hand.</p>
@@ -915,6 +958,18 @@ function StockTab({
       <h3 className="mt-6 mb-2 text-[15px] font-semibold text-ink">Recent Movements</h3>
       {record.movements.length > 0 ? (
         <div className="overflow-hidden rounded-lg border border-rule bg-surface">
+          {/*
+            Five columns of unlabelled values. The date and the quantity were
+            guessable; "Received 3" against a reason and a pair of location
+            names was not.
+          */}
+          <div className="flex flex-wrap items-baseline gap-x-3 border-b border-rule bg-surface-2 px-4 py-1.5 text-[11.5px] font-medium text-muted">
+            <span className="w-24">When</span>
+            <span className="w-20">What</span>
+            <span className="w-10 text-right">Qty</span>
+            <span>Reason</span>
+            <span className="ml-auto">From → To</span>
+          </div>
           {record.movements.map((m, i) => (
             <div
               key={m.id}

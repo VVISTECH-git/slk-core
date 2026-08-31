@@ -12,7 +12,11 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "format": "prettier --write \"**/*.{ts,tsx,md,json,yaml,yml}\""
+    "format": "prettier --write \"**/*.{ts,tsx,md,json,yaml,yml}\"",
+    "dev:db": "pnpm --filter @slk/db dev:db",
+    "db:generate": "pnpm --filter @slk/db db:generate",
+    "db:migrate": "pnpm --filter @slk/db db:migrate",
+    "db:studio": "pnpm --filter @slk/db db:studio"
   },
   "devDependencies": {
     "prettier": "^3.4.2",

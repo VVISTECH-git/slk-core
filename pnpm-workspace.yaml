@@ -3,5 +3,9 @@ packages:
   - "packages/*"
 
 allowBuilds:
+  # downloads the Postgres 17 binaries for the local dev database
+  "@embedded-postgres/windows-x64": true
+  # drizzle-kit and tsx both need esbuild's native binary
+  esbuild: true
   sharp: false
   unrs-resolver: false

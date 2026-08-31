@@ -1,0 +1,10 @@
+# Generated SQL migrations land here and are committed.
+#
+# Two kinds live side by side:
+#   - files drizzle-kit generates from src/schema
+#   - hand-written SQL for things Drizzle does not model: the movement
+#     immutability trigger, the derived views, and the REVOKE on the app role
+#
+# This folder, not the TypeScript, is the real source of truth for the
+# database. Never run db:push against anything holding real stock — it
+# resolves constraint drift by offering to truncate.

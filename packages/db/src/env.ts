@@ -12,7 +12,9 @@ function required(name: string): string {
 
   if (value === undefined || value === "") {
     throw new Error(
-      `${name} is not set. Copy .env.example to .env and fill it in.`,
+      `${name} is not set. Locally, copy .env.example to .env at the ` +
+        `slk-core root and fill it in. On a hosting platform, add it as an ` +
+        `environment variable — the app has no database without it.`,
     );
   }
 

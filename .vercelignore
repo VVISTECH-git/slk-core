@@ -1,0 +1,25 @@
+# What a CLI deploy must not upload.
+#
+# Vercel reads this instead of .gitignore, so anything large and local has to
+# be named here too. Without it the upload was 320MB and hit the file size
+# limit — almost all of it the embedded Postgres data directory and build
+# caches, none of which a build needs.
+
+node_modules
+.git
+
+# local development database
+.pgdata
+
+# build output and caches — the build produces its own
+.next
+.turbo
+dist
+
+# never
+.env
+.env.*
+.vercel
+
+# not part of the application
+docs

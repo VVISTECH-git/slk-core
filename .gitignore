@@ -31,3 +31,6 @@ pnpm-debug.log*
 .idea/
 .DS_Store
 Thumbs.db
+
+# vercel link writes project ids and a fresh OIDC token here
+.vercel

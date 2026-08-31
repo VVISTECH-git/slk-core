@@ -3,8 +3,14 @@ packages:
   - "packages/*"
 
 allowBuilds:
-  # downloads the Postgres 17 binaries for the local dev database
+  # Downloads the Postgres 17 binaries for the local dev database. Only the
+  # host platform's build should run; on a Linux build server those binaries
+  # are 300MB of nothing useful, and leaving the package unlisted fails the
+  # install outright rather than skipping it.
   "@embedded-postgres/windows-x64": true
+  "@embedded-postgres/linux-x64": false
+  "@embedded-postgres/darwin-arm64": false
+  "@embedded-postgres/darwin-x64": false
   # drizzle-kit and tsx both need esbuild's native binary
   esbuild: true
   sharp: false

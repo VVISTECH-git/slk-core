@@ -69,15 +69,24 @@ function rupees(minor: number | null): string {
   return minor === null ? "" : String(minor / 100);
 }
 
+export interface PickableLocation {
+  id: string;
+  name: string;
+  code: string;
+  isInternal: boolean;
+}
+
 export function RecordEditor({
   record,
   options,
+  locations,
   initialTab,
   onClose,
   onSaved,
 }: {
   record: RecordDetail | null;
   options: Options;
+  locations: PickableLocation[];
   initialTab: TabKey;
   onClose: () => void;
   onSaved: (message: string) => void;
@@ -101,6 +110,12 @@ export function RecordEditor({
   const [quantity, setQuantity] = useState(
     isNew ? "1" : String(record.stock.onHand),
   );
+
+  // One line to start, pointing at wherever stock normally lands, so the
+  // common case — everything in one place — is already the shape of the form.
+  const [openingStock, setOpeningStock] = useState<OpeningLine[]>(() => [
+    { locationId: locations.find((l) => l.isInternal)?.id ?? "", qty: "" },
+  ]);
   const [notes, setNotes] = useState(record?.notes ?? "");
   const [name, setName] = useState(record?.name ?? "");
   const [nameIsCustom, setNameIsCustom] = useState(record?.nameIsCustom ?? false);
@@ -183,13 +198,27 @@ export function RecordEditor({
     });
   };
 
+  /**
+   * Whether the record has been submitted once.
+   *
+   * Until then the footer walks forward, because a new record is a sequence.
+   * After a rejection it must not: the failure sends you back to the tab with
+   * the problem, and if the button there still said Next you would have to
+   * page through the rest of the form again to reach a button that submits.
+   * Once someone has seen every step, they can commit from any of them.
+   */
+  const [attempted, setAttempted] = useState(false);
+
   const submit = () => {
+    setAttempted(true);
+
     const draft: RecordDraft = {
       colourwayId: record?.id,
       attributes,
       colourId,
       prices,
       quantity,
+      openingStock,
       notes,
       name,
       nameIsCustom,
@@ -515,6 +544,9 @@ export function RecordEditor({
               quantity={quantity}
               setQuantity={setQuantity}
               error={errors["quantity"]}
+              locations={locations}
+              openingStock={openingStock}
+              setOpeningStock={setOpeningStock}
             />
           )}
 
@@ -583,7 +615,20 @@ export function RecordEditor({
             </button>
           )}
 
-          {isNew && !onLastStep ? (
+          {isNew && !onLastStep && attempted && (
+            <button
+              type="button"
+              onClick={() => {
+                const next = tabs[step + 1];
+                if (next) setTab(next.key);
+              }}
+              className="rounded-md border border-rule-2 px-3 py-2 text-[13.5px] text-ink-2 hover:bg-surface-2"
+            >
+              Next
+            </button>
+          )}
+
+          {isNew && !onLastStep && !attempted ? (
             <button
               type="button"
               onClick={() => {
@@ -715,40 +760,35 @@ function Margin({ cost, retail }: { cost: string; retail: string }) {
   );
 }
 
+export interface OpeningLine {
+  locationId: string;
+  qty: string;
+}
+
 function StockTab({
   record,
   quantity,
   setQuantity,
   error,
+  locations,
+  openingStock,
+  setOpeningStock,
 }: {
   record: RecordDetail | null;
   quantity: string;
   setQuantity: (value: string) => void;
   error?: string;
+  locations: PickableLocation[];
+  openingStock: OpeningLine[];
+  setOpeningStock: (lines: OpeningLine[]) => void;
 }) {
   if (record === null) {
     return (
-      <>
-        <Grid>
-          <label className="block">
-            <span className="mb-1 block text-[12.5px] text-ink-2">
-              Opening Quantity
-            </span>
-            <input
-              type="number"
-              min="0"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              className="w-full rounded-md border border-rule-2 bg-surface px-3 py-2 text-right text-[14px] tabular-nums text-ink"
-            />
-          </label>
-        </Grid>
-        <Note>
-          Opening stock is not recorded here yet — a new record is created with no
-          movements, and stock arrives through Record movement. That keeps every
-          count traceable to something that happened.
-        </Note>
-      </>
+      <OpeningStock
+        locations={locations}
+        lines={openingStock}
+        setLines={setOpeningStock}
+      />
     );
   }
 
@@ -905,5 +945,140 @@ export function ArchiveDialog({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Opening stock, entered the way it is counted: a place, and how many are
+ * there.
+ *
+ * A single Opening Quantity box could not say where the stock was, so it did
+ * not record anything at all — the field sat above a note explaining that it
+ * would not be saved, which is a form asking for something it then throws
+ * away.
+ *
+ * Each line becomes one movement into that location. The total is shown
+ * rather than typed, because it is a consequence of the lines and not an
+ * independent number that could disagree with them.
+ */
+function OpeningStock({
+  locations,
+  lines,
+  setLines,
+}: {
+  locations: PickableLocation[];
+  lines: OpeningLine[];
+  setLines: (lines: OpeningLine[]) => void;
+}) {
+  const internal = locations.filter((l) => l.isInternal);
+
+  const total = lines.reduce((sum, line) => {
+    const n = Number(line.qty);
+    return sum + (Number.isFinite(n) && n > 0 ? Math.round(n) : 0);
+  }, 0);
+
+  // A location already spoken for further up the list, so the same place
+  // cannot be entered twice and then disagree with itself.
+  const taken = (index: number) =>
+    new Set(lines.filter((_, i) => i !== index).map((l) => l.locationId));
+
+  const update = (index: number, patch: Partial<OpeningLine>) =>
+    setLines(lines.map((line, i) => (i === index ? { ...line, ...patch } : line)));
+
+  const spare = internal.find((l) => !lines.some((line) => line.locationId === l.id));
+
+  if (internal.length === 0) {
+    return (
+      <Note>
+        No locations are set up to hold stock. Add one on Master Lists →
+        Locations, and it will be offered here.
+      </Note>
+    );
+  }
+
+  return (
+    <>
+      <div className="mb-3 flex items-baseline justify-between">
+        <h3 className="text-[15px] font-semibold text-ink">Opening Stock</h3>
+        <span className="text-[12.5px] text-muted">
+          Total{" "}
+          <span className="font-mono text-[13.5px] tabular-nums text-ink">{total}</span>
+        </span>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-rule bg-surface">
+        {lines.map((line, index) => {
+          const used = taken(index);
+
+          return (
+            <div
+              key={index}
+              className={`flex items-center gap-3 px-4 py-2.5 ${
+                index > 0 ? "border-t border-rule" : ""
+              }`}
+            >
+              <select
+                aria-label={`Location for line ${index + 1}`}
+                value={line.locationId}
+                onChange={(e) => update(index, { locationId: e.target.value })}
+                className="min-w-0 flex-1 rounded-md border border-rule-2 bg-surface px-2.5 py-1.5 text-[13.5px] text-ink"
+              >
+                <option value="">Choose a location…</option>
+                {internal.map((l) => (
+                  <option key={l.id} value={l.id} disabled={used.has(l.id)}>
+                    {l.name}
+                    {used.has(l.id) ? " — already listed" : ""}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                type="number"
+                min="0"
+                aria-label={`Quantity for line ${index + 1}`}
+                value={line.qty}
+                onChange={(e) => update(index, { qty: e.target.value })}
+                className="w-24 flex-none rounded-md border border-rule-2 bg-surface px-2.5 py-1.5 text-right text-[13.5px] tabular-nums text-ink"
+              />
+
+              <button
+                type="button"
+                aria-label={`Remove line ${index + 1}`}
+                onClick={() => setLines(lines.filter((_, i) => i !== index))}
+                // Never down to nothing: an empty list with only an Add button
+                // is a dead end that does not look like one.
+                disabled={lines.length === 1}
+                className="flex-none rounded px-1.5 py-1 text-[15px] leading-none text-muted hover:bg-surface-2 hover:text-brick disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <button
+        type="button"
+        onClick={() =>
+          setLines([...lines, { locationId: spare?.id ?? "", qty: "" }])
+        }
+        disabled={spare === undefined}
+        title={
+          spare === undefined
+            ? "Every location is already listed"
+            : undefined
+        }
+        className="mt-2 rounded-md border border-rule-2 px-3 py-1.5 text-[13px] text-ink-2 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        Add another location
+      </button>
+
+      <Note>
+        Each line is recorded as stock arriving from Production into that
+        location, so the count can still be explained a year from now. Leave it
+        all blank if the stock is not counted yet — it can arrive later through
+        Record movement.
+      </Note>
+    </>
   );
 }

@@ -9,7 +9,7 @@ import type { Options, RecordDetail } from "@/lib/editor";
 import type { RecordRow } from "@/lib/records";
 
 import { copyRecord } from "./actions";
-import { ArchiveDialog, RecordEditor } from "./record-editor";
+import { ArchiveDialog, RecordEditor, type PickableLocation } from "./record-editor";
 
 /**
  * Product Records, as the prototype has it: twelve columns, each sortable and
@@ -87,10 +87,12 @@ export function RecordsTable({
   rows,
   industries,
   options,
+  locations,
 }: {
   rows: RecordRow[];
   industries: string[];
   options: Options;
+  locations: PickableLocation[];
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState<{
@@ -628,6 +630,7 @@ export function RecordsTable({
         <RecordEditor
           record={editing.record}
           options={options}
+          locations={locations}
           initialTab={editing.tab}
           onClose={() => setEditing(null)}
           onSaved={done}

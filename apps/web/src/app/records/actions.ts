@@ -29,6 +29,21 @@ export interface RecordDraft {
     mrp: string;
   };
   quantity: string;
+
+  /**
+   * Opening stock, split across the places it actually sits.
+   *
+   * A total on its own cannot be acted on — "we have twelve" does not tell
+   * anyone which shop to send a customer to. Each line becomes one `received`
+   * movement into that location, so the total is a sum of recorded events
+   * rather than a number somebody typed, and the per-location breakdown on
+   * the Stock tab is true from the moment the record exists.
+   *
+   * New records only. Moving existing stock between locations is a transfer,
+   * which is a different act and wants its own screen.
+   */
+  openingStock: { locationId: string; qty: string }[];
+
   notes: string;
   name: string;
   nameIsCustom: boolean;
@@ -373,17 +388,91 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
 
   if (created === undefined) return { ok: false, message: "Could not create the record." };
 
-  await db.insert(colourway).values({
-    designId: created.id,
-    colourId: draft.colourId,
-    costMinor: toMinor(draft.prices.cost),
-    makingMinor: toMinor(draft.prices.making),
-    wholesaleMinor: toMinor(draft.prices.wholesale),
-    retailMinor: toMinor(draft.prices.retail),
-    mrpMinor: toMinor(draft.prices.mrp),
-  });
+  const [cw] = await db
+    .insert(colourway)
+    .values({
+      designId: created.id,
+      colourId: draft.colourId,
+      costMinor: toMinor(draft.prices.cost),
+      makingMinor: toMinor(draft.prices.making),
+      wholesaleMinor: toMinor(draft.prices.wholesale),
+      retailMinor: toMinor(draft.prices.retail),
+      mrpMinor: toMinor(draft.prices.mrp),
+    })
+    .returning({ id: colourway.id });
+
+  const opening =
+    cw === undefined ? null : await recordOpeningStock(cw.id, draft.openingStock);
 
   revalidatePath("/records");
 
-  return { ok: true, message: `Created ${code}.` };
+  return {
+    ok: true,
+    message: `Created ${code}.${opening === null ? "" : ` ${opening}`}`,
+  };
+}
+
+/**
+ * Writes the opening quantities as movements.
+ *
+ * Stock does not appear; it comes from somewhere. Each line is recorded as
+ * arriving from Production into the location it was counted in, which is what
+ * makes the opening count explicable a year later — the same reason the
+ * ledger is append-only and every quantity is positive.
+ *
+ * Returns a sentence describing what it recorded, or null if there was
+ * nothing to record.
+ */
+async function recordOpeningStock(
+  colourwayId: string,
+  lines: { locationId: string; qty: string }[],
+): Promise<string | null> {
+  const wanted = lines
+    .map((line) => ({ locationId: line.locationId, qty: Math.round(Number(line.qty)) }))
+    .filter(
+      (line) =>
+        line.locationId !== "" && Number.isFinite(line.qty) && line.qty > 0,
+    );
+
+  if (wanted.length === 0) return null;
+
+  const locations = await db.select().from(location);
+  const byId = new Map(locations.map((l) => [l.id, l]));
+
+  // Where stock comes from when it is first counted. Production rather than
+  // nothing, because a movement has to come from somewhere or go somewhere.
+  const source =
+    locations.find((l) => l.code === "PRODUCTION") ??
+    locations.find((l) => !l.isInternal);
+
+  if (source === undefined) {
+    return "Opening stock not recorded — no external location is set up to receive it from.";
+  }
+
+  const usable = wanted.filter((line) => {
+    const target = byId.get(line.locationId);
+    // Not into Production itself: that would be a movement to where it
+    // already is, which the ledger refuses and which records nothing.
+    return target !== undefined && target.isActive && target.id !== source.id;
+  });
+
+  if (usable.length === 0) return null;
+
+  await db.insert(movement).values(
+    usable.map((line) => ({
+      colourwayId,
+      qty: line.qty,
+      kind: "received",
+      fromLocationId: source.id,
+      toLocationId: line.locationId,
+      occurredAt: new Date(),
+      reason: "Opening stock",
+    })),
+  );
+
+  const total = usable.reduce((sum, line) => sum + line.qty, 0);
+
+  return usable.length === 1
+    ? `${total} into ${byId.get(usable[0]!.locationId)?.name}.`
+    : `${total} across ${usable.length} locations.`;
 }

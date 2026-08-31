@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { colourSwatch, isPaleSwatch } from "@slk/domain";
@@ -9,6 +9,7 @@ import type { Options, RecordDetail } from "@/lib/editor";
 import type { RecordRow } from "@/lib/records";
 
 import { copyRecord } from "./actions";
+import { MIN_COLUMN_WIDTH, useColumnWidths } from "./column-widths";
 import { ArchiveDialog, RecordEditor, type PickableLocation } from "./record-editor";
 
 /**
@@ -167,6 +168,12 @@ export function RecordsTable({
 
   const columns = COLUMNS.filter((c) => visible.has(c.key));
 
+  const { widths, setWidth, reset: resetWidths, resized } = useColumnWidths();
+
+  /** A dragged width if there is one, otherwise the width the column was designed at. */
+  const widthOf = (c: { key: ColumnKey; width: number }) =>
+    widths[c.key] ?? c.width;
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
 
@@ -304,6 +311,27 @@ export function RecordsTable({
                   {c.label}
                 </label>
               ))}
+
+              {/*
+                A way back. Widths are dragged and remembered, so a layout can
+                be left in a state its owner does not want and cannot undo by
+                reloading — which is the trap of persisting anything.
+              */}
+              {resized && (
+                <>
+                  <span className="my-1 block border-t border-rule" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetWidths();
+                      setShowColumns(false);
+                    }}
+                    className="w-full rounded px-2 py-1.5 text-left text-[13px] text-ink-2 hover:bg-surface-2"
+                  >
+                    Reset column widths
+                  </button>
+                </>
+              )}
               </div>
             </>
           )}
@@ -356,7 +384,7 @@ export function RecordsTable({
             className="w-full table-fixed text-[13.5px]"
             style={{
               minWidth:
-                columns.reduce((sum, c) => sum + c.width, 0) + ACTIONS_WIDTH,
+                columns.reduce((sum, c) => sum + widthOf(c), 0) + ACTIONS_WIDTH,
             }}
           >
             <thead>
@@ -368,8 +396,8 @@ export function RecordsTable({
                   return (
                     <th
                       key={c.key}
-                      style={c.width ? { width: c.width } : undefined}
-                      className={`border-b border-rule px-3 py-2.5 text-left text-[12px] font-medium whitespace-nowrap text-muted ${
+                      style={{ width: widthOf(c) }}
+                      className={`relative border-b border-rule px-3 py-2.5 text-left text-[12px] font-medium whitespace-nowrap text-muted ${
                         NUMERIC.has(c.key) ? "text-right" : ""
                       }`}
                     >
@@ -415,6 +443,12 @@ export function RecordsTable({
                           </select>
                         )}
                       </span>
+
+                      <ResizeHandle
+                        label={c.label}
+                        width={widthOf(c)}
+                        onResize={(w) => setWidth(c.key, w)}
+                      />
                     </th>
                   );
                 })}
@@ -812,3 +846,91 @@ function RowActions({
     </div>
   );
 }
+
+/**
+ * The grab strip on a column's right edge.
+ *
+ * Pointer events rather than mouse events, so a trackpad, a pen and a touch
+ * screen all work, and so `setPointerCapture` keeps the drag alive when the
+ * pointer leaves the four-pixel strip — which it does immediately, because
+ * nobody drags in a straight line.
+ *
+ * The width is tracked in a ref during the drag and only committed on
+ * release. Writing to localStorage on every pointermove would be a hundred
+ * writes per drag for one useful value.
+ */
+function ResizeHandle({
+  label,
+  width,
+  onResize,
+}: {
+  label: string;
+  width: number;
+  onResize: (width: number) => void;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const start = useRef<{ x: number; width: number } | null>(null);
+  const latest = useRef(width);
+
+  return (
+    <span
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Resize ${label} column`}
+      // Focusable and nudgeable, because a drag is not available to everyone
+      // and a column nobody can widen is the bug this was meant to fix.
+      tabIndex={0}
+      onKeyDown={(e) => {
+        const step = e.shiftKey ? 32 : 8;
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          onResize(width - step);
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault();
+          onResize(width + step);
+        }
+      }}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
+        start.current = { x: e.clientX, width };
+        latest.current = width;
+        setDragging(true);
+      }}
+      onPointerMove={(e) => {
+        if (start.current === null) return;
+        latest.current = Math.max(
+          MIN_COLUMN_WIDTH,
+          start.current.width + (e.clientX - start.current.x),
+        );
+        onResize(latest.current);
+      }}
+      onPointerUp={(e) => {
+        if (start.current === null) return;
+        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+        start.current = null;
+        setDragging(false);
+        onResize(latest.current);
+      }}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onResize(DEFAULT_WIDTHS[label] ?? width);
+      }}
+      title="Drag to resize. Double-click to reset this column."
+      className={`absolute top-0 right-0 z-10 flex h-full w-2 cursor-col-resize touch-none items-center justify-center ${
+        dragging ? "bg-brick/15" : "hover:bg-brick/10"
+      }`}
+    >
+      <span
+        aria-hidden
+        className={`h-1/2 w-px ${dragging ? "bg-brick" : "bg-rule-2"}`}
+      />
+    </span>
+  );
+}
+
+/** Label → the width the column was designed at, for double-click to reset. */
+const DEFAULT_WIDTHS: Record<string, number> = Object.fromEntries(
+  COLUMNS.map((c) => [c.label, c.width]),
+);

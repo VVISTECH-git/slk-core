@@ -3,6 +3,8 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { colourSwatch, isPaleSwatch } from "@slk/domain";
+
 import type { Options, RecordDetail } from "@/lib/editor";
 import type { RecordRow } from "@/lib/records";
 
@@ -13,20 +15,26 @@ import { ArchiveDialog, RecordEditor } from "./record-editor";
  * Product Records, as the prototype has it: twelve columns, each sortable and
  * filterable, two off by default, and six actions per row.
  *
- * Width 0 means flexible — Product takes whatever the fixed columns leave, so
- * turning a column on can never push the table into a horizontal scroll.
+ * Widths are sized to the longest value each column actually holds, because
+ * every cell truncates rather than wraps. A cell that wraps makes its row
+ * taller than its neighbours, and a handful of tall rows is what makes a data
+ * grid look broken at a glance — the horizontal rules stop lining up.
+ *
+ *   Product      "Traditional Kalamkari Srikalahasti Mul Mul Cotton Saree"
+ *   Fiber Type   "Sico (Silk-Cotton Blend)"
+ *   Colour       "dark olive green", plus its swatch
  */
 const COLUMNS = [
-  { key: "name", label: "Product", width: 260 },
-  { key: "productType", label: "Product Type", width: 140 },
+  { key: "name", label: "Product", width: 400 },
+  { key: "productType", label: "Product Type", width: 130 },
   { key: "subType", label: "Product Sub Type", width: 138 },
   { key: "productionMethod", label: "Production Method", width: 150 },
-  { key: "fibreType", label: "Fiber Type", width: 150 },
+  { key: "fibreType", label: "Fiber Type", width: 178 },
   { key: "regionalStyle", label: "Region Style", width: 126 },
-  { key: "craftTechnique", label: "Craft Technique", width: 140 },
-  { key: "code", label: "Design Code", width: 148 },
+  { key: "craftTechnique", label: "Craft Technique", width: 148 },
+  { key: "code", label: "Design Code", width: 150 },
   { key: "audienceType", label: "Audience", width: 96 },
-  { key: "colour", label: "Colour", width: 116 },
+  { key: "colour", label: "Colour", width: 150 },
   { key: "quantity", label: "Quantity", width: 88 },
   { key: "price", label: "Price", width: 100 },
 ] as const;
@@ -301,9 +309,6 @@ export function RecordsTable({
             {filtered.length === 1 ? "" : "s"}
             {industry && ` in ${industry}`}
           </span>
-          <span className="ml-auto text-[12.5px] text-faint">
-            View details, edit, copy or delete on each row
-          </span>
         </div>
 
         <div className="overflow-x-auto">
@@ -403,76 +408,66 @@ export function RecordsTable({
                   <tr
                     key={row.id}
                     onClick={() => setSelected(row.id)}
-                    className={`cursor-pointer border-b border-rule last:border-b-0 ${
+                    // A single fixed height for every row. Nothing inside a
+                    // cell is allowed to change it.
+                    className={`h-11 cursor-pointer border-b border-rule last:border-b-0 ${
                       selected === row.id ? "bg-brick-soft" : "hover:bg-surface-2"
                     }`}
                   >
                     {columns.map((c) => {
                       const value = cell(row, c.key);
 
-                      if (c.key === "code") {
-                        return (
-                          <td key={c.key} className="px-3 py-2.5">
-                            <span className="font-mono text-[12px] text-ink-2">
-                              {value}
-                            </span>
-                          </td>
-                        );
-                      }
-
-                      if (c.key === "name") {
-                        return (
-                          <td key={c.key} className="px-3 py-2.5">
-                            <span className="block truncate text-ink" title={value}>
-                              {value}
-                            </span>
-                          </td>
-                        );
-                      }
-
                       if (c.key === "colour") {
+                        const swatch = colourSwatch(row.colour, row.colourHex);
+
                         return (
-                          <td key={c.key} className="px-3 py-2.5">
-                            <span className="flex items-center gap-2 text-ink-2">
-                              {row.colourHex && (
-                                <span
-                                  aria-hidden
-                                  className="size-3.5 shrink-0 rounded-full border border-rule-2"
-                                  style={{ background: row.colourHex }}
-                                />
-                              )}
-                              {value || "—"}
+                          <Cell key={c.key} title={value || "Not set"}>
+                            <span className="flex min-w-0 items-center gap-2">
+                              <span
+                                aria-hidden
+                                className={`size-3.5 shrink-0 rounded-full ${
+                                  isPaleSwatch(swatch)
+                                    ? "border border-rule-2"
+                                    : "border border-black/10"
+                                }`}
+                                style={{ background: swatch }}
+                              />
+                              <span className="truncate text-ink-2">
+                                {value || "—"}
+                              </span>
                             </span>
-                          </td>
+                          </Cell>
                         );
                       }
 
                       if (c.key === "quantity") {
                         return (
-                          <td
-                            key={c.key}
-                            className="px-3 py-2.5 text-right tabular-nums"
-                          >
+                          <Cell key={c.key} numeric title={`${value}${row.uom === "Metre" ? " metres" : ""}`}>
                             <span className={row.quantity === 0 ? "text-warn" : "text-ink"}>
                               {value}
                             </span>
                             {row.uom === "Metre" && (
                               <span className="ml-1 text-[11px] text-faint">m</span>
                             )}
-                          </td>
+                          </Cell>
                         );
                       }
 
                       return (
-                        <td
+                        <Cell
                           key={c.key}
-                          className={`px-3 py-2.5 text-ink-2 ${
-                            NUMERIC.has(c.key) ? "text-right tabular-nums" : ""
-                          }`}
-                          title={value}
+                          numeric={NUMERIC.has(c.key)}
+                          title={value || "Not set"}
+                          className={
+                            c.key === "code"
+                              ? "font-mono text-[12px] text-ink-2"
+                              : c.key === "name"
+                                ? "text-ink"
+                                : "text-ink-2"
+                          }
                         >
                           {value || "—"}
-                        </td>
+                        </Cell>
                       );
                     })}
 
@@ -566,6 +561,37 @@ export function RecordsTable({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * One rule for every cell: never wrap, truncate with an ellipsis, and carry
+ * the whole value in the title so hovering reveals what was cut.
+ *
+ * Applied without exception. Letting one column wrap while its neighbours
+ * truncate is what made "bottle green" and "Sico (Silk-Cotton Blend)" push
+ * their rows taller than the rest.
+ */
+function Cell({
+  children,
+  title,
+  numeric,
+  className = "",
+}: {
+  children: React.ReactNode;
+  title: string;
+  numeric?: boolean;
+  className?: string;
+}) {
+  return (
+    <td
+      title={title}
+      className={`overflow-hidden px-3 whitespace-nowrap ${
+        numeric ? "text-right tabular-nums" : "truncate"
+      } ${className}`}
+    >
+      {children}
+    </td>
   );
 }
 

@@ -25,3 +25,5 @@ export {
   type DesignCodeParts,
   type DesignNameParts,
 } from "./naming";
+
+export { colourSwatch, isPaleSwatch } from "./colour";

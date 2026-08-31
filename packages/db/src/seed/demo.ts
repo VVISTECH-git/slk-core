@@ -26,6 +26,19 @@ import {
  * database, this does not.
  */
 
+/**
+ * Kept here only so `db:demo` works against a database that predates
+ * migration 0010, which is where locations actually live now.
+ *
+ * Classing them as demo data was the mistake: this script refuses to run
+ * anywhere but localhost, so the deployed database had no locations at all,
+ * and "on hand" — internal minus external — had nothing to compute over. A
+ * warehouse and a scrap bin are not examples of anything. They are the
+ * vocabulary the ledger is defined in.
+ *
+ * Both this and the migration insert only what is missing, so running either
+ * after the other changes nothing.
+ */
 const LOCATIONS = [
   { code: "WH-MAIN", name: "Warehouse", isInternal: true, sortOrder: 0 },
   { code: "SHOP-01", name: "Retail Unit 1", isInternal: true, sortOrder: 1 },

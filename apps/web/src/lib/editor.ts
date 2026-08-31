@@ -19,16 +19,20 @@ import { db } from "@/lib/db";
  * pulling this module into the browser would take the Postgres driver with
  * it.
  */
-export {
-  ATTRIBUTES,
-  ATTRIBUTE_KEYS,
-  defaultAttributes,
-  HOME_INDUSTRY,
-  type AttributeKey,
-  type Option,
-  type Options,
-  type RecordDetail,
-} from "./attributes";
+/**
+ * This module imports `db`, so anything a client component imports from it
+ * pulls the Postgres driver into the browser bundle.
+ *
+ * It used to re-export the pure half from ./attributes as a convenience,
+ * which made the module that cannot be imported from the client look like the
+ * obvious place to import from. Three separate client components reached for
+ * a constant here and broke the build.
+ *
+ * The re-exports are gone. Pure things — ATTRIBUTES, defaultAttributes,
+ * HOME_INDUSTRY, the types — come from "@/lib/attributes", and the only
+ * things this file offers are the ones that genuinely need a database.
+ */
+export type { Option, Options, RecordDetail } from "./attributes";
 
 /** Every active value, grouped by list code, in the workbook's order. */
 export async function loadOptions(): Promise<Options> {

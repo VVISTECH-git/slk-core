@@ -5,10 +5,15 @@ import { useRouter } from "next/navigation";
 
 import { colourSwatch, isPaleSwatch } from "@slk/domain";
 
-import type { Options, RecordDetail } from "@/lib/editor";
+import {
+  HOME_INDUSTRY,
+  type Options,
+  type RecordDetail,
+} from "@/lib/attributes";
 import type { RecordRow } from "@/lib/records";
 
-import { copyRecord } from "./actions";
+import { copyRecord, setRecordField, type InlineField } from "./actions";
+import { InlineLookupCell } from "./inline-cell";
 import { MIN_COLUMN_WIDTH, useColumnWidths } from "./column-widths";
 import { ArchiveDialog, RecordEditor, type PickableLocation } from "./record-editor";
 
@@ -50,6 +55,30 @@ type ColumnKey = (typeof COLUMNS)[number]["key"];
 const OFF_BY_DEFAULT = new Set<ColumnKey>(["craftTechnique", "regionalStyle"]);
 
 const NUMERIC = new Set<ColumnKey>(["quantity", "price"]);
+
+/**
+ * Columns that can be changed in place, and the Master List each draws from.
+ *
+ * Nothing here is a hard-coded list of values — only which lookup a column
+ * belongs to. The values themselves come from `loadOptions`, which returns
+ * Active ones only, so a retired value stops being choosable while records
+ * already carrying it keep reading correctly.
+ *
+ * Product, Design Code, Quantity and Price are absent on purpose: the first
+ * two are composed or frozen, the third comes from the ledger, and the last
+ * is a number rather than a choice.
+ */
+const INLINE_COLUMNS: Partial<
+  Record<ColumnKey, { field: InlineField; list: string }>
+> = {
+  productType: { field: "productType", list: "product_type" },
+  subType: { field: "subType", list: "garment_type" },
+  productionMethod: { field: "productionMethod", list: "production_method" },
+  fibreType: { field: "fibreType", list: "fibre_type" },
+  regionalStyle: { field: "regionalStyle", list: "regional_style" },
+  craftTechnique: { field: "craftTechnique", list: "craft_technique" },
+  audienceType: { field: "audienceType", list: "audience_type" },
+};
 
 /** Six icon buttons at ~25px plus gaps and cell padding. */
 const ACTIONS_WIDTH = 190;
@@ -148,6 +177,31 @@ export function RecordsTable({
     });
   };
 
+  /** The row whose inline edit is in flight, so its cells can dim. */
+  const [saving, setSaving] = useState<string | null>(null);
+
+  /**
+   * Changes one field on one row, in place.
+   *
+   * Straight to the server rather than optimistically: an attribute lives on
+   * the design, so a change can reach sibling rows this table is also
+   * showing, and guessing at that locally would put the screen out of step
+   * with the database on exactly the cases that matter.
+   */
+  const edit = (id: string, field: InlineField, valueId: string | null) => {
+    setSaving(id);
+
+    startLoading(async () => {
+      try {
+        const result = await setRecordField(id, field, valueId);
+        setToast(result.message);
+        if (result.ok) router.refresh();
+      } finally {
+        setSaving(null);
+      }
+    });
+  };
+
   const done = (message: string) => {
     setEditing(null);
     setArchiving(null);
@@ -168,6 +222,13 @@ export function RecordsTable({
     {},
   );
   const [showFilters, setShowFilters] = useState(false);
+  /** A column whose filter should be open when the panel appears. */
+  const [focusFilter, setFocusFilter] = useState<ColumnKey | null>(null);
+
+  const setColumnFilter = (key: ColumnKey) => {
+    setFocusFilter(key);
+    setShowFilters(true);
+  };
   const [visible, setVisible] = useState<Set<ColumnKey>>(
     () => new Set(COLUMNS.map((c) => c.key).filter((k) => !OFF_BY_DEFAULT.has(k))),
   );
@@ -311,7 +372,11 @@ export function RecordsTable({
                 setFilters({});
                 setPage(1);
               }}
-              onClose={() => setShowFilters(false)}
+              openColumn={focusFilter}
+              onClose={() => {
+                setShowFilters(false);
+                setFocusFilter(null);
+              }}
             />
           )}
         </div>
@@ -447,7 +512,7 @@ export function RecordsTable({
                     <th
                       key={c.key}
                       style={{ width: widthOf(c) }}
-                      className={`relative border-b border-rule px-3 py-2.5 text-left text-[12px] font-medium whitespace-nowrap text-muted ${
+                      className={`group/th relative border-b border-rule px-3 py-2.5 text-left text-[12px] font-medium whitespace-nowrap text-muted ${
                         NUMERIC.has(c.key) ? "text-right" : ""
                       }`}
                     >
@@ -493,13 +558,50 @@ export function RecordsTable({
                           {on ? (sort.dir > 0 ? "↑" : "↓") : "↕"}
                         </span>
 
-                        {filtered.length >= 0 && (filters[c.key]?.length ?? 0) > 0 && (
-                          <span
-                            title={`Filtered: ${filters[c.key]?.join(", ")}`}
-                            className="ml-auto h-1.5 w-1.5 flex-none rounded-full bg-brick"
-                          />
-                        )}
                       </button>
+
+                      {/*
+                        The filter for this column, distinct from the cells
+                        below it. A funnel belongs to the column and changes
+                        which rows you see; the caret in a cell belongs to the
+                        value and changes what a record says. They must not
+                        look alike.
+
+                        Shown when the column is filtered, and on hover
+                        otherwise, so ten columns do not carry ten permanent
+                        controls.
+                      */}
+                      {!NUMERIC.has(c.key) && valuesFor(c.key).length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setColumnFilter(c.key)}
+                          aria-label={`Filter by ${c.label}`}
+                          title={
+                            (filters[c.key]?.length ?? 0) > 0
+                              ? `Filtered: ${filters[c.key]?.join(", ")}`
+                              : `Filter by ${c.label}`
+                          }
+                          className={`absolute top-1/2 right-3 -translate-y-1/2 rounded p-0.5 transition-opacity ${
+                            (filters[c.key]?.length ?? 0) > 0
+                              ? "text-brick opacity-100"
+                              : "text-faint opacity-0 hover:text-ink-2 group-hover/th:opacity-100"
+                          }`}
+                        >
+                          <svg
+                            width="11"
+                            height="11"
+                            viewBox="0 0 12 12"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden
+                          >
+                            <path d="M1 2h10l-4 4.5V11L5 9.5V6.5z" />
+                          </svg>
+                        </button>
+                      )}
 
                       <ResizeHandle
                         label={c.label}
@@ -548,20 +650,51 @@ export function RecordsTable({
 
                         return (
                           <Cell key={c.key} title={value || "Not set"}>
-                            <span className="flex min-w-0 items-center gap-2">
-                              <span
-                                aria-hidden
-                                className={`size-3.5 shrink-0 rounded-full ${
-                                  isPaleSwatch(swatch)
-                                    ? "border border-rule-2"
-                                    : "border border-black/10"
-                                }`}
-                                style={{ background: swatch }}
-                              />
-                              <span className="truncate text-ink-2">
-                                {value || "—"}
-                              </span>
-                            </span>
+                            <InlineLookupCell
+                              value={row.colour}
+                              options={options["colour"] ?? []}
+                              busy={saving === row.id}
+                              swatch={
+                                <span
+                                  aria-hidden
+                                  className={`size-3.5 shrink-0 rounded-full ${
+                                    isPaleSwatch(swatch)
+                                      ? "border border-rule-2"
+                                      : "border border-black/10"
+                                  }`}
+                                  style={{ background: swatch }}
+                                />
+                              }
+                              onPick={(id) => edit(row.id, "colour", id)}
+                            />
+                          </Cell>
+                        );
+                      }
+
+                      const inline = INLINE_COLUMNS[c.key];
+
+                      if (inline !== undefined) {
+                        // Product Type is two lists behind one column, and
+                        // which one applies is decided by the record's
+                        // industry — the same rule the editor follows.
+                        const field =
+                          c.key === "productType" && row.industry === HOME_INDUSTRY
+                            ? "homeProductType"
+                            : inline.field;
+
+                        const list =
+                          field === "homeProductType"
+                            ? "home_product_type"
+                            : inline.list;
+
+                        return (
+                          <Cell key={c.key} title={value || "Not set"}>
+                            <InlineLookupCell
+                              value={value === "" ? null : value}
+                              options={options[list] ?? []}
+                              busy={saving === row.id}
+                              onPick={(id) => edit(row.id, field, id)}
+                            />
                           </Cell>
                         );
                       }
@@ -1012,6 +1145,7 @@ function FilterPanel({
   filters,
   onChange,
   onClearAll,
+  openColumn: initialColumn,
   onClose,
 }: {
   columns: readonly { key: ColumnKey; label: string }[];
@@ -1019,9 +1153,10 @@ function FilterPanel({
   filters: Partial<Record<ColumnKey, string[]>>;
   onChange: (key: ColumnKey, values: string[]) => void;
   onClearAll: () => void;
+  openColumn: ColumnKey | null;
   onClose: () => void;
 }) {
-  const [openColumn, setOpenColumn] = useState<ColumnKey | null>(null);
+  const [openColumn, setOpenColumn] = useState<ColumnKey | null>(initialColumn);
   const [search, setSearch] = useState("");
 
   const active = Object.values(filters).filter((v) => (v?.length ?? 0) > 0).length;

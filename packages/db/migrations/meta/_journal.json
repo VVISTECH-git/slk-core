@@ -71,6 +71,13 @@
       "when": 1788260500000,
       "tag": "0009_retire_border_style",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788260600000,
+      "tag": "0010_locations_everywhere",
+      "breakpoints": true
     }
   ]
 }

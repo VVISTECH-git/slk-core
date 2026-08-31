@@ -12,7 +12,7 @@ import {
   ATTRIBUTE_KEYS,
   HOME_INDUSTRY,
   type AttributeKey,
-} from "@/lib/editor";
+} from "@/lib/attributes";
 
 export interface ActionResult {
   ok: boolean;
@@ -517,4 +517,248 @@ async function recordOpeningStock(
   return usable.length === 1
     ? `${total} into ${byId.get(usable[0]!.locationId)?.name}.`
     : `${total} across ${usable.length} locations.`;
+}
+
+/**
+ * The fields a row can be changed on directly, without opening the editor.
+ *
+ * Only lookup-backed ones, and only those where a single choice is the whole
+ * change. Name and design code are composed or frozen; quantity comes from
+ * the ledger; prices are numbers, not choices.
+ *
+ * Whitelisted rather than derived, because this is what a Server Action will
+ * accept from a POST — an open mapping from column name to database column is
+ * how a fast edit becomes an arbitrary write.
+ */
+const INLINE_FIELDS = {
+  productType: "productType",
+  homeProductType: "homeProductType",
+  subType: "garmentType",
+  productionMethod: "productionMethod",
+  fibreType: "fibreType",
+  regionalStyle: "regionalStyle",
+  craftTechnique: "craftTechnique",
+  audienceType: "audienceType",
+} as const satisfies Record<string, AttributeKey>;
+
+export type InlineField = keyof typeof INLINE_FIELDS | "colour";
+
+/**
+ * Changes one lookup-backed field on one row.
+ *
+ * The point is not opening a six-tab dialog to change Saree to Dupatta. It
+ * writes through the same columns the editor does and enforces the same
+ * rules, because a faster path must not be a laxer one:
+ *
+ *   - the value has to belong to that field's list, and be Active. A retired
+ *     value stays readable on the records that carry it and stops being
+ *     choosable, which is the whole distinction.
+ *   - a product type has to match the record's industry.
+ *   - the composed name is rebuilt, unless someone has typed over it.
+ *
+ * Attributes live on the design, so changing one reaches every colour under
+ * it. The result says so rather than letting it be a surprise.
+ */
+export async function setRecordField(
+  colourwayId: string,
+  field: InlineField,
+  valueId: string | null,
+): Promise<ActionResult> {
+  const [row] = await db.execute<{
+    designId: string;
+    nameIsCustom: boolean;
+    industry: string | null;
+    siblings: number;
+  }>(sql`
+    select
+      d.id as "designId", d.name_is_custom as "nameIsCustom",
+      industry.label as industry,
+      (select count(*)::int from colourway s where s.design_id = d.id) as siblings
+    from colourway cw
+    join design d on d.id = cw.design_id
+    left join lookup_value industry on industry.id = d.industry_id
+    where cw.id = ${colourwayId}
+  `);
+
+  if (row === undefined) {
+    return { ok: false, message: "That record no longer exists." };
+  }
+
+  if (field === "colour") return setColour(colourwayId, row.designId, valueId);
+
+  const key = INLINE_FIELDS[field];
+  if (key === undefined) {
+    return { ok: false, message: "That field cannot be changed here." };
+  }
+
+  // Industry decides which product type list applies, so the wrong one is
+  // refused rather than silently written into a column nothing reads.
+  const isHome = row.industry === HOME_INDUSTRY;
+
+  if (field === "productType" && isHome) {
+    return {
+      ok: false,
+      message: "This is a Home & Lifestyle record. Open it to change its product type.",
+    };
+  }
+  if (field === "homeProductType" && !isHome) {
+    return {
+      ok: false,
+      message: "This is a Clothing record. Open it to change its product type.",
+    };
+  }
+
+  if (valueId !== null) {
+    const [value] = await db.execute<{
+      label: string;
+      list: string;
+      status: string;
+    }>(sql`
+      select v.label, l.code as list, v.status
+      from lookup_value v join lookup_list l on l.id = v.list_id
+      where v.id = ${valueId}
+    `);
+
+    if (value === undefined) return { ok: false, message: "No such value." };
+
+    if (value.list !== ATTRIBUTES[key].list) {
+      return {
+        ok: false,
+        message: `"${value.label}" does not belong to ${ATTRIBUTES[key].label}.`,
+      };
+    }
+
+    if (value.status !== "active") {
+      return {
+        ok: false,
+        message: `"${value.label}" is ${value.status} and cannot be chosen. Records already using it keep it.`,
+      };
+    }
+  }
+
+  await db.execute(sql`
+    update design
+    set ${sql.identifier(ATTRIBUTES[key].column)} = ${valueId},
+        updated_at = now()
+    where id = ${row.designId}
+  `);
+
+  // Unit of measure follows product type, and leaving it behind would price a
+  // length of cloth per piece.
+  if (field === "productType" || field === "homeProductType") {
+    await db.execute(sql`
+      update design
+      set uom_id = (select v.parent_value_id from lookup_value v where v.id = ${valueId})
+      where id = ${row.designId}
+    `);
+  }
+
+  await recomposeName(row.designId, row.nameIsCustom);
+
+  revalidatePath("/records");
+
+  const spread =
+    row.siblings > 1
+      ? ` Applied to all ${row.siblings} colours of this design.`
+      : "";
+
+  return { ok: true, message: `Saved.${spread}` };
+}
+
+async function setColour(
+  colourwayId: string,
+  designId: string,
+  valueId: string | null,
+): Promise<ActionResult> {
+  if (valueId !== null) {
+    const [value] = await db.execute<{
+      label: string;
+      list: string;
+      status: string;
+    }>(sql`
+      select v.label, l.code as list, v.status
+      from lookup_value v join lookup_list l on l.id = v.list_id
+      where v.id = ${valueId}
+    `);
+
+    if (value === undefined) return { ok: false, message: "No such value." };
+
+    if (value.list !== "colour") {
+      return { ok: false, message: `"${value.label}" is not a colour.` };
+    }
+
+    if (value.status !== "active") {
+      return {
+        ok: false,
+        message: `"${value.label}" is ${value.status} and cannot be chosen.`,
+      };
+    }
+
+    // One colour per design. Without this the unique index refuses it with a
+    // constraint name rather than a sentence.
+    const [clash] = await db.execute<{ n: number }>(sql`
+      select count(*)::int as n from colourway
+      where design_id = ${designId}
+        and colour_id = ${valueId}
+        and id <> ${colourwayId}
+    `);
+
+    if ((clash?.n ?? 0) > 0) {
+      return {
+        ok: false,
+        message: `This design already has a ${value.label} colourway.`,
+      };
+    }
+  }
+
+  await db
+    .update(colourway)
+    .set({ colourId: valueId, updatedAt: new Date() })
+    .where(eq(colourway.id, colourwayId));
+
+  revalidatePath("/records");
+
+  return { ok: true, message: "Saved." };
+}
+
+/** Rebuilds the composed name after an attribute changes. */
+async function recomposeName(
+  designId: string,
+  nameIsCustom: boolean,
+): Promise<void> {
+  if (nameIsCustom) return;
+
+  const [d] = await db.execute<Record<string, string | null>>(sql`
+    select
+      descriptor.label as descriptor, craft.label as craft, region.label as region,
+      silk.label as silk, cotton.label as cotton, fibre.label as fibre,
+      garment.label as garment,
+      coalesce(pt.label, hpt.label) as "productType"
+    from design d
+    left join lookup_value descriptor on descriptor.id = d.descriptor_id
+    left join lookup_value craft      on craft.id      = d.craft_technique_id
+    left join lookup_value region     on region.id     = d.regional_style_id
+    left join lookup_value silk       on silk.id       = d.silk_sub_family_id
+    left join lookup_value cotton     on cotton.id     = d.cotton_sub_family_id
+    left join lookup_value fibre      on fibre.id      = d.fibre_type_id
+    left join lookup_value garment    on garment.id    = d.garment_type_id
+    left join lookup_value pt         on pt.id         = d.product_type_id
+    left join lookup_value hpt        on hpt.id        = d.home_product_type_id
+    where d.id = ${designId}
+  `);
+
+  if (d === undefined) return;
+
+  const name = designName({
+    descriptor: d["descriptor"] ?? null,
+    craftTechnique: d["craft"] ?? null,
+    regionalStyle: d["region"] ?? null,
+    silkSubFamily: d["silk"] ?? null,
+    cottonSubFamily: d["cotton"] ?? null,
+    fibreType: d["fibre"] ?? null,
+    garmentType: d["garment"] ?? null,
+    productType: d["productType"] ?? null,
+  });
+
+  await db.execute(sql`update design set name = ${name} where id = ${designId}`);
 }

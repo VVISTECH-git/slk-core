@@ -1,4 +1,4 @@
-/**
+﻿/**
  * The Drizzle schema.
  *
  * The lookup master is here because it is fully specified — see
@@ -17,4 +17,4 @@
  *   access.ts      actor, api_key
  */
 
-export * from "./lookup.js";
+export * from "./lookup";

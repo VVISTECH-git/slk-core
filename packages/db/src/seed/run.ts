@@ -1,8 +1,8 @@
-import { eq } from "drizzle-orm";
+﻿import { eq } from "drizzle-orm";
 
-import type { Database } from "../client.js";
-import { lookupList, lookupValue } from "../schema/lookup.js";
-import { EMPTY_LISTS, MASTER_LISTING, type SeedList } from "./master-listing.js";
+import type { Database } from "../client";
+import { lookupList, lookupValue } from "../schema/lookup";
+import { EMPTY_LISTS, MASTER_LISTING, type SeedList } from "./master-listing";
 
 /**
  * Seeds the controlled vocabulary.

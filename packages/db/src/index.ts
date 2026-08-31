@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @slk/db — Drizzle schema, migrations and the connection helper.
  *
  * Only `apps/web` writes through this. The sync worker reads and proposes;
@@ -13,8 +13,11 @@ export {
   type ConnectionMode,
   type CreateDbOptions,
   type Database,
-} from "./client.js";
+} from "./client";
 
-export { databaseUrl, directUrl } from "./env.js";
+export { databaseUrl, directUrl } from "./env";
 
-export * as schema from "./schema/index.js";
+// Tables are exported both individually (for queries) and as a namespace
+// (for `drizzle(sql, { schema })`).
+export * from "./schema/index";
+export * as schema from "./schema/index";

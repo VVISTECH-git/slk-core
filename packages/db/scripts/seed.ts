@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Loads the controlled vocabulary into whichever database DATABASE_URL points
  * at.
  *
@@ -12,8 +12,8 @@ import { resolve } from "node:path";
 
 import { config } from "dotenv";
 
-import { createDb, databaseUrl } from "../src/index.js";
-import { seedMasterListing } from "../src/seed/run.js";
+import { createDb, databaseUrl } from "../src/index";
+import { seedMasterListing } from "../src/seed/run";
 
 // scripts/ → packages/db → packages → slk-core
 config({ path: resolve(import.meta.dirname, "../../../.env") });

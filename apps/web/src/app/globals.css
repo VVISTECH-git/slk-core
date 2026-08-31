@@ -1,26 +1,130 @@
 @import "tailwindcss";
 
+/*
+  Palette carried over from the slk-stock prototype, which SLK has already
+  reviewed. Warm neutrals, brick accent. Changing it now would make the real
+  app feel like a different product than the one they signed off on.
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --ground: #faf8f5;
+  --surface: #ffffff;
+  --surface-2: #f5f2ed;
+  --surface-3: #ebe6df;
+  --ink: #1b1917;
+  --ink-2: #4a443f;
+  --muted: #7a726a;
+  --faint: #a69d94;
+  --rule: #e6e1da;
+  --rule-2: #d5cec4;
+  --brick: #b23a26;
+  --brick-2: #95301f;
+  --brick-soft: #f7eae6;
+  --on-brick: #ffffff;
+  --ok: #3f6b4a;
+  --ok-soft: #e9f0e9;
+  --warn: #8a6114;
+  --warn-soft: #f6efdd;
+  --off: #857c73;
+  --off-soft: #efece7;
+  --shadow: 0 1px 2px rgba(27, 25, 23, 0.05), 0 8px 24px rgba(27, 25, 23, 0.06);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  :root:not([data-theme="light"]) {
+    --ground: #15130f;
+    --surface: #1d1a16;
+    --surface-2: #231f1a;
+    --surface-3: #2c2721;
+    --ink: #f2eee8;
+    --ink-2: #d3ccc3;
+    --muted: #a29890;
+    --faint: #7a7168;
+    --rule: #302a24;
+    --rule-2: #423b33;
+    --brick: #e1856e;
+    --brick-2: #eda08b;
+    --brick-soft: #33201a;
+    --on-brick: #2a0f09;
+    --ok: #88bc92;
+    --ok-soft: #1a2820;
+    --warn: #d6ac5c;
+    --warn-soft: #2c2416;
+    --off: #9a9089;
+    --off-soft: #272320;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.28);
   }
 }
 
+:root[data-theme="dark"] {
+  --ground: #15130f;
+  --surface: #1d1a16;
+  --surface-2: #231f1a;
+  --surface-3: #2c2721;
+  --ink: #f2eee8;
+  --ink-2: #d3ccc3;
+  --muted: #a29890;
+  --faint: #7a7168;
+  --rule: #302a24;
+  --rule-2: #423b33;
+  --brick: #e1856e;
+  --brick-2: #eda08b;
+  --brick-soft: #33201a;
+  --on-brick: #2a0f09;
+  --ok: #88bc92;
+  --ok-soft: #1a2820;
+  --warn: #d6ac5c;
+  --warn-soft: #2c2416;
+  --off: #9a9089;
+  --off-soft: #272320;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+@theme inline {
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-rule: var(--rule);
+  --color-rule-2: var(--rule-2);
+  --color-brick: var(--brick);
+  --color-brick-2: var(--brick-2);
+  --color-brick-soft: var(--brick-soft);
+  --color-on-brick: var(--on-brick);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-off: var(--off);
+  --color-off-soft: var(--off-soft);
+  --font-sans: var(--font-sans-stack);
+  --font-mono: var(--font-mono-stack);
+}
+
+html {
+  --font-sans-stack: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-mono-stack: var(--font-mono-face), ui-monospace, Consolas, monospace;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--ground);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--brick);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

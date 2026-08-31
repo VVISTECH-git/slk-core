@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
+import { titleCase } from "@slk/domain";
+
 import type { VocabDuplicate, VocabList, VocabValue } from "@/lib/vocabulary";
 
 import {
@@ -23,6 +25,17 @@ type Draft = {
 };
 
 type View = "all" | "attention" | "duplicates";
+
+/**
+ * A value as it should be read.
+ *
+ * `colour` and `descriptor` are stored lower case because the workbook has
+ * them that way and the database stays faithful to its source. Everything a
+ * person sees is title-cased, so the storage convention never shows.
+ */
+function show(value: Pick<VocabValue, "label" | "lowercase">): string {
+  return value.lowercase ? titleCase(value.label) : value.label;
+}
 
 export function Workbench({
   values,
@@ -108,9 +121,21 @@ export function Workbench({
     setDrafts((prev) => {
       const next = { ...prev[id], ...patch };
       // Dropping back to the stored value removes the pending change rather
-      // than saving a no-op.
+      // than saving a no-op. Compared case-insensitively for the lists stored
+      // lower case, or typing nothing at all would read as an edit — the
+      // field shows "Contrast" while the row holds "contrast".
       const value = values.find((v) => v.id === id);
-      if (value && next.label === value.label) delete next.label;
+
+      if (
+        value &&
+        next.label !== undefined &&
+        (value.lowercase
+          ? next.label.trim().toLowerCase() === value.label
+          : next.label === value.label)
+      ) {
+        delete next.label;
+      }
+
       if (value && next.isActive === value.isActive) delete next.isActive;
 
       if (Object.keys(next).length === 0) {
@@ -401,6 +426,13 @@ function Table({
         const flagged =
           !(draft.clearFlags ?? false) && (v.isProposed || v.needsReview);
 
+        // `colour` and `descriptor` are stored lower case because the
+        // workbook has them that way, and the database stays faithful to the
+        // source. That is a storage decision and should not be visible: a
+        // value reading "contrast" here and "Contrast" on Product Records is
+        // just two spellings of the same thing to whoever is looking.
+        const shown = draft.label ?? show(v);
+
         return (
           <div
             key={v.id}
@@ -415,7 +447,7 @@ function Table({
               type="checkbox"
               checked={selected.has(v.id)}
               onChange={() => toggle(v.id)}
-              aria-label={`Select ${v.label}`}
+              aria-label={`Select ${show(v)}`}
               className="size-4 flex-none accent-[var(--brick)]"
             />
 
@@ -428,9 +460,9 @@ function Table({
             )}
 
             <input
-              value={label}
+              value={shown}
               onChange={(e) => setDraft(v.id, { label: e.target.value })}
-              aria-label={`${v.label} in ${v.listLabel}`}
+              aria-label={`${show(v)} in ${v.listLabel}`}
               className={`min-w-0 flex-1 rounded border border-transparent bg-transparent px-2 py-1 text-[14.5px] text-ink hover:border-rule-2 focus:border-brick focus:bg-surface ${
                 active ? "" : "line-through"
               }`}
@@ -438,7 +470,7 @@ function Table({
 
             {v.parentLabel && (
               <span className="hidden flex-none font-mono text-[11px] text-muted sm:inline">
-                → {v.parentLabel}
+                → {titleCase(v.parentLabel ?? "")}
               </span>
             )}
 
@@ -558,7 +590,7 @@ function Duplicates({
               onClick={() => onMerge(hint.a.id, [hint.b.id])}
               className="rounded-md border border-rule-2 px-3 py-1.5 text-[12.5px] text-ink-2 hover:border-brick hover:text-brick disabled:opacity-50"
             >
-              Keep “{hint.a.label}”
+              Keep “{show(hint.a)}”
             </button>
             <button
               type="button"
@@ -566,7 +598,7 @@ function Duplicates({
               onClick={() => onMerge(hint.b.id, [hint.a.id])}
               className="rounded-md border border-rule-2 px-3 py-1.5 text-[12.5px] text-ink-2 hover:border-brick hover:text-brick disabled:opacity-50"
             >
-              Keep “{hint.b.label}”
+              Keep “{show(hint.b)}”
             </button>
           </div>
         </div>
@@ -578,7 +610,7 @@ function Duplicates({
 function Candidate({ value }: { value: VocabValue }) {
   return (
     <div className="min-w-[180px] flex-1 rounded-md border border-rule-2 bg-surface-2 px-3 py-2">
-      <div className="text-[14.5px] text-ink">{value.label}</div>
+      <div className="text-[14.5px] text-ink">{show(value)}</div>
       <div className="font-mono text-[11px] text-faint">{value.listLabel}</div>
     </div>
   );
@@ -787,7 +819,7 @@ function ActionBar({
                 <option value="">Merge, keeping…</option>
                 {selected.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {v.label}
+                    {show(v)}
                   </option>
                 ))}
               </select>

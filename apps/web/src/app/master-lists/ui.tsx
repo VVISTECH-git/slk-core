@@ -103,12 +103,14 @@ export function StatusPill({ status }: { status: LookupStatus }) {
 const HEALTH_TEXT: Record<ListHealth, string> = {
   empty: "Empty",
   review: "Needs review",
+  retired: "Retired",
   healthy: "Healthy",
 };
 
 const HEALTH_COLOUR: Record<ListHealth, string> = {
   empty: "var(--faint)",
   review: "var(--warn)",
+  retired: "var(--off)",
   healthy: "var(--ok)",
 };
 

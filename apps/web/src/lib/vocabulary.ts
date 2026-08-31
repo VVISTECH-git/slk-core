@@ -43,7 +43,7 @@ export interface VocabValue {
  * sensible pre-fills Colour or Motif. A signal that fires on nearly every row
  * is not a signal, and it was crowding out the two that matter.
  */
-export type ListHealth = "empty" | "review" | "healthy";
+export type ListHealth = "empty" | "review" | "retired" | "healthy";
 
 /**
  * Whether this list's values are colours, and so want a swatch.
@@ -178,7 +178,17 @@ export async function loadLists(): Promise<VocabList[]> {
     active: r.active,
     attention: r.attention,
     defaultLabel: r.default_label,
-    health: r.total === 0 ? "empty" : r.attention > 0 ? "review" : "healthy",
+    health:
+      r.total === 0
+        ? "empty"
+        : r.attention > 0
+          ? "review"
+          : // Values, but none of them offered any more. Border Style reads
+            // "0 of 4 active" — calling that Healthy would be the green dot
+            // meaning "nothing came to mind" all over again.
+            r.active === 0
+            ? "retired"
+            : "healthy",
   }));
 }
 

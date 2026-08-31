@@ -130,7 +130,11 @@ async function seedList(
       label: value.label,
       sortOrder: index,
       parentValueId,
-      status: (value.proposed ?? false) ? "proposed" : "active",
+      status: (value.retired ?? false)
+        ? "retired"
+        : (value.proposed ?? false)
+          ? "proposed"
+          : "active",
       needsReview: value.needsReview ?? false,
       meta: value.meta ?? {},
     });

@@ -525,9 +525,12 @@ export function RecordEditor({
                 disabled={!attributes.motifCategory}
                 placeholder={attributes.motifCategory ? "Choose…" : "Pick a category first"}
                 onPick={(v) => set("motif", v)} />
-              <Combo label="Border Style" list="border_style"
-                options={options} value={attributes.borderStyle ?? null}
-                onPick={(v) => set("borderStyle", v)} />
+              {/*
+                Border Style is retired — it overlapped Border Height and only
+                one was wanted. The field is gone rather than showing an empty
+                dropdown; `border_style_id` stays on the design so the records
+                that carry a value still read.
+              */}
               <Combo label="Border Height" list="border_height"
                 options={options} value={attributes.borderHeight ?? null}
                 onPick={(v) => set("borderHeight", v)} />

@@ -32,6 +32,8 @@ export interface SeedValue {
   isDefault?: boolean;
   /** Correction Log: PROPOSED — confirm or replace. */
   proposed?: boolean;
+  /** Seeded already retired — a value kept only so old records still read. */
+  retired?: boolean;
   /** Correction Log: NEEDS REVIEW — check against real stock. */
   needsReview?: boolean;
   meta?: Record<string, unknown>;
@@ -280,12 +282,15 @@ export const MASTER_LISTING: SeedList[] = [
     code: "border_style",
     label: "Border Style",
     description:
-      "Workbook flags the whole column NEEDS REVIEW — only four values, likely too few for real stock.",
+      "Retired in favour of Border Height, which covers the same ground in contiguous bands. Kept because existing designs carry these values.",
+    // Seeded retired. The list overlapped Border Height and only one was
+    // wanted; the values remain so that designs already carrying them still
+    // read, which is the whole point of retiring rather than deleting.
     values: [
-      { label: "Khaddi", needsReview: true },
-      { label: "Zari", needsReview: true },
-      { label: "Gap", needsReview: true },
-      { label: "Temple", needsReview: true, proposed: true },
+      { label: "Khaddi", retired: true },
+      { label: "Zari", retired: true },
+      { label: "Gap", retired: true },
+      { label: "Temple", retired: true },
     ],
   },
   {

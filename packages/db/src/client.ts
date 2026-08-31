@@ -26,11 +26,19 @@ export interface CreateDbOptions {
 }
 
 /**
- * Supabase hands out the pooler on port 6543 and appends `pgbouncer=true`.
- * Anything else — including local dev on 5433 — is a direct connection.
+ * Providers advertise a pooler differently, and guessing wrong is not
+ * harmless: prepared statements against a transaction-mode pooler fail
+ * intermittently, under load, in a way that looks random.
+ *
+ *   Supabase  port 6543, and appends `pgbouncer=true`
+ *   Neon      `-pooler` in the hostname
+ *
+ * Anything else — including local development — is a direct connection.
  */
 export function inferConnectionMode(url: string): ConnectionMode {
-  return url.includes(":6543") || url.includes("pgbouncer=true")
+  return url.includes(":6543") ||
+    url.includes("pgbouncer=true") ||
+    url.includes("-pooler.")
     ? "pooled"
     : "direct";
 }

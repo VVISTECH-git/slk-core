@@ -28,9 +28,16 @@ export function databaseUrl(): string {
 
 /**
  * For migrations, Drizzle Studio and the sync worker — never the pooler.
- * Falls back to DATABASE_URL, which is correct in local development where
- * there is no pooler at all.
+ *
+ * `DATABASE_URL_UNPOOLED` is what Neon's Vercel integration sets, so the app
+ * takes what the provider already gives rather than making someone copy the
+ * same connection string into a second variable by hand. Falls back to
+ * DATABASE_URL, which is right in local development where there is no pooler.
  */
 export function directUrl(): string {
-  return process.env["DIRECT_URL"] ?? databaseUrl();
+  return (
+    process.env["DIRECT_URL"] ??
+    process.env["DATABASE_URL_UNPOOLED"] ??
+    databaseUrl()
+  );
 }

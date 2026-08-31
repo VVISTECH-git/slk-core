@@ -34,3 +34,12 @@ Thumbs.db
 
 # vercel link writes project ids and a fresh OIDC token here
 .vercel
+
+# The Neon marketplace integration installs "agent skills" — instruction files
+# fetched from neondatabase/agent-skills on GitHub — into the app directory
+# without asking. Untracked deliberately: third-party instructions that arrive
+# as a side effect of provisioning a database should not be committed to this
+# repo unread.
+.agents/
+.claude/skills/
+skills-lock.json

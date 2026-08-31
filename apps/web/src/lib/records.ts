@@ -78,7 +78,9 @@ export async function loadRecords(): Promise<RecordRow[]> {
     left join (
       select colourway_id, count(*) as n from piece group by colourway_id
     ) pc                                      on pc.colourway_id = cw.id
-    where d.status <> 'archived'
+    -- Both, not just the design: archiving one colour of a design that still
+    -- has others leaves the design active, and only the colourway retired.
+    where d.status <> 'archived' and cw.is_active
     order by d.seq, colour.sort_order
   `);
 }

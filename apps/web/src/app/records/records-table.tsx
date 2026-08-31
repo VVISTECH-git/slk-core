@@ -1,8 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
+import type { Options, RecordDetail } from "@/lib/editor";
 import type { RecordRow } from "@/lib/records";
+
+import { copyRecord } from "./actions";
+import { ArchiveDialog, RecordEditor } from "./record-editor";
 
 /**
  * Product Records, as the prototype has it: twelve columns, each sortable and
@@ -68,10 +73,44 @@ export function money(minor: number): string {
 export function RecordsTable({
   rows,
   industries,
+  options,
 }: {
   rows: RecordRow[];
   industries: string[];
+  options: Options;
 }) {
+  const router = useRouter();
+  const [editing, setEditing] = useState<{
+    record: RecordDetail | null;
+    tab: "basic" | "prices" | "images" | "stock";
+  } | null>(null);
+  const [archiving, setArchiving] = useState<RecordRow | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [loading, startLoading] = useTransition();
+
+  /**
+   * A record is fetched when it is opened rather than shipped with the table.
+   * Eighteen rows would be fine; four thousand, each with a stock summary and
+   * eight movements, would not.
+   */
+  const open = (id: string, tab: "basic" | "prices" | "images" | "stock") => {
+    startLoading(async () => {
+      const response = await fetch(`/records/${id}`);
+      if (!response.ok) {
+        setToast("Could not open that record.");
+        return;
+      }
+      setEditing({ record: (await response.json()) as RecordDetail, tab });
+    });
+  };
+
+  const done = (message: string) => {
+    setEditing(null);
+    setArchiving(null);
+    setToast(message);
+    router.refresh();
+  };
+
   const [query, setQuery] = useState("");
   const [industry, setIndustry] = useState("");
   const [filters, setFilters] = useState<Partial<Record<ColumnKey, string>>>({});
@@ -143,6 +182,14 @@ export function RecordsTable({
             One row per colour. Attributes come from Categories &amp; Attributes.
           </p>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setEditing({ record: null, tab: "basic" })}
+          className="rounded-lg bg-brick px-4 py-2 text-[13.5px] font-medium text-on-brick hover:bg-brick-2"
+        >
+          New record
+        </button>
 
         <select
           value={industry}
@@ -430,7 +477,19 @@ export function RecordsTable({
                     })}
 
                     <td className="px-4 py-2">
-                      <RowActions serialised={row.isSerialised} pieces={row.pieces} />
+                      <RowActions
+                        serialised={row.isSerialised}
+                        pieces={row.pieces}
+                        busy={loading}
+                        onAction={(action) => {
+                          if (action === "delete") setArchiving(row);
+                          else if (action === "copy") {
+                            startLoading(async () => {
+                              done((await copyRecord(row.id)).message);
+                            });
+                          } else open(row.id, action);
+                        }}
+                      />
                     </td>
                   </tr>
                 ))
@@ -471,6 +530,41 @@ export function RecordsTable({
           )}
         </div>
       </div>
+
+      {toast && (
+        <div
+          role="status"
+          className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-lg border border-rule bg-surface px-4 py-2.5 text-[13.5px] text-ink shadow-lg"
+        >
+          {toast}
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            aria-label="Dismiss"
+            className="ml-3 text-muted hover:text-ink"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {editing && (
+        <RecordEditor
+          record={editing.record}
+          options={options}
+          initialTab={editing.tab}
+          onClose={() => setEditing(null)}
+          onSaved={done}
+        />
+      )}
+
+      {archiving && (
+        <ArchiveDialog
+          record={{ id: archiving.id, name: archiving.name, code: archiving.code }}
+          onClose={() => setArchiving(null)}
+          onDone={done}
+        />
+      )}
     </div>
   );
 }
@@ -504,25 +598,30 @@ function PageButton({
 }
 
 /**
- * The six row actions from the prototype. Each one is stubbed until the
- * editor exists — a button that silently does nothing is worse than one that
- * says what it will do.
+ * The six row actions from the prototype. Four of them open the same editor
+ * on a different tab — one record has one editor, not four dialogs.
  */
-const ACTIONS = [
+type RowAction = "prices" | "images" | "stock" | "basic" | "copy" | "delete";
+
+const ACTIONS: { key: RowAction; title: string; path: string }[] = [
   { key: "prices", title: "All prices", path: "M6 4h7 M6 7.5h7 M12.5 4c0 2.5-1.6 3.5-4 3.5h-.5L13 15 M6 7.5h1.5" },
   { key: "images", title: "Product images", path: "M3 5h14v10H3z M3 12.5l4-3.5 3 2.5 3.5-3.5L17 12" },
   { key: "stock", title: "Stock — available, sold, damaged", path: "M3 6l7-3 7 3v8l-7 3-7-3z M3 6l7 3 7-3 M10 9v8" },
-  { key: "edit", title: "Open the full record", path: "M13.5 3.5l3 3L7 16H4v-3z" },
-  { key: "copy", title: "Copy to a new record", path: "M7 7h9v9H7z M4 13V4h9" },
-  { key: "delete", title: "Delete", path: "M4 6h12 M8 6V4h4v2 M6 6l1 10h6l1-10" },
-] as const;
+  { key: "basic", title: "Open the full record", path: "M13.5 3.5l3 3L7 16H4v-3z" },
+  { key: "copy", title: "Copy to a new colour", path: "M7 7h9v9H7z M4 13V4h9" },
+  { key: "delete", title: "Archive this record", path: "M4 6h12 M8 6V4h4v2 M6 6l1 10h6l1-10" },
+];
 
 function RowActions({
   serialised,
   pieces,
+  busy,
+  onAction,
 }: {
   serialised: boolean;
   pieces: number;
+  busy: boolean;
+  onAction: (action: RowAction) => void;
 }) {
   return (
     <div className="flex items-center justify-end gap-0.5">
@@ -538,10 +637,14 @@ function RowActions({
         <button
           key={a.key}
           type="button"
-          title={`${a.title} — not built yet`}
+          title={a.title}
           aria-label={a.title}
-          onClick={(e) => e.stopPropagation()}
-          className={`rounded p-1.5 text-faint hover:bg-surface-3 ${
+          disabled={busy}
+          onClick={(e) => {
+            e.stopPropagation();
+            onAction(a.key);
+          }}
+          className={`rounded p-1.5 text-faint hover:bg-surface-3 disabled:opacity-40 ${
             a.key === "delete" ? "hover:text-brick" : "hover:text-ink"
           }`}
         >

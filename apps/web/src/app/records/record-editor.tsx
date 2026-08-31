@@ -369,14 +369,30 @@ export function RecordEditor({
               <Combo label="Weave Structure" list="weave_structure"
                 options={options} value={attributes.weaveStructure ?? null}
                 onPick={(v) => set("weaveStructure", v)} />
-              <Combo label="Silk Sub Family" list="silk_sub_family"
-                options={options} value={attributes.silkSubFamily ?? null}
-                disabled={fibre !== "Silk"} placeholder={fibre === "Silk" ? "Choose…" : "Silk only"}
-                onPick={(v) => set("silkSubFamily", v)} />
-              <Combo label="Cotton Sub Family" list="cotton_sub_family"
-                options={options} value={attributes.cottonSubFamily ?? null}
-                disabled={fibre !== "Cotton"} placeholder={fibre === "Cotton" ? "Choose…" : "Cotton only"}
-                onPick={(v) => set("cottonSubFamily", v)} />
+              {/*
+                One slot, not two.
+
+                A fibre has at most one sub-family, so showing Silk Sub Family
+                beside Cotton Sub Family with whichever does not apply greyed
+                out puts a permanently dead control on the form — and on a
+                cotton saree the greyed one is the *silk* field, which reads
+                as something broken rather than something irrelevant.
+
+                Two columns in the database, because they are different
+                vocabularies and a record must keep saying which. One field on
+                the screen, because only one can ever be answered. This is
+                what Craft Sub Type already does for Kalamkari below.
+              */}
+              {fibre === "Silk" && (
+                <Combo label="Silk Sub Family" list="silk_sub_family"
+                  options={options} value={attributes.silkSubFamily ?? null}
+                  onPick={(v) => set("silkSubFamily", v)} />
+              )}
+              {fibre === "Cotton" && (
+                <Combo label="Cotton Sub Family" list="cotton_sub_family"
+                  options={options} value={attributes.cottonSubFamily ?? null}
+                  onPick={(v) => set("cottonSubFamily", v)} />
+              )}
               <Combo label="Fabric Type" list="fabric_type"
                 options={options} value={attributes.fabricType ?? null}
                 onPick={(v) => set("fabricType", v)} />

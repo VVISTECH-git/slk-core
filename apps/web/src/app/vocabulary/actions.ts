@@ -1,0 +1,339 @@
+"use server";
+
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+
+import { lookupList, lookupValue } from "@slk/db";
+
+import { db } from "@/lib/db";
+
+/**
+ * Every action is an untrusted entry point — a Server Action is reachable by
+ * POST whether or not the UI rendered the control. So each one re-reads what
+ * it is about to touch and re-checks the rule, and none of them trust that
+ * the client only sent what the client was offered.
+ */
+
+export interface ActionResult {
+  ok: boolean;
+  message: string;
+}
+
+/** One row's worth of pending change. Absent fields mean "leave alone". */
+export interface ValueEdit {
+  id: string;
+  label?: string;
+  listCode?: string;
+  isActive?: boolean;
+  clearFlags?: boolean;
+}
+
+function slugify(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Applies a batch of edits in one transaction.
+ *
+ * All-or-nothing on purpose: someone renaming eight values in one pass should
+ * not end up with three applied and five rejected, having to work out which.
+ */
+export async function applyEdits(edits: ValueEdit[]): Promise<ActionResult> {
+  if (edits.length === 0) return { ok: true, message: "Nothing to save." };
+  if (edits.length > 500) {
+    return { ok: false, message: "Too many changes at once — save in batches." };
+  }
+
+  const ids = edits.map((e) => e.id);
+
+  const rows = await db
+    .select({
+      id: lookupValue.id,
+      label: lookupValue.label,
+      listId: lookupValue.listId,
+      listCode: lookupList.code,
+      lowercase: lookupList.lowercaseValues,
+    })
+    .from(lookupValue)
+    .innerJoin(lookupList, eq(lookupList.id, lookupValue.listId))
+    .where(inArray(lookupValue.id, ids));
+
+  const current = new Map(rows.map((r) => [r.id, r]));
+
+  if (current.size !== new Set(ids).size) {
+    return { ok: false, message: "Some of those values no longer exist. Reload and try again." };
+  }
+
+  const lists = await db.select().from(lookupList);
+  const listByCode = new Map(lists.map((l) => [l.code, l]));
+
+  // Validate everything before writing anything.
+  const planned: {
+    id: string;
+    label: string;
+    code: string;
+    listId: string;
+    isActive?: boolean;
+    clearFlags: boolean;
+  }[] = [];
+
+  // Labels claimed within this batch, so two renames cannot collide with
+  // each other as well as with what is already stored.
+  const claimed = new Set<string>();
+
+  for (const edit of edits) {
+    const row = current.get(edit.id);
+    if (row === undefined) continue;
+
+    const targetList =
+      edit.listCode === undefined ? null : listByCode.get(edit.listCode);
+
+    if (edit.listCode !== undefined && targetList === undefined) {
+      return { ok: false, message: `No list called "${edit.listCode}".` };
+    }
+
+    const listId = targetList?.id ?? row.listId;
+    const lowercase = targetList?.lowercaseValues ?? row.lowercase;
+
+    const raw = (edit.label ?? row.label).trim();
+    if (raw === "") {
+      return { ok: false, message: `"${row.label}" cannot be left blank.` };
+    }
+
+    const label = lowercase ? raw.toLowerCase() : raw;
+    const key = `${listId}::${label.toLowerCase()}`;
+
+    if (claimed.has(key)) {
+      return { ok: false, message: `Two of these changes both produce "${label}".` };
+    }
+    claimed.add(key);
+
+    const clash = await db
+      .select({ label: lookupValue.label })
+      .from(lookupValue)
+      .where(
+        and(
+          eq(lookupValue.listId, listId),
+          ne(lookupValue.id, edit.id),
+          sql`lower(${lookupValue.label}) = lower(${label})`,
+        ),
+      );
+
+    if (clash[0] !== undefined) {
+      return {
+        ok: false,
+        message: `"${clash[0].label}" is already in that list. Merge them instead of renaming.`,
+      };
+    }
+
+    // Retiring a parent would strand its children on a value that is no
+    // longer offered.
+    if (edit.isActive === false) {
+      const [children] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(lookupValue)
+        .where(
+          and(
+            eq(lookupValue.parentValueId, edit.id),
+            eq(lookupValue.isActive, true),
+          ),
+        );
+
+      if ((children?.n ?? 0) > 0) {
+        return {
+          ok: false,
+          message: `${children?.n} value${children?.n === 1 ? "" : "s"} still belong to "${row.label}".`,
+        };
+      }
+    }
+
+    planned.push({
+      id: edit.id,
+      label,
+      // The code is frozen at creation. Records hold onto it and design codes
+      // printed on QR labels are built from it, so a rename must not move it.
+      // Only a move to another list needs a fresh one, and only if it clashes.
+      code: row.listId === listId ? "" : slugify(label),
+      listId,
+      isActive: edit.isActive,
+      clearFlags: edit.clearFlags ?? false,
+    });
+  }
+
+  await db.transaction(async (tx) => {
+    for (const p of planned) {
+      await tx
+        .update(lookupValue)
+        .set({
+          label: p.label,
+          listId: p.listId,
+          ...(p.code === "" ? {} : { code: p.code }),
+          ...(p.isActive === undefined ? {} : { isActive: p.isActive }),
+          ...(p.clearFlags ? { isProposed: false, needsReview: false } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(lookupValue.id, p.id));
+    }
+  });
+
+  revalidatePath("/vocabulary");
+
+  return {
+    ok: true,
+    message: `Saved ${planned.length} change${planned.length === 1 ? "" : "s"}.`,
+  };
+}
+
+/**
+ * Folds one or more values into a survivor.
+ *
+ * This is what half the Correction Log is: Kanchi into Kanchipuram, Crepe silk
+ * into Crepe, Fabric Painting into Hand Painting. Anything pointing at a
+ * merged-away value is repointed at the survivor first, so nothing is
+ * orphaned.
+ */
+export async function mergeValues(
+  survivorId: string,
+  mergedIds: string[],
+): Promise<ActionResult> {
+  if (mergedIds.length === 0) return { ok: false, message: "Nothing to merge." };
+  if (mergedIds.includes(survivorId)) {
+    return { ok: false, message: "A value cannot be merged into itself." };
+  }
+
+  const rows = await db
+    .select()
+    .from(lookupValue)
+    .where(inArray(lookupValue.id, [survivorId, ...mergedIds]));
+
+  const survivor = rows.find((r) => r.id === survivorId);
+  if (survivor === undefined) return { ok: false, message: "No such value." };
+
+  const merged = rows.filter((r) => mergedIds.includes(r.id));
+  if (merged.length !== mergedIds.length) {
+    return { ok: false, message: "Some of those values no longer exist." };
+  }
+
+  if (merged.some((m) => m.listId !== survivor.listId)) {
+    return {
+      ok: false,
+      message: "Values can only be merged within the same list. Move them first.",
+    };
+  }
+
+  await db.transaction(async (tx) => {
+    // Children of a merged value become children of the survivor.
+    await tx
+      .update(lookupValue)
+      .set({ parentValueId: survivorId, updatedAt: new Date() })
+      .where(inArray(lookupValue.parentValueId, mergedIds));
+
+    await tx.delete(lookupValue).where(inArray(lookupValue.id, mergedIds));
+  });
+
+  revalidatePath("/vocabulary");
+
+  const names = merged.map((m) => `"${m.label}"`).join(", ");
+
+  return { ok: true, message: `Merged ${names} into "${survivor.label}".` };
+}
+
+export interface PastePreview {
+  listCode: string;
+  fresh: string[];
+  existing: string[];
+  caseOnly: { pasted: string; stored: string }[];
+}
+
+/**
+ * Reads a column pasted out of a spreadsheet and says what it would do,
+ * before doing it. The vocabulary came from a workbook and will keep arriving
+ * that way; retyping thirty values one at a time is the thing this replaces.
+ */
+export async function previewPaste(
+  listCode: string,
+  text: string,
+): Promise<PastePreview | ActionResult> {
+  const list = (
+    await db.select().from(lookupList).where(eq(lookupList.code, listCode))
+  )[0];
+
+  if (list === undefined) return { ok: false, message: "No such list." };
+
+  const stored = await db
+    .select({ label: lookupValue.label })
+    .from(lookupValue)
+    .where(eq(lookupValue.listId, list.id));
+
+  const byLower = new Map(stored.map((s) => [s.label.toLowerCase(), s.label]));
+
+  const pasted = [
+    ...new Set(
+      text
+        .split(/[\r\n\t]+/)
+        .map((line) => line.trim())
+        .filter((line) => line !== ""),
+    ),
+  ].map((line) => (list.lowercaseValues ? line.toLowerCase() : line));
+
+  const fresh: string[] = [];
+  const existing: string[] = [];
+  const caseOnly: { pasted: string; stored: string }[] = [];
+
+  for (const line of pasted) {
+    const match = byLower.get(line.toLowerCase());
+
+    if (match === undefined) fresh.push(line);
+    else if (match === line) existing.push(line);
+    else caseOnly.push({ pasted: line, stored: match });
+  }
+
+  return { listCode, fresh, existing, caseOnly };
+}
+
+export async function commitPaste(
+  listCode: string,
+  labels: string[],
+): Promise<ActionResult> {
+  if (labels.length === 0) return { ok: false, message: "Nothing to add." };
+
+  const list = (
+    await db.select().from(lookupList).where(eq(lookupList.code, listCode))
+  )[0];
+
+  if (list === undefined) return { ok: false, message: "No such list." };
+
+  const [next] = await db
+    .select({ max: sql<number>`coalesce(max(${lookupValue.sortOrder}), -1)::int` })
+    .from(lookupValue)
+    .where(eq(lookupValue.listId, list.id));
+
+  let order = (next?.max ?? -1) + 1;
+
+  const rows = labels
+    .map((raw) => (list.lowercaseValues ? raw.toLowerCase() : raw).trim())
+    .filter((label) => label !== "" && slugify(label) !== "")
+    .map((label) => ({
+      listId: list.id,
+      code: slugify(label),
+      label,
+      sortOrder: order++,
+    }));
+
+  if (rows.length === 0) {
+    return { ok: false, message: "None of those are usable values." };
+  }
+
+  await db.insert(lookupValue).values(rows).onConflictDoNothing();
+
+  revalidatePath("/vocabulary");
+
+  return {
+    ok: true,
+    message: `Added ${rows.length} value${rows.length === 1 ? "" : "s"} to ${list.label}.`,
+  };
+}

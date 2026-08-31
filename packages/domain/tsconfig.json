@@ -1,9 +1,13 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "types": ["node"],
     "rootDir": "./src",
     "outDir": "./dist",
-    "noEmit": true
+    "noEmit": true,
+    // Test files import with an explicit .ts extension so Node's type-
+    // stripping test runner can resolve them; nothing here is ever emitted.
+    "allowImportingTsExtensions": true
   },
   "include": ["src/**/*.ts"]
 }

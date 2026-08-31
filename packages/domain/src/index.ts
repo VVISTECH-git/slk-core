@@ -7,8 +7,14 @@
  * pointing one way is what lets the sync worker and the ops app agree on a
  * rule without agreeing on a table.
  *
- * Contents to come: design and piece identity, the movement kinds that make up
+ * Still to come: design and piece identity, the movement kinds that make up
  * the stock ledger, SKU construction, and the channel allocation rules.
  */
 
-export {};
+export {
+  compareLabels,
+  findDuplicates,
+  normaliseLabel,
+  type DuplicateHint,
+  type VocabularyEntry,
+} from "./vocabulary";

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { colourSwatch, isPaleSwatch, type LookupStatus } from "@slk/domain";
 
@@ -285,25 +286,73 @@ export interface MenuItem {
 export function RowMenu({ items, label }: { items: MenuItem[]; label: string }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+
+  /**
+   * Where to draw the menu, in viewport coordinates.
+   *
+   * It is drawn into the document body rather than inside the row. The table
+   * sits in a container with `overflow-hidden` — that is what gives it its
+   * rounded corners — and an absolutely positioned menu inside it is clipped
+   * by exactly that. On the last row of a list the menu was cut off almost
+   * entirely: a sliver of white under the row, and no way to reach the items.
+   *
+   * A portal escapes the clip, at the cost of having to place it by hand.
+   */
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+
+  const place = useCallback(() => {
+    const button = box.current?.querySelector("button");
+    if (!button) return;
+
+    const r = button.getBoundingClientRect();
+    const height = menu.current?.offsetHeight ?? 200;
+    const width = menu.current?.offsetWidth ?? 208;
+
+    // Flip above the button when there is not room below, so the menu is
+    // never half off the bottom of the window.
+    const below = window.innerHeight - r.bottom;
+    const top = below < height + 8 ? r.top - height - 4 : r.bottom + 4;
+
+    setAt({
+      top: Math.max(8, top),
+      left: Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8)),
+    });
+  }, []);
 
   useEffect(() => {
     if (!open) return;
 
+    place();
+
     function onDown(event: MouseEvent) {
-      if (!box.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (box.current?.contains(target)) return;
+      if (menu.current?.contains(target)) return;
+      setOpen(false);
     }
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") setOpen(false);
     }
+    // Scrolling the table under a menu pinned to the viewport would leave it
+    // pointing at the wrong row. Closing is honest; following the row as it
+    // moves is nicer but not worth the machinery here.
+    function onScrollOrResize() {
+      setOpen(false);
+    }
 
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
 
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
     };
-  }, [open]);
+  }, [open, place]);
 
   return (
     <div ref={box} className="relative">
@@ -320,33 +369,45 @@ export function RowMenu({ items, label }: { items: MenuItem[]; label: string }) 
         <span aria-hidden className="text-[16px]">⋯</span>
       </button>
 
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 z-30 mt-1 w-52 overflow-hidden rounded-lg border border-rule bg-surface py-1 shadow-[var(--shadow)]"
-        >
-          {items.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              role="menuitem"
-              disabled={item.disabled ?? false}
-              title={item.hint}
-              onClick={() => {
-                setOpen(false);
-                item.onSelect();
-              }}
-              className={`block w-full px-3 py-1.5 text-left text-[13px] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                item.danger === true
-                  ? "text-brick hover:bg-brick-soft"
-                  : "text-ink-2 hover:bg-surface-2"
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div
+            ref={menu}
+            role="menu"
+            style={{
+              position: "fixed",
+              top: at?.top ?? -9999,
+              left: at?.left ?? -9999,
+              // Hidden for the first frame, before it has been measured and
+              // placed. Drawing it at the wrong spot and then moving it is a
+              // visible jump.
+              visibility: at === null ? "hidden" : "visible",
+            }}
+            className="z-50 w-52 overflow-hidden rounded-lg border border-rule bg-surface py-1 shadow-[var(--shadow)]"
+          >
+            {items.map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                role="menuitem"
+                disabled={item.disabled ?? false}
+                title={item.hint}
+                onClick={() => {
+                  setOpen(false);
+                  item.onSelect();
+                }}
+                className={`block w-full px-3 py-1.5 text-left text-[13px] transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                  item.danger === true
+                    ? "text-brick hover:bg-brick-soft"
+                    : "text-ink-2 hover:bg-surface-2"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

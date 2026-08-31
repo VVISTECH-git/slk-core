@@ -206,7 +206,12 @@ export function RecordEditor({
         role="dialog"
         aria-modal="true"
         aria-label={isNew ? "New product record" : `Edit ${record.code}`}
-        className="relative flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-rule bg-surface shadow-2xl"
+        // A fixed height, not one that follows the content. Basic has nine
+        // fields and Material has five, so sizing to content made the dialog
+        // jump — and moved the Cancel and Save buttons under the pointer
+        // between one tab and the next.
+        style={{ height: "min(88vh, 680px)" }}
+        className="relative flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-rule bg-surface shadow-2xl"
       >
         <header className="border-b border-rule px-6 pt-5">
           <div className="mb-4 flex items-baseline gap-3">

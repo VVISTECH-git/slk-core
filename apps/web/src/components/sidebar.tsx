@@ -185,8 +185,6 @@ export function Sidebar() {
       {!railed && (
         <div className="mt-auto border-t border-rule px-5 py-4 font-mono text-[10.5px] leading-relaxed text-faint">
           slk-core
-          <br />
-          local · postgres 17
         </div>
       )}
     </nav>

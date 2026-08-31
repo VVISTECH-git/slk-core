@@ -41,7 +41,24 @@ function isStatus(value: unknown): value is LookupStatus {
 
 function revalidate(listCode?: string) {
   revalidatePath("/master-lists");
-  if (listCode !== undefined) revalidatePath(`/master-lists/${listCode}`);
+
+  if (listCode !== undefined) {
+    revalidatePath(`/master-lists/${listCode}`);
+
+    // Belt and braces, and said plainly: deleting a value on the deployed
+    // site once left the row on screen until a manual reload, while the same
+    // action refreshes correctly against both `next dev` and a local
+    // production build. I have not reproduced it, so I have not diagnosed it.
+    //
+    // The literal path above is what the documentation calls for. This adds
+    // the route-pattern form, which invalidates every page matching
+    // /master-lists/[code] rather than one — a superset of what is wanted,
+    // and the thing that would cover the case where the concrete path does
+    // not match how the route is keyed in that environment. It costs one
+    // extra invalidation of a page that is force-dynamic anyway.
+    revalidatePath("/master-lists/[code]", "page");
+  }
+
   // Retiring a value changes what the record editor offers.
   revalidatePath("/records");
 }

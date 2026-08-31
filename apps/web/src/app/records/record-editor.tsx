@@ -201,6 +201,73 @@ export function RecordEditor({
   const onFirstStep = step === 0;
   const onLastStep = step === tabs.length - 1;
 
+  /**
+   * What is still missing on one step.
+   *
+   * Next used to mean nothing: you could leave Product Type blank, walk the
+   * whole form, and be told at Finish — then be sent back to the first step
+   * to fix something you had passed four screens earlier. A step you are
+   * being moved on from is a step the form has just implied is complete, so
+   * it has to check before it agrees.
+   *
+   * The same rules the server enforces, asked one step at a time. The server
+   * still re-checks all of them; this is about saying so early, not about
+   * being the authority.
+   */
+  const missingOn = (which: TabKey): Record<string, string> => {
+    const missing: Record<string, string> = {};
+
+    if (which === "basic") {
+      if (!attributes.industry) missing["industry"] = "Industry is needed";
+
+      // Which product type is required moves with the industry, the same way
+      // the field itself does.
+      if (isHome) {
+        if (!attributes.homeProductType) {
+          missing["homeProductType"] = "Choose a product type";
+        }
+      } else if (!attributes.productType) {
+        missing["productType"] = "Choose a product type";
+      }
+
+      if (!colourId) missing["colour"] = "Choose a colour";
+    }
+
+    if (which === "material" && !attributes.fibreType) {
+      missing["fibreType"] = "Choose a fibre";
+    }
+
+    if (which === "craft" && !attributes.craftTechnique) {
+      missing["craftTechnique"] = "Choose a craft technique";
+    }
+
+    if (which === "prices" && prices.retail.trim() === "") {
+      missing["retail"] = "A selling price is needed";
+    }
+
+    return missing;
+  };
+
+  /**
+   * Moves to the next step, unless this one is not finished.
+   *
+   * Tabs themselves stay clickable. Next is the guided path and asserting
+   * completeness is its whole job; jumping to a tab is a deliberate act by
+   * someone who knows where they are going, and trapping them in step one
+   * would be worse than letting them look ahead.
+   */
+  const goNext = () => {
+    const missing = missingOn(activeTab);
+
+    if (Object.keys(missing).length > 0) {
+      setErrors((prev) => ({ ...prev, ...missing }));
+      return;
+    }
+
+    const next = tabs[step + 1];
+    if (next) setTab(next.key);
+  };
+
   const set = (key: AttributeKey, value: string | null) => {
     setAttributes((prev) => {
       const next = { ...prev, [key]: value };
@@ -712,10 +779,7 @@ export function RecordEditor({
           {isNew && !onLastStep && attempted && (
             <button
               type="button"
-              onClick={() => {
-                const next = tabs[step + 1];
-                if (next) setTab(next.key);
-              }}
+              onClick={goNext}
               className="rounded-md border border-rule-2 px-3 py-2 text-[13.5px] text-ink-2 hover:bg-surface-2"
             >
               Next
@@ -725,10 +789,7 @@ export function RecordEditor({
           {isNew && !onLastStep && !attempted ? (
             <button
               type="button"
-              onClick={() => {
-                const next = tabs[step + 1];
-                if (next) setTab(next.key);
-              }}
+              onClick={goNext}
               className="rounded-md bg-brick px-4 py-2 text-[13.5px] font-medium text-on-brick hover:bg-brick-2"
             >
               Next

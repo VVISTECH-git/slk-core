@@ -12,10 +12,16 @@ import {
   type Options,
   type RecordDetail,
 } from "@/lib/attributes";
+import {
+  MOVEMENT_KINDS,
+  MOVEMENT_KIND_LIST,
+  type MovementKind,
+} from "@/lib/movements";
 
 import {
   archiveRecord,
   createRecord,
+  recordMovement,
   saveRecord,
   type ActionResult,
   type RecordDraft,
@@ -634,6 +640,7 @@ export function RecordEditor({
               locations={locations}
               openingStock={openingStock}
               setOpeningStock={setOpeningStock}
+              onMoved={onSaved}
             />
           )}
 
@@ -860,6 +867,7 @@ function StockTab({
   locations,
   openingStock,
   setOpeningStock,
+  onMoved,
 }: {
   record: RecordDetail | null;
   quantity: string;
@@ -868,6 +876,7 @@ function StockTab({
   locations: PickableLocation[];
   openingStock: OpeningLine[];
   setOpeningStock: (lines: OpeningLine[]) => void;
+  onMoved: (message: string) => void;
 }) {
   if (record === null) {
     return (
@@ -937,7 +946,22 @@ function StockTab({
         <p className="text-[13.5px] text-muted">Nothing on hand.</p>
       )}
 
+      <h3 className="mt-6 mb-2 text-[15px] font-semibold text-ink">
+        Record A Movement
+      </h3>
+      <p className="mb-2 text-[12px] leading-relaxed text-muted">
+        Stock arriving, leaving, or moving between locations. Each one is
+        appended to the ledger, so the count above is always the sum of things
+        that happened.
+      </p>
+      <RecordMovement record={record} locations={locations} onSaved={onMoved} />
+
       <h3 className="mt-6 mb-2 text-[15px] font-semibold text-ink">Correct The Count</h3>
+      <p className="mb-2 text-[12px] leading-relaxed text-muted">
+        For when the shelf and the system disagree and nobody knows why. This
+        is a reconciliation, not a receipt — if you know what happened, record
+        it above instead.
+      </p>
       <Grid>
         <label className="block">
           <span className="mb-1 block text-[12.5px] text-ink-2">Quantity On Hand</span>
@@ -1192,5 +1216,244 @@ function OpeningStock({
         Record movement.
       </Note>
     </>
+  );
+}
+
+/**
+ * Recording what happened to the stock, against a location.
+ *
+ * Until this existed, stock could only arrive when the record was created,
+ * and the only later change was "Correct The Count" — one number, no location
+ * on it, written to the ledger as an adjustment between the warehouse and the
+ * scrap bin. That answers "the shelf says nine and the system says ten". It
+ * does not answer "twelve arrived at Retail Unit 1 this morning", which is
+ * the ordinary case.
+ *
+ * The kind comes first because it decides everything else: what the other end
+ * of the movement is, whether the location you pick receives or sends, and
+ * whether a second location is needed at all.
+ */
+function RecordMovement({
+  record,
+  locations,
+  onSaved,
+}: {
+  record: RecordDetail;
+  locations: PickableLocation[];
+  onSaved: (message: string) => void;
+}) {
+  const [kind, setKind] = useState<MovementKind>("received");
+  const [locationId, setLocationId] = useState("");
+  const [toLocationId, setToLocationId] = useState("");
+  const [qty, setQty] = useState("");
+  const [reference, setReference] = useState("");
+  const [note, setNote] = useState("");
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  const spec = MOVEMENT_KINDS[kind];
+  const internal = locations.filter((l) => l.isInternal);
+
+  // Where stock can be sent from is where stock actually is. Offering an
+  // empty shop as a source is offering a choice that can only be refused.
+  const holding = record.stock.byLocation
+    .filter((l) => l.qty > 0)
+    .map((l) => l.location);
+
+  const sources =
+    spec.dir === "out"
+      ? internal.filter((l) => holding.includes(l.name))
+      : internal;
+
+  if (record.isSerialised) {
+    return (
+      <Note>
+        This design is tagged piece by piece, so its count is the number of
+        pieces. Stock moves by scanning them rather than by typing a quantity.
+      </Note>
+    );
+  }
+
+  if (internal.length === 0) {
+    return (
+      <Note>
+        No locations are set up to hold stock. Add one on Master Lists →
+        Locations.
+      </Note>
+    );
+  }
+
+  const submit = () => {
+    setError(null);
+
+    start(async () => {
+      const result = await recordMovement(record.id, {
+        kind,
+        locationId,
+        toLocationId,
+        qty,
+        reference,
+        note,
+      });
+
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+
+      setQty("");
+      setReference("");
+      setNote("");
+      onSaved(result.message);
+    });
+  };
+
+  return (
+    <div className="rounded-lg border border-rule bg-surface p-4">
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {MOVEMENT_KIND_LIST.map((k) => (
+          <button
+            key={k.key}
+            type="button"
+            onClick={() => {
+              setKind(k.key);
+              setLocationId("");
+              setToLocationId("");
+              setError(null);
+            }}
+            className={`rounded-md border px-2.5 py-1 text-[12.5px] transition-colors ${
+              kind === k.key
+                ? "border-brick bg-brick-soft font-medium text-brick"
+                : "border-rule-2 text-muted hover:bg-surface-2"
+            }`}
+          >
+            {k.label}
+          </button>
+        ))}
+      </div>
+
+      <p className="mb-3 text-[12px] leading-relaxed text-muted">{spec.prompt}</p>
+
+      <Grid>
+        <label className="block">
+          <span className="mb-1 block text-[12.5px] text-ink-2">
+            {kind === "transferred"
+              ? "From"
+              : spec.dir === "in"
+                ? "Into"
+                : "Out of"}
+            <Required />
+          </span>
+          <select
+            value={locationId}
+            onChange={(e) => setLocationId(e.target.value)}
+            className="w-full rounded-md border border-rule-2 bg-surface px-3 py-2 text-[14px] text-ink"
+          >
+            <option value="">Choose…</option>
+            {sources.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+          {spec.dir === "out" && sources.length === 0 && (
+            <span className="mt-1 block text-[11.5px] text-warn">
+              Nothing is on hand anywhere, so there is nothing to move.
+            </span>
+          )}
+        </label>
+
+        {kind === "transferred" ? (
+          <label className="block">
+            <span className="mb-1 block text-[12.5px] text-ink-2">
+              To
+              <Required />
+            </span>
+            <select
+              value={toLocationId}
+              onChange={(e) => setToLocationId(e.target.value)}
+              className="w-full rounded-md border border-rule-2 bg-surface px-3 py-2 text-[14px] text-ink"
+            >
+              <option value="">Choose…</option>
+              {internal
+                .filter((l) => l.id !== locationId)
+                .map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+        ) : (
+          <label className="block">
+            <span className="mb-1 block text-[12.5px] text-ink-2">
+              {spec.dir === "in" ? "From" : "To"}
+            </span>
+            {/*
+              Stated, not chosen. The other end is what the kind means —
+              received is from production, sold is to a customer — and making
+              it a dropdown would invite the combinations that make a ledger
+              unreadable.
+            */}
+            <p className="rounded-md border border-dashed border-rule-2 px-3 py-2 text-[14px] text-muted">
+              {spec.other === "PRODUCTION"
+                ? "Production"
+                : spec.other === "CUSTOMER"
+                  ? "Customer"
+                  : "Scrap"}
+            </p>
+          </label>
+        )}
+
+        <label className="block">
+          <span className="mb-1 block text-[12.5px] text-ink-2">
+            Quantity
+            <Required />
+          </span>
+          <input
+            type="number"
+            min="1"
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            className="w-full rounded-md border border-rule-2 bg-surface px-3 py-2 text-right text-[14px] tabular-nums text-ink"
+          />
+        </label>
+
+        <label className="block">
+          <span className="mb-1 block text-[12.5px] text-ink-2">Reference</span>
+          <input
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+            placeholder="Invoice or challan number"
+            className="w-full rounded-md border border-rule-2 bg-surface px-3 py-2 text-[14px] text-ink"
+          />
+        </label>
+      </Grid>
+
+      <label className="mt-3 block">
+        <span className="mb-1 block text-[12.5px] text-ink-2">Note</span>
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Anything worth remembering about this movement"
+          className="w-full rounded-md border border-rule-2 bg-surface px-3 py-2 text-[14px] text-ink"
+        />
+      </label>
+
+      <div className="mt-3 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={submit}
+          disabled={pending || locationId === "" || qty.trim() === ""}
+          className="rounded-md bg-brick px-4 py-2 text-[13.5px] font-medium text-on-brick hover:bg-brick-2 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {pending ? "Recording…" : `Record ${spec.label.toLowerCase()}`}
+        </button>
+
+        {error !== null && (
+          <span className="text-[13px] text-brick">{error}</span>
+        )}
+      </div>
+    </div>
   );
 }

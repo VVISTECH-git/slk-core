@@ -13,6 +13,7 @@ import {
   HOME_INDUSTRY,
   type AttributeKey,
 } from "@/lib/attributes";
+import { MOVEMENT_KINDS, type MovementDraft } from "@/lib/movements";
 
 export interface ActionResult {
   ok: boolean;
@@ -762,3 +763,133 @@ async function recomposeName(
 
   await db.execute(sql`update design set name = ${name} where id = ${designId}`);
 }
+
+
+/**
+ * Appends one movement to the ledger.
+ *
+ * Never an update, never a delete, and never a stored total: what is on hand
+ * is the sum of what has been recorded, so a count can always be explained by
+ * the events that produced it. The database enforces the same thing —
+ * `movement` refuses UPDATE and DELETE outright.
+ *
+ * This is what "receive stock against a location" needed and did not have.
+ * Before it, stock could only arrive when the record was created, and the
+ * only later adjustment was a single number with no location on it.
+ */
+export async function recordMovement(
+  colourwayId: string,
+  draft: MovementDraft,
+): Promise<ActionResult> {
+  const spec = MOVEMENT_KINDS[draft.kind];
+  if (spec === undefined) return { ok: false, message: "Unknown kind of movement." };
+
+  const qty = Math.round(Number(draft.qty));
+  if (!Number.isFinite(qty) || qty <= 0) {
+    return { ok: false, message: "How many? It has to be a number above zero." };
+  }
+
+  const [cw] = await db
+    .select({ id: colourway.id, designId: colourway.designId })
+    .from(colourway)
+    .where(eq(colourway.id, colourwayId));
+
+  if (cw === undefined) return { ok: false, message: "That record no longer exists." };
+
+  const [serialised] = await db.execute<{ isSerialised: boolean }>(sql`
+    select is_serialised as "isSerialised" from design where id = ${cw.designId}
+  `);
+
+  if (serialised?.isSerialised === true) {
+    return {
+      ok: false,
+      message:
+        "This design is tagged piece by piece. Its count is the number of pieces, so stock moves by scanning them rather than by typing a quantity.",
+    };
+  }
+
+  const locations = await db.select().from(location);
+  const byId = new Map(locations.map((l) => [l.id, l]));
+  const byCode = new Map(locations.map((l) => [l.code, l]));
+
+  const picked = byId.get(draft.locationId);
+  if (picked === undefined) return { ok: false, message: "Choose a location." };
+
+  let from: string;
+  let to: string;
+
+  if (draft.kind === "transferred") {
+    const destination = byId.get(draft.toLocationId ?? "");
+
+    if (destination === undefined) return { ok: false, message: "Choose where it is going." };
+    if (destination.id === picked.id) {
+      // The ledger refuses this too — a movement to where it already is
+      // records nothing — but a constraint name is not an explanation.
+      return { ok: false, message: "That is the same location twice." };
+    }
+
+    from = picked.id;
+    to = destination.id;
+  } else {
+    const counterpart = spec.other === null ? undefined : byCode.get(spec.other);
+
+    if (counterpart === undefined) {
+      return {
+        ok: false,
+        message: `No ${spec.other} location is set up. Add one on Master Lists → Locations.`,
+      };
+    }
+
+    from = spec.dir === "in" ? counterpart.id : picked.id;
+    to = spec.dir === "in" ? picked.id : counterpart.id;
+  }
+
+  // You cannot send out what is not there. Checked per location rather than
+  // in total, because "we have twelve" is no help when all twelve are in the
+  // warehouse and the shop is trying to sell one.
+  if (spec.dir === "out") {
+    const [held] = await db.execute<{ qty: number }>(sql`
+      select (
+        coalesce((select sum(m.qty)::int from movement m
+                  where m.colourway_id = ${colourwayId} and m.to_location_id = ${from}), 0)
+      - coalesce((select sum(m.qty)::int from movement m
+                  where m.colourway_id = ${colourwayId} and m.from_location_id = ${from}), 0)
+      ) as qty
+    `);
+
+    const available = held?.qty ?? 0;
+
+    if (qty > available) {
+      return {
+        ok: false,
+        message:
+          available === 0
+            ? `There is nothing at ${byId.get(from)?.name} to move.`
+            : `Only ${available} at ${byId.get(from)?.name}.`,
+      };
+    }
+  }
+
+  await db.insert(movement).values({
+    colourwayId,
+    qty,
+    kind: draft.kind,
+    fromLocationId: from,
+    toLocationId: to,
+    occurredAt: new Date(),
+    reference: draft.reference.trim() === "" ? null : draft.reference.trim(),
+    note: draft.note.trim() === "" ? null : draft.note.trim(),
+  });
+
+  revalidatePath("/records");
+
+  const where =
+    draft.kind === "transferred"
+      ? `${byId.get(from)?.name} → ${byId.get(to)?.name}`
+      : spec.dir === "in"
+        ? `into ${byId.get(to)?.name}`
+        : `out of ${byId.get(from)?.name}`;
+
+  return { ok: true, message: `${spec.label} ${qty} ${where}.` };
+}
+

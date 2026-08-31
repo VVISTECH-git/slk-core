@@ -80,6 +80,9 @@ export function money(minor: number): string {
   })}`;
 }
 
+/** The tabs the editor can be opened straight onto from a row action. */
+type EditorTab = "basic" | "prices" | "images" | "stock";
+
 export function RecordsTable({
   rows,
   industries,
@@ -99,18 +102,46 @@ export function RecordsTable({
   const [loading, startLoading] = useTransition();
 
   /**
+   * Which row is being acted on, so the click has something to show for
+   * itself straight away.
+   *
+   * The fetch below takes a moment against a warm server and several seconds
+   * against a cold one. All the click used to do in that time was dim every
+   * icon in the table by sixty percent — feedback so faint it read as a dead
+   * button, and since the buttons were also disabled, clicking again did
+   * nothing and confirmed the impression. A click has to produce something
+   * the eye catches, immediately, or it has not worked.
+   */
+  const [opening, setOpening] = useState<{
+    id: string;
+    action: RowAction;
+  } | null>(null);
+
+  /**
    * A record is fetched when it is opened rather than shipped with the table.
    * Eighteen rows would be fine; four thousand, each with a stock summary and
    * eight movements, would not.
    */
-  const open = (id: string, tab: "basic" | "prices" | "images" | "stock") => {
+  const open = (id: string, action: RowAction, tab: EditorTab) => {
+    setOpening({ id, action });
+
     startLoading(async () => {
-      const response = await fetch(`/records/${id}`);
-      if (!response.ok) {
-        setToast("Could not open that record.");
-        return;
+      try {
+        const response = await fetch(`/records/${id}`);
+
+        if (!response.ok) {
+          setToast("Could not open that record.");
+          return;
+        }
+
+        setEditing({ record: (await response.json()) as RecordDetail, tab });
+      } catch {
+        // A dropped connection used to leave the row spinning for ever with
+        // nothing said.
+        setToast("Could not reach the server. Check your connection.");
+      } finally {
+        setOpening(null);
       }
-      setEditing({ record: (await response.json()) as RecordDetail, tab });
     });
   };
 
@@ -477,14 +508,26 @@ export function RecordsTable({
                       <RowActions
                         serialised={row.isSerialised}
                         pieces={row.pieces}
-                        busy={loading}
+                        // Only this row, not the whole table. One click used
+                        // to grey out every action on every row, which looks
+                        // like the page has broken rather than like one thing
+                        // is loading.
+                        busy={loading && opening?.id === row.id ? opening.action : null}
                         onAction={(action) => {
                           if (action === "delete") setArchiving(row);
                           else if (action === "copy") {
+                            // Copy has no dialog to open, so the spinner on
+                            // its own button is the only thing telling the
+                            // reader the click landed.
+                            setOpening({ id: row.id, action });
                             startLoading(async () => {
-                              done((await copyRecord(row.id)).message);
+                              try {
+                                done((await copyRecord(row.id)).message);
+                              } finally {
+                                setOpening(null);
+                              }
                             });
-                          } else open(row.id, action);
+                          } else open(row.id, action, action);
                         }}
                       />
                     </td>
@@ -542,6 +585,42 @@ export function RecordsTable({
           >
             ✕
           </button>
+        </div>
+      )}
+
+      {/*
+        The dialog appears on the click, not on the response.
+
+        Everything else here is a consolation prize: a spinner still leaves
+        the reader watching a table and wondering. Opening the frame straight
+        away is the answer to "did that work" — the content arrives into a
+        window that is already there.
+      */}
+      {opening !== null && editing === null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div className="absolute inset-0 bg-ink/25" />
+          <div
+            role="dialog"
+            aria-busy="true"
+            aria-label="Opening record"
+            style={{ height: "min(88vh, 680px)" }}
+            className="relative flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-rule bg-surface shadow-2xl"
+          >
+            <header className="border-b border-rule px-6 py-5">
+              <div className="h-5 w-64 animate-pulse rounded bg-surface-3" />
+            </header>
+            <div className="flex flex-1 flex-col gap-4 bg-surface-2 px-6 py-5">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="flex gap-4">
+                  <div className="h-9 flex-1 animate-pulse rounded bg-surface-3" />
+                  <div className="h-9 flex-1 animate-pulse rounded bg-surface-3" />
+                </div>
+              ))}
+            </div>
+            <footer className="border-t border-rule px-6 py-3 text-[13px] text-muted">
+              Loading…
+            </footer>
+          </div>
         </div>
       )}
 
@@ -648,7 +727,7 @@ function RowActions({
 }: {
   serialised: boolean;
   pieces: number;
-  busy: boolean;
+  busy: RowAction | null;
   onAction: (action: RowAction) => void;
 }) {
   return (
@@ -667,7 +746,7 @@ function RowActions({
           type="button"
           title={a.title}
           aria-label={a.title}
-          disabled={busy}
+          disabled={busy !== null}
           onClick={(e) => {
             e.stopPropagation();
             onAction(a.key);
@@ -676,18 +755,34 @@ function RowActions({
             a.key === "delete" ? "hover:text-brick" : "hover:text-ink"
           }`}
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d={a.path} />
-          </svg>
+          {busy === a.key ? (
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              className="animate-spin text-brick"
+              aria-hidden
+            >
+              <path d="M10 2.5a7.5 7.5 0 1 0 7.5 7.5" />
+            </svg>
+          ) : (
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d={a.path} />
+            </svg>
+          )}
         </button>
       ))}
     </div>

@@ -30,3 +30,5 @@ export {
 } from "./naming";
 
 export { colourSwatch, isPaleSwatch } from "./colour";
+
+export { stockAt, type LocationPosition } from "./stock";

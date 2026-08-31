@@ -18,14 +18,29 @@ export function Directory({
   lists,
   values,
   attention,
+  locations,
 }: {
   lists: VocabList[];
   values: VocabValue[];
   attention: number;
+  locations: { count: number; names: string[] };
 }) {
   const [query, setQuery] = useState("");
 
   const q = query.trim().toLowerCase();
+
+  /**
+   * Locations are reference data and belong here, even though they are their
+   * own table rather than a lookup list — searching "Location" on this screen
+   * and being told nothing matches is a failure of the screen, not of the
+   * person searching. Where it is stored is the schema's business.
+   */
+  const locationsMatch =
+    q === "" ||
+    "locations".includes(q) ||
+    "location".includes(q) ||
+    "warehouse shop stock".includes(q) ||
+    locations.names.some((n) => n.toLowerCase().includes(q));
 
   const matchedLists = useMemo(() => {
     if (q === "") return lists;
@@ -148,12 +163,14 @@ export function Directory({
             )}
 
             {matchedLists.length === 0 ? (
-              // Silent when values matched. Searching "zari" is looking for a
-              // value, and being told no *list* is called that is an answer to
-              // a question nobody asked.
-              matchedValues.length > 0 ? null : (
+              // Only when nothing at all matched — not a value, not Locations
+              // either. Searching "zari" is looking for a value, and being
+              // told no *list* is called that answers a question nobody
+              // asked; saying "nothing matches" directly above a result that
+              // matched is worse still.
+              matchedValues.length > 0 || locationsMatch ? null : (
                 <p className="rounded-lg border border-dashed border-rule-2 px-4 py-8 text-center text-[13px] text-muted">
-                  Nothing matches “{query}” — no list, and no value in any list.
+                  Nothing matches “{query}” — no list, no value, no location.
                 </p>
               )
             ) : (
@@ -164,6 +181,39 @@ export function Directory({
               </ul>
             )}
           </section>
+
+          {locationsMatch && (
+            <section className="mt-5">
+              <ul className="overflow-hidden rounded-lg border border-rule bg-surface">
+                <li>
+                  <Link
+                    href="/master-lists/locations"
+                    className="flex items-center gap-4 px-4 py-3 transition-colors hover:bg-surface-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <span className="truncate text-[14px] font-medium text-ink">
+                        Locations
+                      </span>
+                      <span className="mt-0.5 block truncate text-[12px] text-muted">
+                        {locations.names.slice(0, 4).join(", ")}
+                        {locations.names.length > 4 ? "…" : ""}
+                      </span>
+                    </div>
+
+                    <span className="w-32 flex-none text-right font-mono text-[12px] text-muted tabular-nums">
+                      {locations.count} location{locations.count === 1 ? "" : "s"}
+                    </span>
+
+                    <span className="w-28 flex-none">
+                      <HealthMark health="healthy" />
+                    </span>
+
+                    <span aria-hidden className="flex-none text-faint">›</span>
+                  </Link>
+                </li>
+              </ul>
+            </section>
+          )}
 
           {empty.length > 0 && (
             <section className="mt-6">

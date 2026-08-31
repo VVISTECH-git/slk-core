@@ -649,7 +649,23 @@ export function RecordsTable({
                 pageRows.map((row) => (
                   <tr
                     key={row.id}
-                    onClick={() => setSelected(row.id)}
+                    /*
+                      The row opens the record.
+
+                      It carried `cursor-pointer` and then only highlighted
+                      itself, which promises something and delivers nothing.
+                      The pencil stays for anyone reaching for it deliberately.
+
+                      The cells that can be edited in place stop the click
+                      before it gets here, so tapping Product Type still opens
+                      its dropdown rather than the whole record. That is the
+                      distinction the caret is there to signal: where you see
+                      one, the cell answers; everywhere else, the row does.
+                    */
+                    onClick={() => {
+                      setSelected(row.id);
+                      open(row.id, "basic", "basic");
+                    }}
                     // A single fixed height for every row. Nothing inside a
                     // cell is allowed to change it.
                     className={`h-11 cursor-pointer border-b border-rule last:border-b-0 ${

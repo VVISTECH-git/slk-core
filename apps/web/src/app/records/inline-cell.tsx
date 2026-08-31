@@ -105,7 +105,10 @@ export function InlineLookupCell({
       <button
         ref={anchor}
         type="button"
-        onClick={() => {
+        onClick={(e) => {
+          // The row underneath opens the whole record. A cell that can be
+          // changed where it sits answers for itself instead.
+          e.stopPropagation();
           setSearch("");
           setOpen((v) => !v);
         }}

@@ -24,6 +24,26 @@ export type RecordRow = {
   regionalStyle: string | null;
   craftTechnique: string | null;
   audienceType: string | null;
+
+  /**
+   * Everything else the design carries, so the Columns menu can offer it.
+   *
+   * Fetched whether or not a column is showing. Eleven more left joins on a
+   * table of 227 lookup values costs about a millisecond — the list query
+   * plans in 49ms and executes in 2 — and fetching on demand would mean a
+   * round trip every time somebody ticks a box.
+   */
+  subFamily: string | null;
+  weaveStructure: string | null;
+  fabricType: string | null;
+  craftSubType: string | null;
+  motifCategory: string | null;
+  motif: string | null;
+  borderHeight: string | null;
+  palluDesign: string | null;
+  blouseAvailable: string | null;
+  descriptor: string | null;
+
   colour: string | null;
   colourHex: string | null;
   uom: string | null;
@@ -53,6 +73,16 @@ export async function loadRecords(): Promise<RecordRow[]> {
       audience.label                                    as "audienceType",
       colour.label                                      as colour,
       colour.meta ->> 'hex'                             as "colourHex",
+      coalesce(silk_sub.label, cotton_sub.label)        as "subFamily",
+      weave.label                                       as "weaveStructure",
+      fabric.label                                      as "fabricType",
+      craft_sub.label                                   as "craftSubType",
+      motif_cat.label                                   as "motifCategory",
+      motif.label                                       as motif,
+      border.label                                      as "borderHeight",
+      pallu.label                                       as "palluDesign",
+      blouse.label                                      as "blouseAvailable",
+      descriptor.label                                  as descriptor,
       uom.label                                         as uom,
       d.is_serialised                                   as "isSerialised",
       coalesce(oh.qty, 0)::int                          as quantity,
@@ -74,6 +104,17 @@ export async function loadRecords(): Promise<RecordRow[]> {
     left join lookup_value audience           on audience.id = d.audience_type_id
     left join lookup_value colour             on colour.id = cw.colour_id
     left join lookup_value uom                on uom.id = d.uom_id
+    left join lookup_value silk_sub           on silk_sub.id = d.silk_sub_family_id
+    left join lookup_value cotton_sub         on cotton_sub.id = d.cotton_sub_family_id
+    left join lookup_value weave              on weave.id = d.weave_structure_id
+    left join lookup_value fabric             on fabric.id = d.fabric_type_id
+    left join lookup_value craft_sub          on craft_sub.id = d.craft_sub_type_id
+    left join lookup_value motif_cat          on motif_cat.id = d.motif_category_id
+    left join lookup_value motif              on motif.id = d.motif_id
+    left join lookup_value border             on border.id = d.border_height_id
+    left join lookup_value pallu              on pallu.id = d.pallu_design_id
+    left join lookup_value blouse             on blouse.id = d.blouse_available_id
+    left join lookup_value descriptor         on descriptor.id = d.descriptor_id
     left join colourway_on_hand oh            on oh.colourway_id = cw.id
     left join (
       select colourway_id, count(*) as n from piece group by colourway_id

@@ -14,7 +14,11 @@ import type { RecordRow } from "@/lib/records";
 
 import { copyRecord, setRecordField, type InlineField } from "./actions";
 import { InlineLookupCell } from "./inline-cell";
-import { MIN_COLUMN_WIDTH, useColumnWidths } from "./column-widths";
+import {
+  MIN_COLUMN_WIDTH,
+  useColumnWidths,
+  useVisibleColumns,
+} from "./column-widths";
 import { ArchiveDialog, RecordEditor, type PickableLocation } from "./record-editor";
 
 /**
@@ -41,8 +45,23 @@ const COLUMNS = [
   { key: "code", label: "Design Code", width: 150 },
   { key: "audienceType", label: "Audience", width: 96 },
   { key: "colour", label: "Colour", width: 150 },
+
+  // Everything else the design carries. Available in the Columns menu rather
+  // than shown by default — eighteen columns at once is not a table anyone
+  // reads, but which eighteen matter is the reader's business, not mine.
+  { key: "subFamily", label: "Sub Family", width: 120 },
+  { key: "weaveStructure", label: "Weave Structure", width: 140 },
+  { key: "fabricType", label: "Fabric Type", width: 116 },
+  { key: "craftSubType", label: "Craft Sub Type", width: 210 },
+  { key: "motifCategory", label: "Motif Category", width: 140 },
+  { key: "motif", label: "Motif", width: 120 },
+  { key: "borderHeight", label: "Border Height", width: 124 },
+  { key: "palluDesign", label: "Pallu Design", width: 126 },
+  { key: "blouseAvailable", label: "Blouse Availability", width: 148 },
+  { key: "descriptor", label: "Descriptor", width: 112 },
+
   { key: "quantity", label: "Quantity", width: 88 },
-  { key: "price", label: "Price", width: 100 },
+  { key: "price", label: "Unit Price", width: 110 },
 ] as const;
 
 type ColumnKey = (typeof COLUMNS)[number]["key"];
@@ -52,7 +71,20 @@ type ColumnKey = (typeof COLUMNS)[number]["key"];
  * already reads "Soft Kantha Work Gadwal Sico Saree" — the craft and the
  * region are in the name. Both are one tick away in the Columns menu.
  */
-const OFF_BY_DEFAULT = new Set<ColumnKey>(["craftTechnique", "regionalStyle"]);
+const OFF_BY_DEFAULT = new Set<ColumnKey>([
+  "craftTechnique",
+  "regionalStyle",
+  "subFamily",
+  "weaveStructure",
+  "fabricType",
+  "craftSubType",
+  "motifCategory",
+  "motif",
+  "borderHeight",
+  "palluDesign",
+  "blouseAvailable",
+  "descriptor",
+]);
 
 const NUMERIC = new Set<ColumnKey>(["quantity", "price"]);
 
@@ -78,6 +110,20 @@ const INLINE_COLUMNS: Partial<
   regionalStyle: { field: "regionalStyle", list: "regional_style" },
   craftTechnique: { field: "craftTechnique", list: "craft_technique" },
   audienceType: { field: "audienceType", list: "audience_type" },
+  weaveStructure: { field: "weaveStructure", list: "weave_structure" },
+  fabricType: { field: "fabricType", list: "fabric_type" },
+  craftSubType: { field: "craftSubType", list: "craft_sub_type" },
+  motifCategory: { field: "motifCategory", list: "motif_category" },
+  motif: { field: "motif", list: "motif" },
+  borderHeight: { field: "borderHeight", list: "border_height" },
+  palluDesign: { field: "palluDesign", list: "pallu_design" },
+  blouseAvailable: { field: "blouseAvailable", list: "blouse_available" },
+  descriptor: { field: "descriptor", list: "descriptor" },
+
+  // Sub Family is deliberately absent. It reads from two columns — Silk Sub
+  // Family and Cotton Sub Family — so which one a change should write to
+  // depends on the record's fibre. It can be shown; changing it in place
+  // would need that rule, and the editor already has it.
 };
 
 /** Six icon buttons at ~25px plus gaps and cell padding. */
@@ -229,7 +275,12 @@ export function RecordsTable({
     setFocusFilter(key);
     setShowFilters(true);
   };
-  const [visible, setVisible] = useState<Set<ColumnKey>>(
+  const {
+    visible,
+    setVisible,
+    reset: resetColumns,
+    chosen: columnsChosen,
+  } = useVisibleColumns(
     () => new Set(COLUMNS.map((c) => c.key).filter((k) => !OFF_BY_DEFAULT.has(k))),
   );
   const [showColumns, setShowColumns] = useState(false);
@@ -425,12 +476,13 @@ export function RecordsTable({
                     type="checkbox"
                     checked={visible.has(c.key)}
                     onChange={() => {
-                      setVisible((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(c.key)) next.delete(c.key);
-                        else next.add(c.key);
-                        return next;
-                      });
+                      const next = new Set(visible);
+                      if (next.has(c.key)) next.delete(c.key);
+                      else next.add(c.key);
+                      // Never all off. An empty table with the only way back
+                      // hidden in a menu is a corner nobody should be able to
+                      // paint themselves into.
+                      if (next.size > 0) setVisible(next);
                     }}
                     className="accent-[var(--brick)]"
                   />
@@ -443,19 +495,33 @@ export function RecordsTable({
                 be left in a state its owner does not want and cannot undo by
                 reloading — which is the trap of persisting anything.
               */}
-              {resized && (
+              {(resized || columnsChosen) && (
                 <>
                   <span className="my-1 block border-t border-rule" />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      resetWidths();
-                      setShowColumns(false);
-                    }}
-                    className="w-full rounded px-2 py-1.5 text-left text-[13px] text-ink-2 hover:bg-surface-2"
-                  >
-                    Reset column widths
-                  </button>
+                  {columnsChosen && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetColumns();
+                        setShowColumns(false);
+                      }}
+                      className="w-full rounded px-2 py-1.5 text-left text-[13px] text-ink-2 hover:bg-surface-2"
+                    >
+                      Reset to the default columns
+                    </button>
+                  )}
+                  {resized && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetWidths();
+                        setShowColumns(false);
+                      }}
+                      className="w-full rounded px-2 py-1.5 text-left text-[13px] text-ink-2 hover:bg-surface-2"
+                    >
+                      Reset column widths
+                    </button>
+                  )}
                 </>
               )}
               </div>

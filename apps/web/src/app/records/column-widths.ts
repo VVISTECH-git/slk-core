@@ -47,6 +47,75 @@ function read(): ColumnWidths {
   }
 }
 
+const VISIBLE_KEY = "slk.records.columns";
+
+/**
+ * Which columns someone has chosen to see.
+ *
+ * Remembered for the same reason widths are, and more urgently: there are
+ * twenty-three columns now and only ten showing by default. Someone who
+ * works on motifs wants a different ten from someone checking prices, and
+ * re-ticking eight boxes on every reload is the kind of small tax that makes
+ * people stop using the feature.
+ *
+ * Stored as the list of visible keys rather than a diff from the default, so
+ * that adding a new column later does not silently switch it on for everyone
+ * who has ever touched this menu.
+ */
+export function useVisibleColumns(fallback: () => Set<string>): {
+  visible: Set<string>;
+  setVisible: (next: Set<string>) => void;
+  reset: () => void;
+  chosen: boolean;
+} {
+  // The default on the server and on the first client render, so the markup
+  // matches; a stored choice applies immediately after.
+  const [visible, setState] = useState<Set<string>>(fallback);
+  const [chosen, setChosen] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(VISIBLE_KEY);
+      if (raw === null) return;
+
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+
+      const keys = parsed.filter((k): k is string => typeof k === "string");
+      // An empty stored list would render a table of nothing, with the only
+      // way out being a menu the reader has to know is there.
+      if (keys.length === 0) return;
+
+      setState(new Set(keys));
+      setChosen(true);
+    } catch {
+      // Private windows, blocked site data, or something else in the slot.
+    }
+  }, []);
+
+  const setVisible = useCallback((next: Set<string>) => {
+    setState(next);
+    setChosen(true);
+    try {
+      window.localStorage.setItem(VISIBLE_KEY, JSON.stringify([...next]));
+    } catch {
+      // Not remembering the choice is better than failing to make it.
+    }
+  }, []);
+
+  const reset = useCallback(() => {
+    setState(fallback());
+    setChosen(false);
+    try {
+      window.localStorage.removeItem(VISIBLE_KEY);
+    } catch {
+      // Same again.
+    }
+  }, [fallback]);
+
+  return { visible, setVisible, reset, chosen };
+}
+
 export function useColumnWidths(): {
   widths: ColumnWidths;
   setWidth: (key: string, width: number) => void;

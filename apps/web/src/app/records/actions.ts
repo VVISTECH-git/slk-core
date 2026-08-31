@@ -540,6 +540,15 @@ const INLINE_FIELDS = {
   regionalStyle: "regionalStyle",
   craftTechnique: "craftTechnique",
   audienceType: "audienceType",
+  weaveStructure: "weaveStructure",
+  fabricType: "fabricType",
+  craftSubType: "craftSubType",
+  motifCategory: "motifCategory",
+  motif: "motif",
+  borderHeight: "borderHeight",
+  palluDesign: "palluDesign",
+  blouseAvailable: "blouseAvailable",
+  descriptor: "descriptor",
 } as const satisfies Record<string, AttributeKey>;
 
 export type InlineField = keyof typeof INLINE_FIELDS | "colour";

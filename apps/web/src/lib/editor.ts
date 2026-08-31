@@ -14,12 +14,6 @@ import { db } from "@/lib/db";
 /**
  * Server-side reads for the record editor.
  *
- * The attribute map, the option shapes and `defaultAttributes` live in
- * ./attributes, which imports nothing — the editor is a client component and
- * pulling this module into the browser would take the Postgres driver with
- * it.
- */
-/**
  * This module imports `db`, so anything a client component imports from it
  * pulls the Postgres driver into the browser bundle.
  *
@@ -82,19 +76,49 @@ export async function loadRecord(
     (key) => sql`d.${sql.identifier(ATTRIBUTES[key].column)} as ${sql.identifier(key)}`,
   );
 
-  const rows = await db.execute<Record<string, unknown>>(sql`
-    select
-      cw.id as id, d.id as "designId", d.code, d.name,
-      d.name_is_custom as "nameIsCustom", d.is_serialised as "isSerialised",
-      d.notes,
-      cw.colour_id as "colourId",
-      cw.cost_minor as "costMinor", cw.making_minor as "makingMinor",
-      cw.wholesale_minor as "wholesaleMinor", cw.retail_minor as "retailMinor",
-      cw.mrp_minor as "mrpMinor",
-      ${sql.join(selects, sql`, `)}
-    from colourway cw join design d on d.id = cw.design_id
-    where cw.id = ${colourwayId}
-  `);
+  /*
+    All five at once.
+
+    They ran one after another, which is free on a database in the same room
+    and ruinous on one that is not: the functions were in Washington and the
+    database is in Singapore, so each was a round trip across the Pacific and
+    opening a record took six seconds. vercel.json now pins the functions
+    beside the database, and this makes the count of round trips one instead
+    of five, which is worth having whatever the distance.
+
+    Only siblings depended on anything — it needs the design id, which the
+    first query was fetching. A subquery on an indexed primary key costs
+    nothing and dissolves the dependency, so nothing has to wait.
+  */
+  const [rows, siblings, totalsRows, byLocation, movements] = await Promise.all([
+    db.execute<Record<string, unknown>>(sql`
+      select
+        cw.id as id, d.id as "designId", d.code, d.name,
+        d.name_is_custom as "nameIsCustom", d.is_serialised as "isSerialised",
+        d.notes,
+        cw.colour_id as "colourId",
+        cw.cost_minor as "costMinor", cw.making_minor as "makingMinor",
+        cw.wholesale_minor as "wholesaleMinor", cw.retail_minor as "retailMinor",
+        cw.mrp_minor as "mrpMinor",
+        ${sql.join(selects, sql`, `)}
+      from colourway cw join design d on d.id = cw.design_id
+      where cw.id = ${colourwayId}
+    `),
+
+    db.execute<{ id: string; colour: string | null }>(sql`
+      select cw.id, v.label as colour
+      from colourway cw
+      left join lookup_value v on v.id = cw.colour_id
+      where cw.design_id = (
+        select design_id from colourway where id = ${colourwayId}
+      ) and cw.is_active
+      order by v.sort_order
+    `),
+
+    loadTotals(colourwayId),
+    loadByLocation(colourwayId),
+    loadMovements(colourwayId),
+  ]);
 
   const row = rows[0];
   if (row === undefined) return null;
@@ -104,58 +128,7 @@ export async function loadRecord(
     attributes[key] = (row[key] as string | null) ?? null;
   }
 
-  const siblings = await db.execute<{ id: string; colour: string | null }>(sql`
-    select cw.id, v.label as colour
-    from colourway cw
-    left join lookup_value v on v.id = cw.colour_id
-    where cw.design_id = ${row["designId"] as string} and cw.is_active
-    order by v.sort_order
-  `);
-
-  // Every kind counted once, from the ledger. Nothing here is stored.
-  const [totals] = await db.execute<{
-    onHand: number;
-    received: number;
-    sold: number;
-    damaged: number;
-    returned: number;
-    adjusted: number;
-  }>(sql`
-    select
-      coalesce((select qty from colourway_on_hand where colourway_id = ${colourwayId}), 0)::int as "onHand",
-      coalesce(sum(qty) filter (where kind = 'received'), 0)::int   as received,
-      coalesce(sum(qty) filter (where kind = 'sold'), 0)::int       as sold,
-      coalesce(sum(qty) filter (where kind = 'damaged'), 0)::int    as damaged,
-      coalesce(sum(qty) filter (where kind = 'returned'), 0)::int   as returned,
-      coalesce(sum(qty) filter (where kind = 'adjusted'), 0)::int   as adjusted
-    from movement where colourway_id = ${colourwayId}
-  `);
-
-  const byLocation = await db.execute<{ location: string; qty: number }>(sql`
-    select l.name as location,
-           (sum(case when m.to_location_id = l.id then m.qty else 0 end)
-            - sum(case when m.from_location_id = l.id then m.qty else 0 end))::int as qty
-    from movement m
-    join location l on l.id in (m.to_location_id, m.from_location_id)
-    where m.colourway_id = ${colourwayId} and l.is_internal
-    group by l.id, l.name, l.sort_order
-    having (sum(case when m.to_location_id = l.id then m.qty else 0 end)
-            - sum(case when m.from_location_id = l.id then m.qty else 0 end)) > 0
-    order by l.sort_order
-  `);
-
-  const movements = await db.execute<RecordDetail["movements"][number]>(sql`
-    select m.id, m.kind, m.qty,
-           to_char(m.occurred_at, 'DD Mon YYYY') as "occurredAt",
-           m.reason,
-           lf.name as from, lt.name as to
-    from movement m
-    left join location lf on lf.id = m.from_location_id
-    left join location lt on lt.id = m.to_location_id
-    where m.colourway_id = ${colourwayId}
-    order by m.occurred_at desc, m.id desc
-    limit 8
-  `);
+  const totals = totalsRows[0];
 
   return {
     id: row["id"] as string,
@@ -176,4 +149,57 @@ export async function loadRecord(
     stock: { ...totals!, byLocation },
     movements,
   };
+}
+
+/** Every kind counted once, from the ledger. Nothing here is stored. */
+function loadTotals(colourwayId: string) {
+  return db.execute<{
+    onHand: number;
+    received: number;
+    sold: number;
+    damaged: number;
+    returned: number;
+    adjusted: number;
+  }>(sql`
+    select
+      coalesce((select qty from colourway_on_hand where colourway_id = ${colourwayId}), 0)::int as "onHand",
+      coalesce(sum(qty) filter (where kind = 'received'), 0)::int   as received,
+      coalesce(sum(qty) filter (where kind = 'sold'), 0)::int       as sold,
+      coalesce(sum(qty) filter (where kind = 'damaged'), 0)::int    as damaged,
+      coalesce(sum(qty) filter (where kind = 'returned'), 0)::int   as returned,
+      coalesce(sum(qty) filter (where kind = 'adjusted'), 0)::int   as adjusted
+    from movement where colourway_id = ${colourwayId}
+  `);
+}
+
+/** What sits where, counting only the locations we hold stock in. */
+function loadByLocation(colourwayId: string) {
+  return db.execute<{ location: string; qty: number }>(sql`
+    select l.name as location,
+           (sum(case when m.to_location_id = l.id then m.qty else 0 end)
+            - sum(case when m.from_location_id = l.id then m.qty else 0 end))::int as qty
+    from movement m
+    join location l on l.id in (m.to_location_id, m.from_location_id)
+    where m.colourway_id = ${colourwayId} and l.is_internal
+    group by l.id, l.name, l.sort_order
+    having (sum(case when m.to_location_id = l.id then m.qty else 0 end)
+            - sum(case when m.from_location_id = l.id then m.qty else 0 end)) > 0
+    order by l.sort_order
+  `);
+}
+
+/** The last few events, most recent first. */
+function loadMovements(colourwayId: string) {
+  return db.execute<RecordDetail["movements"][number]>(sql`
+    select m.id, m.kind, m.qty,
+           to_char(m.occurred_at, 'DD Mon YYYY') as "occurredAt",
+           m.reason,
+           lf.name as from, lt.name as to
+    from movement m
+    left join location lf on lf.id = m.from_location_id
+    left join location lt on lt.id = m.to_location_id
+    where m.colourway_id = ${colourwayId}
+    order by m.occurred_at desc, m.id desc
+    limit 8
+  `);
 }

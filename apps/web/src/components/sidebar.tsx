@@ -4,18 +4,22 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 /**
- * The screens the prototype settled on, in its order. Stock and Product
- * Records are placeholders until the catalogue tables exist; Vocabulary is
- * live, because the lookup master is the part that is actually built.
+ * Hidden, not deleted — the prototype's pattern. Every screen below still
+ * builds and is still reachable by URL; the sidebar is cut to what is being
+ * worked on, so the app shows one finished thing rather than several
+ * half-finished ones. Remove a line to bring a screen back.
  */
+const HIDDEN = new Set(["/stock", "/vocabulary"]);
+
 const NAV = [
-  { href: "/records", label: "Product Records", ready: false },
-  { href: "/stock", label: "Stock", ready: false },
-  { href: "/vocabulary", label: "Categories & Attributes", ready: true },
+  { href: "/records", label: "Product Records" },
+  { href: "/stock", label: "Stock" },
+  { href: "/vocabulary", label: "Categories & Attributes" },
 ] as const;
 
 export function Sidebar() {
   const pathname = usePathname();
+  const visible = NAV.filter((item) => !HIDDEN.has(item.href));
 
   return (
     <nav
@@ -23,16 +27,13 @@ export function Sidebar() {
       className="flex w-60 flex-none flex-col border-r border-rule bg-surface-2"
     >
       <div className="border-b border-rule px-5 py-5">
-        <div className="text-[15px] font-semibold tracking-tight text-ink">
-          Sree Lakshmi
-        </div>
-        <div className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-faint">
-          Kalamkari
+        <div className="text-[15px] leading-tight font-semibold tracking-tight text-ink">
+          Sree Lakshmi Kalamkari
         </div>
       </div>
 
       <ul className="flex flex-col gap-0.5 p-3">
-        {NAV.map((item) => {
+        {visible.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(`${item.href}/`);
 
@@ -41,22 +42,14 @@ export function Sidebar() {
               <Link
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                aria-disabled={!item.ready}
                 className={[
-                  "flex items-center justify-between gap-2 rounded-md px-3 py-2 text-[13.5px] transition-colors",
+                  "flex items-center rounded-md px-3 py-2 text-[13.5px] transition-colors",
                   active
                     ? "bg-surface font-medium text-ink shadow-sm"
-                    : item.ready
-                      ? "text-ink-2 hover:bg-surface-3"
-                      : "text-faint",
+                    : "text-ink-2 hover:bg-surface-3",
                 ].join(" ")}
               >
                 {item.label}
-                {!item.ready && (
-                  <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-faint">
-                    soon
-                  </span>
-                )}
               </Link>
             </li>
           );

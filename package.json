@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "slk-core",
   "version": "0.0.0",
   "private": true,
@@ -17,7 +17,8 @@
     "db:generate": "pnpm --filter @slk/db db:generate",
     "db:migrate": "pnpm --filter @slk/db db:migrate",
     "db:studio": "pnpm --filter @slk/db db:studio",
-    "db:seed": "pnpm --filter @slk/db db:seed"
+    "db:seed": "pnpm --filter @slk/db db:seed",
+    "db:demo": "pnpm --filter @slk/db db:demo"
   },
   "devDependencies": {
     "prettier": "^3.4.2",

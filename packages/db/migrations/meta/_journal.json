@@ -8,6 +8,20 @@
       "when": 1788151061683,
       "tag": "0000_crazy_manta",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788157412788,
+      "tag": "0001_right_golden_guardian",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788157445163,
+      "tag": "0002_movement_append_only",
+      "breakpoints": true
     }
   ]
 }

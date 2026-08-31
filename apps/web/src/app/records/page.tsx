@@ -1,11 +1,15 @@
-import { NotBuiltYet } from "@/components/not-built-yet";
+import { loadRecords } from "@/lib/records";
 
-export default function RecordsPage() {
-  return (
-    <NotBuiltYet
-      title="Product Records"
-      what="Every design and colourway in one table, with inline editing, column filters, and the editor for basic details, prices, images and stock."
-      waitingOn="the catalogue tables — design, colourway and piece — which depend on decisions still open about how SLK manufactures and sells."
-    />
-  );
+import { RecordsTable } from "./records-table";
+
+export const dynamic = "force-dynamic";
+
+export default async function RecordsPage() {
+  const rows = await loadRecords();
+
+  const industries = [
+    ...new Set(rows.map((r) => r.industry).filter((i): i is string => i !== null)),
+  ].sort();
+
+  return <RecordsTable rows={rows} industries={industries} />;
 }

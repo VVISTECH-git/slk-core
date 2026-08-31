@@ -1,0 +1,275 @@
+import {
+  bigint,
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
+
+import { lookupValue } from "./lookup";
+
+/**
+ * The catalogue, in the shape the prototype settled on:
+ *
+ *   DESIGN     what it is — the whole taxonomy lives here
+ *     COLOURWAY  design + colour; priced, the sellable line
+ *       PIECE      one physical object (serialised product types only)
+ *         MOVEMENT   the only thing that ever changes a quantity
+ *
+ * Stock on hand is always derived from movements and never stored.
+ *
+ * Every taxonomy field is a reference to `lookup_value`, never the word
+ * itself, so renaming a value updates every record at once. The two sheets
+ * whose columns arrived empty — Garments and Home and Life Style — go in
+ * `extra` instead, because those genuinely change shape.
+ */
+
+/** A reference into the lookup master. Nullable: most attributes are optional. */
+const attr = (column: string) =>
+  uuid(column).references(() => lookupValue.id, { onDelete: "restrict" });
+
+export const location = pgTable(
+  "location",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+
+    /**
+     * Stock we own sits in internal locations. PRODUCTION, CUSTOMER and SCRAP
+     * are external, which is what makes "how many do we have" answerable as
+     * one sum rather than a list of special cases.
+     */
+    isInternal: boolean("is_internal").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("location_code_key").on(t.code)],
+);
+
+export const design = pgTable(
+  "design",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    /**
+     * TYPE-REGION-FIBRE-SEQ, e.g. SAR-SRI-SIL-0001. Built once at creation
+     * from abbreviations and then frozen: it is printed on the QR label, so
+     * renaming a taxonomy value must never move it.
+     */
+    code: text("code").notNull(),
+    seq: integer("seq").notNull(),
+
+    /** Composed from the taxonomy, unless someone typed over it. */
+    name: text("name").notNull(),
+    nameIsCustom: boolean("name_is_custom").notNull().default(false),
+
+    industryId: attr("industry_id"),
+    productTypeId: attr("product_type_id"),
+    garmentTypeId: attr("garment_type_id"),
+    homeProductTypeId: attr("home_product_type_id"),
+    homeWeavingCategoryId: attr("home_weaving_category_id"),
+    productionMethodId: attr("production_method_id"),
+    weaveStructureId: attr("weave_structure_id"),
+    fibreTypeId: attr("fibre_type_id"),
+    silkSubFamilyId: attr("silk_sub_family_id"),
+    cottonSubFamilyId: attr("cotton_sub_family_id"),
+    fabricTypeId: attr("fabric_type_id"),
+    audienceTypeId: attr("audience_type_id"),
+    craftTechniqueId: attr("craft_technique_id"),
+    craftSubTypeId: attr("craft_sub_type_id"),
+    regionalStyleId: attr("regional_style_id"),
+    motifCategoryId: attr("motif_category_id"),
+    motifId: attr("motif_id"),
+    borderStyleId: attr("border_style_id"),
+    borderHeightId: attr("border_height_id"),
+    sareeLayoutId: attr("saree_layout_id"),
+    palluDesignId: attr("pallu_design_id"),
+    blouseAvailableId: attr("blouse_available_id"),
+    blouseStatusId: attr("blouse_status_id"),
+    blouseMaterialId: attr("blouse_material_id"),
+    descriptorId: attr("descriptor_id"),
+    uomId: attr("uom_id"),
+
+    /**
+     * Sarees are tracked per physical piece; other product types use a pooled
+     * quantity. Defaulted from the product type at creation and overridable
+     * per design, exactly as the prototype allows.
+     */
+    isSerialised: boolean("is_serialised").notNull().default(false),
+
+    /**
+     * The Garments and Home and Life Style columns that arrived empty —
+     * Size, Colors, Sleeve Length, Length, Width. Free text until those
+     * lookup lists have values, at which point they become dropdowns with no
+     * migration.
+     */
+    extra: jsonb("extra").notNull().default({}),
+
+    notes: text("notes"),
+    status: text("status").notNull().default("active"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("design_code_key").on(t.code),
+    index("design_product_type_idx").on(t.productTypeId),
+    index("design_craft_technique_idx").on(t.craftTechniqueId),
+    index("design_regional_style_idx").on(t.regionalStyleId),
+  ],
+);
+
+export const colourway = pgTable(
+  "colourway",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    designId: uuid("design_id")
+      .notNull()
+      .references(() => design.id, { onDelete: "cascade" }),
+    colourId: attr("colour_id"),
+
+    /**
+     * The five prices the prototype carries, in paise. Integers, never floats
+     * — a rupee is 100 paise and rounding a price is always a bug.
+     * `retail` is what stock value is calculated from.
+     */
+    costMinor: bigint("cost_minor", { mode: "number" }),
+    makingMinor: bigint("making_minor", { mode: "number" }),
+    wholesaleMinor: bigint("wholesale_minor", { mode: "number" }),
+    retailMinor: bigint("retail_minor", { mode: "number" }),
+    mrpMinor: bigint("mrp_minor", { mode: "number" }),
+    currency: text("currency").notNull().default("INR"),
+
+    isActive: boolean("is_active").notNull().default(true),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("colourway_design_colour_key").on(t.designId, t.colourId),
+    index("colourway_design_idx").on(t.designId),
+  ],
+);
+
+export const piece = pgTable(
+  "piece",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    colourwayId: uuid("colourway_id")
+      .notNull()
+      .references(() => colourway.id, { onDelete: "cascade" }),
+
+    /** DESIGNCODE-COLOURTOKEN-NNN, printed on the QR label. Frozen. */
+    code: text("code").notNull(),
+    serial: integer("serial").notNull(),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("piece_code_key").on(t.code),
+    index("piece_colourway_idx").on(t.colourwayId),
+  ],
+);
+
+export const image = pgTable(
+  "image",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    colourwayId: uuid("colourway_id")
+      .notNull()
+      .references(() => colourway.id, { onDelete: "cascade" }),
+
+    /** Body, Pallu, Border, Blouse — the parts you actually judge a saree by. */
+    slot: text("slot").notNull(),
+    storageKey: text("storage_key").notNull(),
+    width: integer("width"),
+    height: integer("height"),
+    sortOrder: integer("sort_order").notNull().default(0),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("image_colourway_slot_key").on(t.colourwayId, t.slot),
+    index("image_colourway_idx").on(t.colourwayId),
+  ],
+);
+
+/**
+ * The ledger. Append-only: a mistake is corrected by appending its reverse,
+ * never by editing or deleting a row. The immutability trigger and the REVOKE
+ * that enforce this live in a hand-written migration alongside the generated
+ * one.
+ */
+export const movement = pgTable(
+  "movement",
+  {
+    id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+
+    colourwayId: uuid("colourway_id")
+      .notNull()
+      .references(() => colourway.id, { onDelete: "restrict" }),
+    pieceId: uuid("piece_id").references(() => piece.id, {
+      onDelete: "restrict",
+    }),
+
+    /**
+     * Always positive. Direction lives in from/to rather than in a sign,
+     * so a transfer is one row and there is no convention to get backwards.
+     */
+    qty: integer("qty").notNull(),
+
+    kind: text("kind").notNull(),
+
+    fromLocationId: uuid("from_location_id").references(() => location.id, {
+      onDelete: "restrict",
+    }),
+    toLocationId: uuid("to_location_id").references(() => location.id, {
+      onDelete: "restrict",
+    }),
+
+    /** When it happened on the floor, against when it was typed in. */
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+
+    reason: text("reason"),
+    reference: text("reference"),
+    note: text("note"),
+
+    /** Makes a webhook delivered twice a no-op rather than a double count. */
+    idempotencyKey: text("idempotency_key"),
+  },
+  (t) => [
+    uniqueIndex("movement_idempotency_key").on(t.idempotencyKey),
+    index("movement_colourway_idx").on(t.colourwayId, t.occurredAt),
+    index("movement_piece_idx").on(t.pieceId),
+  ],
+);
+
+export type Location = typeof location.$inferSelect;
+export type Design = typeof design.$inferSelect;
+export type Colourway = typeof colourway.$inferSelect;
+export type Piece = typeof piece.$inferSelect;
+export type Movement = typeof movement.$inferSelect;

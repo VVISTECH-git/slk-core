@@ -12,7 +12,9 @@ export {
   compareLabels,
   findDuplicates,
   normaliseLabel,
+  LOOKUP_STATUSES,
   type DuplicateHint,
+  type LookupStatus,
   type VocabularyEntry,
 } from "./vocabulary";
 

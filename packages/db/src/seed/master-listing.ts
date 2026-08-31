@@ -42,7 +42,6 @@ export interface SeedList {
   label: string;
   description: string;
   /** New values are stored lower case, as the workbook has them. */
-  lowercaseValues?: boolean;
   /** Application logic reads these by code; values may be relabelled, not removed. */
   isSystem?: boolean;
   /** Code of the list this list's `parent` labels are drawn from. */
@@ -332,8 +331,7 @@ export const MASTER_LISTING: SeedList[] = [
     code: "colour",
     label: "Colour",
     description:
-      "Stored lower case, as the workbook has it. Four web-palette names are flagged NEEDS REVIEW.",
-    lowercaseValues: true,
+      "Swatches are resolved from the name, so a new colour gets one without anyone picking a hex. Four web-palette names are flagged NEEDS REVIEW.",
     values: [
       { label: "beige" },
       { label: "black" },
@@ -385,8 +383,7 @@ export const MASTER_LISTING: SeedList[] = [
     code: "descriptor",
     label: "Descriptor",
     description:
-      "Stored lower case. Sales words, size words and duplicates of other columns were removed.",
-    lowercaseValues: true,
+      "Sales words, size words and duplicates of other columns were removed.",
     values: plain(
       "contrast",
       "designer",

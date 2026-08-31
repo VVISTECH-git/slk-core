@@ -8,22 +8,64 @@
  */
 
 /**
- * For display only.
+ * Words that stay lower case inside a title.
  *
- * The workbook stores `colour` and `descriptor` in lower case and the
- * database keeps them that way, because that is what the source says. People
- * reading a catalogue should still see "Bottle Green", not "bottle green".
- * Everything else in the vocabulary is already cased as it should read, so
- * only the first letter of each word is touched and the rest is left alone —
+ * Without these, capitalising every word turns "Up to 3 inch" into "Up To 3
+ * Inch" and "Half and Half" into "Half And Half" — which is what happened
+ * when this function did exactly that.
+ */
+const MINOR_WORDS = new Set([
+  "a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "nor",
+  "of", "on", "or", "per", "the", "to", "via", "vs", "with",
+]);
+
+/**
+ * A word the writer has already cased deliberately.
+ *
+ * A capital anywhere but the first character means someone meant it: 3D,
+ * UnStitched, McCall. Re-casing those is damage, not normalisation.
+ */
+function deliberatelyCased(word: string): boolean {
+  return /[A-Z]/.test(word.slice(1));
+}
+
+/**
+ * The one casing rule, applied when a value is written rather than when it is
+ * read.
+ *
+ * Storing what should be read is what keeps a value from saying "Contrast" on
+ * one screen and "contrast" on another. The invariant every stored label
+ * holds is `titleCase(label) === label`, so re-saving an unchanged value is a
+ * no-op and the editor never opens already dirty.
+ *
+ * Everything after the first letter of a word is left alone, so
  * "Sico (Silk-Cotton Blend)" survives unchanged.
  */
 export function titleCase(value: string | null | undefined): string {
   if (!value) return "";
 
-  return value.replace(
-    /(^|[\s(/-])([a-z])/g,
-    (_match, before: string, letter: string) => before + letter.toUpperCase(),
-  );
+  // Split on the separators but keep them, so spacing and punctuation come
+  // back exactly as they were.
+  const parts = value.split(/([\s(/-]+)/);
+
+  const wordIndices = parts
+    .map((part, i) => (/^[\s(/-]+$/.test(part) || part === "" ? -1 : i))
+    .filter((i) => i >= 0);
+
+  const first = wordIndices[0];
+  const last = wordIndices[wordIndices.length - 1];
+
+  return parts
+    .map((part, i) => {
+      if (i !== first && i !== last && MINOR_WORDS.has(part.toLowerCase())) {
+        return part.toLowerCase();
+      }
+
+      if (deliberatelyCased(part)) return part;
+
+      return part.replace(/^[a-z]/, (letter) => letter.toUpperCase());
+    })
+    .join("");
 }
 
 /** First three letters, ignoring spaces and punctuation. */

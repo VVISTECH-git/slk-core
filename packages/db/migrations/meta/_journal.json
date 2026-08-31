@@ -29,6 +29,34 @@
       "when": 1788177259422,
       "tag": "0003_wonderful_sauron",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788260000000,
+      "tag": "0004_lookup_value_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788260100000,
+      "tag": "0005_init_caps_everywhere",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788260200000,
+      "tag": "0006_normalise_labels",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788260300000,
+      "tag": "0007_list_descriptions",
+      "breakpoints": true
     }
   ]
 }

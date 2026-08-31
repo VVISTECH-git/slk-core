@@ -51,7 +51,6 @@ async function seedList(
         code: spec.code,
         label: spec.label,
         description: spec.description,
-        lowercaseValues: spec.lowercaseValues ?? false,
         isSystem: spec.isSystem ?? false,
       })
       .returning();
@@ -131,7 +130,7 @@ async function seedList(
       label: value.label,
       sortOrder: index,
       parentValueId,
-      isProposed: value.proposed ?? false,
+      status: (value.proposed ?? false) ? "proposed" : "active",
       needsReview: value.needsReview ?? false,
       meta: value.meta ?? {},
     });

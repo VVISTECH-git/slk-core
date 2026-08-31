@@ -300,7 +300,7 @@ export function RecordEditor({
                   These attributes belong to the <strong>design</strong>, which has{" "}
                   {record.siblings.length} colours —{" "}
                   {record.siblings
-                    .map((s) => titleCase(s.colour) || "unset")
+                    .map((s) => s.colour ?? "unset")
                     .join(", ")}
                   . A change here applies to all of them. Colour, prices and stock are
                   for this one only.
@@ -591,7 +591,13 @@ function Combo({
         <option value="">{placeholder ?? "Choose…"}</option>
         {values.map((o) => (
           <option key={o.id} value={o.id}>
-            {titleCase(o.label)}
+            {/*
+              Shown exactly as stored. Title-casing here is what turned
+              "Up to 3 Inch" into "Up To 3 Inch" and "3D Print" into "3d
+              Print" — the label is already correct, because Master Lists
+              applies the casing rule when it is written.
+            */}
+            {o.label}
           </option>
         ))}
       </select>

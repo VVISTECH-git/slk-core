@@ -1,15 +1,13 @@
-import { duplicatesFor, loadVocabulary } from "@/lib/vocabulary";
+import { loadAllValues, loadLists } from "@/lib/vocabulary";
 
-import { Workbench } from "./workbench";
+import { Directory } from "./directory";
 
 export const dynamic = "force-dynamic";
 
-export default async function VocabularyPage() {
-  const { values, lists } = await loadVocabulary();
+export default async function MasterListsPage() {
+  const [lists, values] = await Promise.all([loadLists(), loadAllValues()]);
 
-  // 227 values is 25k comparisons — cheap enough on every load, and running it
-  // server-side keeps the rule out of the browser bundle.
-  const duplicates = duplicatesFor(values);
+  const attention = lists.reduce((sum, l) => sum + l.attention, 0);
 
-  return <Workbench values={values} lists={lists} duplicates={duplicates} />;
+  return <Directory lists={lists} values={values} attention={attention} />;
 }

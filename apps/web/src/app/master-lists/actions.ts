@@ -4,41 +4,24 @@ import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { lookupList, lookupValue } from "@slk/db";
-import { titleCase } from "@slk/domain";
+import { LOOKUP_STATUSES, titleCase, type LookupStatus } from "@slk/domain";
 
 import { db } from "@/lib/db";
 
 /**
  * Every value is stored the way it should read: Init Caps, whatever was
- * typed.
+ * typed. One rule applied at the point of writing is simpler than two
+ * conventions reconciled at every point of reading.
  *
- * The workbook keeps `colour` and `descriptor` in lower case, and the
- * database used to match it. That leaked — the same value read Contrast on
- * one screen and contrast on another, and a value typed into any other list
- * was stored exactly as typed, so "dfdf" stayed "dfdf". One rule applied at
- * the point of writing is simpler than two conventions reconciled at every
- * point of reading.
- */
-
-/**
- * Every action is an untrusted entry point — a Server Action is reachable by
- * POST whether or not the UI rendered the control. So each one re-reads what
- * it is about to touch and re-checks the rule, and none of them trust that
- * the client only sent what the client was offered.
+ * Every action here is an untrusted entry point — a Server Action is
+ * reachable by POST whether or not the UI rendered the control. So each one
+ * re-reads what it is about to touch and re-checks the rule, and none of them
+ * trust that the client only sent what the client was offered.
  */
 
 export interface ActionResult {
   ok: boolean;
   message: string;
-}
-
-/** One row's worth of pending change. Absent fields mean "leave alone". */
-export interface ValueEdit {
-  id: string;
-  label?: string;
-  listCode?: string;
-  isActive?: boolean;
-  clearFlags?: boolean;
 }
 
 function slugify(label: string): string {
@@ -49,170 +32,286 @@ function slugify(label: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+function isStatus(value: unknown): value is LookupStatus {
+  return (
+    typeof value === "string" &&
+    (LOOKUP_STATUSES as readonly string[]).includes(value)
+  );
+}
+
+function revalidate(listCode?: string) {
+  revalidatePath("/master-lists");
+  if (listCode !== undefined) revalidatePath(`/master-lists/${listCode}`);
+  // Retiring a value changes what the record editor offers.
+  revalidatePath("/records");
+}
+
+/* ------------------------------------------------------------------ values */
+
+export interface ValuePatch {
+  label?: string;
+  description?: string | null;
+  status?: LookupStatus;
+  needsReview?: boolean;
+  parentId?: string | null;
+}
+
 /**
- * Applies a batch of edits in one transaction.
+ * Saves one value — the drawer's Save.
  *
- * All-or-nothing on purpose: someone renaming eight values in one pass should
- * not end up with three applied and five rejected, having to work out which.
+ * One value at a time rather than a batch of pending edits. The old screen
+ * accumulated drafts across 229 rows and saved them together, which meant a
+ * single rejected rename discarded work done on seven other rows.
  */
-export async function applyEdits(edits: ValueEdit[]): Promise<ActionResult> {
-  if (edits.length === 0) return { ok: true, message: "Nothing to save." };
-  if (edits.length > 500) {
-    return { ok: false, message: "Too many changes at once — save in batches." };
-  }
-
-  const ids = edits.map((e) => e.id);
-
-  const rows = await db
+export async function saveValue(
+  valueId: string,
+  patch: ValuePatch,
+): Promise<ActionResult> {
+  const [current] = await db
     .select({
       id: lookupValue.id,
       label: lookupValue.label,
       listId: lookupValue.listId,
       listCode: lookupList.code,
-      lowercase: lookupList.lowercaseValues,
+      status: lookupValue.status,
+      isDefault: lookupValue.isDefault,
     })
     .from(lookupValue)
     .innerJoin(lookupList, eq(lookupList.id, lookupValue.listId))
-    .where(inArray(lookupValue.id, ids));
+    .where(eq(lookupValue.id, valueId));
 
-  const current = new Map(rows.map((r) => [r.id, r]));
-
-  if (current.size !== new Set(ids).size) {
-    return { ok: false, message: "Some of those values no longer exist. Reload and try again." };
+  if (current === undefined) {
+    return { ok: false, message: "That value no longer exists. Reload the page." };
   }
 
-  const lists = await db.select().from(lookupList);
-  const listByCode = new Map(lists.map((l) => [l.code, l]));
+  const set: Record<string, unknown> = { updatedAt: new Date() };
 
-  // Validate everything before writing anything.
-  const planned: {
-    id: string;
-    label: string;
-    code: string;
-    listId: string;
-    isActive?: boolean;
-    clearFlags: boolean;
-  }[] = [];
+  if (patch.label !== undefined) {
+    const label = titleCase(patch.label.trim());
 
-  // Labels claimed within this batch, so two renames cannot collide with
-  // each other as well as with what is already stored.
-  const claimed = new Set<string>();
+    if (label === "") return { ok: false, message: "A value needs a name." };
 
-  for (const edit of edits) {
-    const row = current.get(edit.id);
-    if (row === undefined) continue;
-
-    const targetList =
-      edit.listCode === undefined ? null : listByCode.get(edit.listCode);
-
-    if (edit.listCode !== undefined && targetList === undefined) {
-      return { ok: false, message: `No list called "${edit.listCode}".` };
-    }
-
-    const listId = targetList?.id ?? row.listId;
-
-    const raw = (edit.label ?? row.label).trim();
-    if (raw === "") {
-      return { ok: false, message: `"${row.label}" cannot be left blank.` };
-    }
-
-    const label = titleCase(raw);
-    const key = `${listId}::${label.toLowerCase()}`;
-
-    if (claimed.has(key)) {
-      return { ok: false, message: `Two of these changes both produce "${label}".` };
-    }
-    claimed.add(key);
-
-    const clash = await db
+    const [clash] = await db
       .select({ label: lookupValue.label })
       .from(lookupValue)
       .where(
         and(
-          eq(lookupValue.listId, listId),
-          ne(lookupValue.id, edit.id),
+          eq(lookupValue.listId, current.listId),
+          ne(lookupValue.id, valueId),
           sql`lower(${lookupValue.label}) = lower(${label})`,
         ),
       );
 
-    if (clash[0] !== undefined) {
+    if (clash !== undefined) {
       return {
         ok: false,
-        message: `"${clash[0].label}" is already in that list. Merge them instead of renaming.`,
+        message: `"${clash.label}" is already in this list. Merge them instead of renaming.`,
       };
     }
 
-    // Retiring a parent would strand its children on a value that is no
-    // longer offered.
-    if (edit.isActive === false) {
-      const [children] = await db
-        .select({ n: sql<number>`count(*)::int` })
-        .from(lookupValue)
-        .where(
-          and(
-            eq(lookupValue.parentValueId, edit.id),
-            eq(lookupValue.isActive, true),
-          ),
-        );
+    // The code is frozen at creation. Records hold onto it and design codes
+    // printed on QR labels are built from it, so a rename must not move it.
+    set["label"] = label;
+  }
 
-      if ((children?.n ?? 0) > 0) {
-        return {
-          ok: false,
-          message: `${children?.n} value${children?.n === 1 ? "" : "s"} still belong to "${row.label}".`,
-        };
+  if (patch.description !== undefined) {
+    const trimmed = patch.description?.trim() ?? "";
+    set["description"] = trimmed === "" ? null : trimmed;
+  }
+
+  if (patch.needsReview !== undefined) set["needsReview"] = patch.needsReview;
+
+  if (patch.parentId !== undefined) {
+    if (patch.parentId === valueId) {
+      return { ok: false, message: "A value cannot belong to itself." };
+    }
+
+    if (patch.parentId !== null) {
+      const [parent] = await db
+        .select({ id: lookupValue.id })
+        .from(lookupValue)
+        .where(eq(lookupValue.id, patch.parentId));
+
+      if (parent === undefined) {
+        return { ok: false, message: "That parent value no longer exists." };
       }
     }
 
-    planned.push({
-      id: edit.id,
-      label,
-      // The code is frozen at creation. Records hold onto it and design codes
-      // printed on QR labels are built from it, so a rename must not move it.
-      // Only a move to another list needs a fresh one, and only if it clashes.
-      code: row.listId === listId ? "" : slugify(label),
-      listId,
-      isActive: edit.isActive,
-      clearFlags: edit.clearFlags ?? false,
-    });
+    set["parentValueId"] = patch.parentId;
   }
 
-  await db.transaction(async (tx) => {
-    for (const p of planned) {
-      await tx
-        .update(lookupValue)
-        .set({
-          label: p.label,
-          listId: p.listId,
-          ...(p.code === "" ? {} : { code: p.code }),
-          ...(p.isActive === undefined ? {} : { isActive: p.isActive }),
-          ...(p.clearFlags ? { isProposed: false, needsReview: false } : {}),
-          updatedAt: new Date(),
-        })
-        .where(eq(lookupValue.id, p.id));
+  if (patch.status !== undefined) {
+    if (!isStatus(patch.status)) {
+      return { ok: false, message: "Unknown status." };
     }
-  });
 
-  revalidatePath("/master-lists");
+    const blocked = await statusChangeBlocked(
+      valueId,
+      current.label,
+      patch.status,
+    );
+    if (blocked !== null) return { ok: false, message: blocked };
 
-  return {
-    ok: true,
-    message: `Saved ${planned.length} change${planned.length === 1 ? "" : "s"}.`,
-  };
+    set["status"] = patch.status;
+
+    // A value that is no longer offered cannot be what a new record starts
+    // with. Clearing it here rather than refusing the change keeps the more
+    // deliberate action — retiring — from being blocked by the incidental one.
+    if (patch.status !== "active" && current.isDefault) set["isDefault"] = false;
+  }
+
+  await db.update(lookupValue).set(set).where(eq(lookupValue.id, valueId));
+
+  revalidate(current.listCode);
+
+  return { ok: true, message: `Saved "${set["label"] ?? current.label}".` };
 }
 
 /**
- * Every column in the database that points at a lookup value.
+ * Whether moving a value out of Active would strand something.
  *
- * Read from Postgres's own catalogue rather than listed by hand: `design`
- * alone has twenty-odd of them, and a merge that missed one would fail at the
- * foreign key with a stack trace instead of doing the job. New tables that
- * reference the vocabulary are picked up here without anyone remembering to
- * add them.
+ * Returns the reason, or null if the change is fine.
  */
+async function statusChangeBlocked(
+  valueId: string,
+  label: string,
+  next: LookupStatus,
+): Promise<string | null> {
+  if (next === "active") return null;
+
+  const [children] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(lookupValue)
+    .where(
+      and(
+        eq(lookupValue.parentValueId, valueId),
+        eq(lookupValue.status, "active"),
+      ),
+    );
+
+  const n = children?.n ?? 0;
+
+  return n === 0
+    ? null
+    : `${n} value${n === 1 ? "" : "s"} still belong to "${label}". Move them first.`;
+}
+
+/** Moves several values at once — the type screen's bulk bar. */
+export async function setStatus(
+  valueIds: string[],
+  status: LookupStatus,
+): Promise<ActionResult> {
+  if (valueIds.length === 0) return { ok: false, message: "Nothing selected." };
+  if (!isStatus(status)) return { ok: false, message: "Unknown status." };
+
+  const rows = await db
+    .select({
+      id: lookupValue.id,
+      label: lookupValue.label,
+      listCode: lookupList.code,
+    })
+    .from(lookupValue)
+    .innerJoin(lookupList, eq(lookupList.id, lookupValue.listId))
+    .where(inArray(lookupValue.id, valueIds));
+
+  if (rows.length !== new Set(valueIds).size) {
+    return { ok: false, message: "Some of those no longer exist. Reload the page." };
+  }
+
+  // Checked before anything is written, so the whole batch either applies or
+  // is refused with the reason.
+  for (const row of rows) {
+    const blocked = await statusChangeBlocked(row.id, row.label, status);
+    if (blocked !== null) return { ok: false, message: blocked };
+  }
+
+  await db
+    .update(lookupValue)
+    .set({
+      status,
+      ...(status === "active" ? {} : { isDefault: false }),
+      updatedAt: new Date(),
+    })
+    .where(inArray(lookupValue.id, valueIds));
+
+  revalidate(rows[0]?.listCode);
+
+  const n = rows.length;
+  return { ok: true, message: `${n} value${n === 1 ? "" : "s"} moved to ${titleCase(status)}.` };
+}
+
+/** Clears the review flag — the inbox's "checked, it's fine". */
+export async function clearReview(valueIds: string[]): Promise<ActionResult> {
+  if (valueIds.length === 0) return { ok: false, message: "Nothing selected." };
+
+  const updated = await db
+    .update(lookupValue)
+    .set({ needsReview: false, updatedAt: new Date() })
+    .where(inArray(lookupValue.id, valueIds))
+    .returning({ id: lookupValue.id });
+
+  revalidate();
+
+  const n = updated.length;
+  return { ok: true, message: `${n} value${n === 1 ? "" : "s"} marked as checked.` };
+}
+
+export async function createValue(
+  listCode: string,
+  label: string,
+): Promise<ActionResult & { id?: string }> {
+  const [list] = await db
+    .select()
+    .from(lookupList)
+    .where(eq(lookupList.code, listCode));
+
+  if (list === undefined) return { ok: false, message: "No such list." };
+
+  const clean = titleCase(label.trim());
+  if (clean === "" || slugify(clean) === "") {
+    return { ok: false, message: "That is not a usable value." };
+  }
+
+  const [clash] = await db
+    .select({ label: lookupValue.label })
+    .from(lookupValue)
+    .where(
+      and(
+        eq(lookupValue.listId, list.id),
+        sql`lower(${lookupValue.label}) = lower(${clean})`,
+      ),
+    );
+
+  if (clash !== undefined) {
+    return { ok: false, message: `"${clash.label}" is already in this list.` };
+  }
+
+  const [next] = await db
+    .select({ max: sql<number>`coalesce(max(${lookupValue.sortOrder}), -1)::int` })
+    .from(lookupValue)
+    .where(eq(lookupValue.listId, list.id));
+
+  const [created] = await db
+    .insert(lookupValue)
+    .values({
+      listId: list.id,
+      code: slugify(clean),
+      label: clean,
+      sortOrder: (next?.max ?? -1) + 1,
+    })
+    .returning({ id: lookupValue.id });
+
+  revalidate(listCode);
+
+  return { ok: true, message: `Added "${clean}".`, id: created?.id };
+}
+
+/* -------------------------------------------------------------------- usage */
+
 async function referencingColumns(): Promise<
   { table: string; column: string }[]
 > {
-  return db.execute<{ table: string; column: string }>(sql`
+  const rows = await db.execute<{ table: string; column: string }>(sql`
     select
       con.conrelid::regclass::text as table,
       att.attname                  as column
@@ -224,6 +323,8 @@ async function referencingColumns(): Promise<
       and con.confrelid = 'lookup_value'::regclass
     order by 1, 2
   `);
+
+  return rows;
 }
 
 /**
@@ -239,7 +340,6 @@ function idList(ids: string[]) {
   );
 }
 
-/** How many rows across the whole database point at each of these values. */
 export async function countUsage(
   valueIds: string[],
 ): Promise<Record<string, number>> {
@@ -262,13 +362,13 @@ export async function countUsage(
       group by 1
     `);
 
-    for (const row of rows) {
-      counts[row.id] = (counts[row.id] ?? 0) + row.n;
-    }
+    for (const row of rows) counts[row.id] = (counts[row.id] ?? 0) + row.n;
   }
 
   return counts;
 }
+
+/* ------------------------------------------------------------ merge, delete */
 
 /**
  * Folds one or more values into a survivor.
@@ -305,9 +405,14 @@ export async function mergeValues(
   if (merged.some((m) => m.listId !== survivor.listId)) {
     return {
       ok: false,
-      message: "Values can only be merged within the same list. Move them first.",
+      message: "Values can only be merged within the same list.",
     };
   }
+
+  const [list] = await db
+    .select({ code: lookupList.code })
+    .from(lookupList)
+    .where(eq(lookupList.id, survivor.listId));
 
   const columns = await referencingColumns();
   const ids = idList(mergedIds);
@@ -332,8 +437,7 @@ export async function mergeValues(
     await tx.delete(lookupValue).where(inArray(lookupValue.id, mergedIds));
   });
 
-  revalidatePath("/master-lists");
-  revalidatePath("/records");
+  revalidate(list?.code);
 
   const names = merged.map((m) => `"${m.label}"`).join(", ");
 
@@ -354,12 +458,16 @@ export async function mergeValues(
  * value, and leaving it struck through in the list forever is just clutter.
  */
 export async function deleteValue(valueId: string): Promise<ActionResult> {
-  const rows = await db
-    .select()
+  const [value] = await db
+    .select({
+      id: lookupValue.id,
+      label: lookupValue.label,
+      listCode: lookupList.code,
+    })
     .from(lookupValue)
+    .innerJoin(lookupList, eq(lookupList.id, lookupValue.listId))
     .where(eq(lookupValue.id, valueId));
 
-  const value = rows[0];
   if (value === undefined) return { ok: false, message: "No such value." };
 
   const usage = (await countUsage([valueId]))[valueId] ?? 0;
@@ -385,7 +493,7 @@ export async function deleteValue(valueId: string): Promise<ActionResult> {
 
   await db.delete(lookupValue).where(eq(lookupValue.id, valueId));
 
-  revalidatePath("/master-lists");
+  revalidate(value.listCode);
 
   return { ok: true, message: `Deleted "${value.label}".` };
 }
@@ -401,18 +509,24 @@ export async function setDefaultValue(
   valueId: string,
   makeDefault: boolean,
 ): Promise<ActionResult> {
-  const rows = await db
-    .select()
+  const [value] = await db
+    .select({
+      id: lookupValue.id,
+      label: lookupValue.label,
+      listId: lookupValue.listId,
+      listCode: lookupList.code,
+      status: lookupValue.status,
+    })
     .from(lookupValue)
+    .innerJoin(lookupList, eq(lookupList.id, lookupValue.listId))
     .where(eq(lookupValue.id, valueId));
 
-  const value = rows[0];
   if (value === undefined) return { ok: false, message: "No such value." };
 
-  if (makeDefault && !value.isActive) {
+  if (makeDefault && value.status !== "active") {
     return {
       ok: false,
-      message: "A retired value cannot be the default — restore it first.",
+      message: `"${value.label}" is ${value.status} — only an Active value can be what new records start with.`,
     };
   }
 
@@ -435,8 +549,7 @@ export async function setDefaultValue(
     }
   });
 
-  revalidatePath("/master-lists");
-  revalidatePath("/records");
+  revalidate(value.listCode);
 
   return {
     ok: true,
@@ -445,6 +558,56 @@ export async function setDefaultValue(
       : `"${value.label}" is no longer the default.`,
   };
 }
+
+/* --------------------------------------------------------------- the type */
+
+export async function saveList(
+  listCode: string,
+  patch: { label?: string; description?: string | null },
+): Promise<ActionResult> {
+  const [list] = await db
+    .select()
+    .from(lookupList)
+    .where(eq(lookupList.code, listCode));
+
+  if (list === undefined) return { ok: false, message: "No such list." };
+
+  const set: Record<string, unknown> = { updatedAt: new Date() };
+
+  if (patch.label !== undefined) {
+    const label = titleCase(patch.label.trim());
+    if (label === "") return { ok: false, message: "A list needs a name." };
+
+    const [clash] = await db
+      .select({ label: lookupList.label })
+      .from(lookupList)
+      .where(
+        and(
+          ne(lookupList.id, list.id),
+          sql`lower(${lookupList.label}) = lower(${label})`,
+        ),
+      );
+
+    if (clash !== undefined) {
+      return { ok: false, message: `Another list is already called "${label}".` };
+    }
+
+    set["label"] = label;
+  }
+
+  if (patch.description !== undefined) {
+    const trimmed = patch.description?.trim() ?? "";
+    set["description"] = trimmed === "" ? null : trimmed;
+  }
+
+  await db.update(lookupList).set(set).where(eq(lookupList.id, list.id));
+
+  revalidate(listCode);
+
+  return { ok: true, message: "Saved." };
+}
+
+/* -------------------------------------------------------------------- paste */
 
 export interface PastePreview {
   listCode: string;
@@ -462,9 +625,10 @@ export async function previewPaste(
   listCode: string,
   text: string,
 ): Promise<PastePreview | ActionResult> {
-  const list = (
-    await db.select().from(lookupList).where(eq(lookupList.code, listCode))
-  )[0];
+  const [list] = await db
+    .select()
+    .from(lookupList)
+    .where(eq(lookupList.code, listCode));
 
   if (list === undefined) return { ok: false, message: "No such list." };
 
@@ -505,9 +669,10 @@ export async function commitPaste(
 ): Promise<ActionResult> {
   if (labels.length === 0) return { ok: false, message: "Nothing to add." };
 
-  const list = (
-    await db.select().from(lookupList).where(eq(lookupList.code, listCode))
-  )[0];
+  const [list] = await db
+    .select()
+    .from(lookupList)
+    .where(eq(lookupList.code, listCode));
 
   if (list === undefined) return { ok: false, message: "No such list." };
 
@@ -534,7 +699,7 @@ export async function commitPaste(
 
   await db.insert(lookupValue).values(rows).onConflictDoNothing();
 
-  revalidatePath("/master-lists");
+  revalidate(listCode);
 
   return {
     ok: true,

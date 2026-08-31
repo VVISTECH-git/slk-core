@@ -42,9 +42,11 @@ export async function loadOptions(): Promise<Options> {
     })
     .from(lookupValue)
     .innerJoin(lookupList, eq(lookupList.id, lookupValue.listId))
-    // Retiring a value on the Values screen is what takes it out of every
-    // dropdown here — that is the control over what may be chosen.
-    .where(eq(lookupValue.isActive, true))
+    // Only Active values are offered. Draft is still being worked out,
+    // Proposed is awaiting confirmation, and Retired has been withdrawn —
+    // none of the three should be selectable on a new record. Moving a value
+    // to Active on Master Lists is what puts it in every dropdown here.
+    .where(eq(lookupValue.status, "active"))
     .orderBy(asc(lookupList.code), asc(lookupValue.sortOrder));
 
   const options: Options = {};

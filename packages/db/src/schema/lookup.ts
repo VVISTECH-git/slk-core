@@ -12,6 +12,8 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
+import type { LookupStatus } from "@slk/domain";
+
 /**
  * The lookup master — SLK's controlled vocabulary.
  *
@@ -20,8 +22,13 @@ import {
  * design, every composed name and half a dozen mapping structures.
  *
  * Seeded from `Master Listing - New.xlsx` verbatim. The workbook's own
- * uncertainty travels with it: see `isProposed` and `needsReview`.
+ * uncertainty travels with it: see `status` and `needsReview`.
  */
+
+// The states themselves live in @slk/domain, not here. The ops app's value
+// editor is a client component, and importing a runtime value out of this
+// package would pull the Postgres driver into the browser bundle.
+export type { LookupStatus } from "@slk/domain";
 
 export const lookupList = pgTable(
   "lookup_list",
@@ -32,17 +39,16 @@ export const lookupList = pgTable(
     description: text("description"),
 
     /**
-     * The workbook stores `colour` and `descriptor` in lower case. New values
-     * added through the UI follow suit rather than creating "Indigo" beside
-     * "indigo".
-     */
-    lowercaseValues: boolean("lowercase_values").notNull().default(false),
-
-    /**
      * A list the application depends on by code — UOM, Blouse Available.
      * Values may be relabelled but not removed, because logic reads them.
      */
     isSystem: boolean("is_system").notNull().default(false),
+
+    /**
+     * The order the directory reads in. Alphabetical puts Audience above
+     * Product Type, which is not how anyone thinks about the catalogue.
+     */
+    sortOrder: integer("sort_order").notNull().default(0),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -69,11 +75,24 @@ export const lookupValue = pgTable(
     /** The workbook's order, which is not always alphabetical. */
     sortOrder: integer("sort_order").notNull().default(0),
 
+    /** What the value means, where the label alone does not say. */
+    description: text("description"),
+
     /**
-     * Retiring a value sets this false. Existing records keep it; it simply
-     * stops being offered on new entries. Values in use are never deleted.
+     * Where the value sits in its life. One column, four states, because the
+     * three booleans this replaces could describe five combinations that mean
+     * nothing — a value both retired and proposed, most obviously.
+     *
+     *   draft     Being worked out. Not offered on new records.
+     *   proposed  The Correction Log's suggestion, awaiting confirmation.
+     *   active    Offered.
+     *   retired   No longer offered. Records that carry it keep it — that is
+     *             the whole reason retiring exists rather than deleting.
+     *
+     * Constrained in the database (`lookup_value_status_known`) rather than
+     * only in TypeScript, because a Server Action is reachable by POST.
      */
-    isActive: boolean("is_active").notNull().default(true),
+    status: text("status").$type<LookupStatus>().notNull().default("active"),
 
     /**
      * The workbook's row-aligned companion column, in both its forms:
@@ -98,10 +117,14 @@ export const lookupValue = pgTable(
      */
     isDefault: boolean("is_default").notNull().default(false),
 
-    /** Correction Log marks these as proposals awaiting confirmation. */
-    isProposed: boolean("is_proposed").notNull().default(false),
-
-    /** Correction Log flags these as NEEDS REVIEW against real stock. */
+    /**
+     * Flagged for checking against real stock — the Correction Log's NEEDS
+     * REVIEW column.
+     *
+     * Deliberately not a status. A value can need checking while it is draft,
+     * proposed or active, and answering the question does not move it along
+     * its life. Two orthogonal things do not belong in one column.
+     */
     needsReview: boolean("needs_review").notNull().default(false),
 
     /** Colour swatch hex, garment piece counts — per-value extras. */
@@ -118,6 +141,7 @@ export const lookupValue = pgTable(
     uniqueIndex("lookup_value_list_code_key").on(t.listId, t.code),
     uniqueIndex("lookup_value_list_label_key").on(t.listId, t.label),
     index("lookup_value_list_sort_idx").on(t.listId, t.sortOrder),
+    index("lookup_value_list_status_idx").on(t.listId, t.status),
     index("lookup_value_parent_idx").on(t.parentValueId),
     // One default per list, enforced by the database rather than by whichever
     // code path happens to set it.

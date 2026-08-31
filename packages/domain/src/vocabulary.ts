@@ -6,6 +6,29 @@
  * nothing but the two words.
  */
 
+/**
+ * Where a value sits in its life.
+ *
+ *   draft     Being worked out. Not offered on new records.
+ *   proposed  The Correction Log's suggestion, awaiting confirmation.
+ *   active    Offered.
+ *   retired   No longer offered. Records that carry it keep it — that is the
+ *             whole reason retiring exists rather than deleting.
+ *
+ * Here rather than in `@slk/db` because the ops app's value editor is a
+ * client component, and importing a runtime value out of the database package
+ * pulls the Postgres driver into the browser bundle. The states are a domain
+ * fact anyway; the column that stores them is the database's business.
+ */
+export const LOOKUP_STATUSES = [
+  "draft",
+  "proposed",
+  "active",
+  "retired",
+] as const;
+
+export type LookupStatus = (typeof LOOKUP_STATUSES)[number];
+
 export interface VocabularyEntry {
   id: string;
   label: string;

@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { colourSwatch, isPaleSwatch, titleCase } from "@slk/domain";
+import { colourSwatch, isPaleSwatch } from "@slk/domain";
 
 import type { Options, RecordDetail } from "@/lib/editor";
 import type { RecordRow } from "@/lib/records";
@@ -22,7 +22,7 @@ import { ArchiveDialog, RecordEditor } from "./record-editor";
  *
  *   Product      "Traditional Kalamkari Srikalahasti Mul Mul Cotton Saree"
  *   Fiber Type   "Sico (Silk-Cotton Blend)"
- *   Colour       "dark olive green", plus its swatch
+ *   Colour       "Dark Olive Green", plus its swatch
  */
 const COLUMNS = [
   { key: "name", label: "Product", width: 400 },
@@ -61,10 +61,8 @@ function cell(row: RecordRow, key: ColumnKey): string {
       return row.priceMinor === null ? "" : money(row.priceMinor);
     case "quantity":
       return String(row.quantity);
-    // Stored lower case because the workbook has it that way; read as a
-    // proper name.
     case "colour":
-      return titleCase(row.colour);
+      return row.colour ?? "";
     default:
       return row[key] ?? "";
   }

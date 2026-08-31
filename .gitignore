@@ -40,6 +40,8 @@ Thumbs.db
 # without asking. Untracked deliberately: third-party instructions that arrive
 # as a side effect of provisioning a database should not be committed to this
 # repo unread.
-.agents/
-.claude/skills/
-skills-lock.json
+# A pattern containing a slash is anchored to this file's directory, so these
+# need the ** to reach apps/web.
+**/.agents/
+**/.claude/skills/
+**/skills-lock.json

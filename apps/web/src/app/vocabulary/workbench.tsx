@@ -183,7 +183,7 @@ export function Workbench({
               count={attention.length}
               tone="warn"
             >
-              Needs attention
+              Needs Attention
             </Tab>
             <Tab
               on={view === "duplicates"}
@@ -191,13 +191,13 @@ export function Workbench({
               count={duplicates.length}
               tone="brick"
             >
-              Possible duplicates
+              Possible Duplicates
             </Tab>
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-1.5">
             <Chip on={listFilter === null} onClick={() => setListFilter(null)}>
-              Every list
+              Every List
             </Chip>
             {lists
               .filter((l) => l.count > 0)
@@ -473,7 +473,7 @@ function Table({
               type="button"
               title={
                 v.isDefault
-                  ? "New records start with this — click to clear"
+                  ? "New Records start with this — click to clear"
                   : "Make this the value new records start with"
               }
               aria-pressed={v.isDefault}
@@ -484,7 +484,7 @@ function Table({
                   : "border-rule-2 text-muted hover:border-ok hover:text-ok"
               }`}
             >
-              {v.isDefault ? "Default" : "Set default"}
+              {v.isDefault ? "Default" : "Set Default"}
             </button>
 
             <button

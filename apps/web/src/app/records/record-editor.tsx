@@ -643,7 +643,7 @@ function StockTab({
         <Grid>
           <label className="block">
             <span className="mb-1 block text-[12.5px] text-ink-2">
-              Opening quantity
+              Opening Quantity
             </span>
             <input
               type="number"

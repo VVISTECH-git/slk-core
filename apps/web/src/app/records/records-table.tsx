@@ -200,7 +200,7 @@ export function RecordsTable({
           onClick={() => setEditing({ record: null, tab: "basic" })}
           className="rounded-lg bg-brick px-4 py-2 text-[13.5px] font-medium text-on-brick hover:bg-brick-2"
         >
-          New record
+          New Record
         </button>
 
         <select
@@ -301,7 +301,7 @@ export function RecordsTable({
             onClick={() => setFilters({})}
             className="text-[12.5px] text-muted hover:text-ink"
           >
-            Clear all
+            Clear All
           </button>
         </div>
       )}

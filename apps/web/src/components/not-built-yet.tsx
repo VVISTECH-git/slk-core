@@ -16,7 +16,7 @@ export function NotBuiltYet({
   return (
     <div className="mx-auto max-w-2xl px-8 py-16">
       <p className="mb-2 font-mono text-[10.5px] uppercase tracking-[0.16em] text-faint">
-        Not built yet
+        Not Built Yet
       </p>
       <h1 className="mb-3 text-[27px] font-semibold tracking-tight text-ink">
         {title}

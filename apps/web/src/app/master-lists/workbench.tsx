@@ -9,6 +9,7 @@ import type { VocabDuplicate, VocabList, VocabValue } from "@/lib/vocabulary";
 import {
   applyEdits,
   commitPaste,
+  deleteValue,
   mergeValues,
   previewPaste,
   setDefaultValue,
@@ -263,6 +264,11 @@ export function Workbench({
             setSelected={setSelected}
             setDraft={setDraft}
             showList={listFilter === null}
+            onDelete={(value) => {
+              startTransition(async () => {
+                setResult(await deleteValue(value.id));
+              });
+            }}
             onSetDefault={(id, makeDefault) => {
               startTransition(async () => {
                 setResult(await setDefaultValue(id, makeDefault));
@@ -272,9 +278,41 @@ export function Workbench({
         )}
 
         {view !== "duplicates" && rows.length === 0 && (
-          <p className="py-16 text-center text-[15px] text-muted">
-            Nothing matches{query && ` “${query}”`}.
-          </p>
+          <div className="py-16 text-center">
+            <p className="mb-1 text-[15px] font-medium text-ink">
+              Nothing matches
+            </p>
+
+            {/*
+              Filters compose, which is right — but it means a chip left
+              selected from earlier can empty a tab, and "Nothing matches" on
+              its own reads as a broken screen rather than as two filters
+              meeting. Name them, and offer the way out.
+            */}
+            <p className="mx-auto mb-4 max-w-[46ch] text-[13.5px] leading-relaxed text-muted">
+              {[
+                query && `the search “${query}”`,
+                listFilter !== null &&
+                  `the ${lists.find((l) => l.code === listFilter)?.label ?? listFilter} list`,
+                view === "attention" && "values still unconfirmed",
+              ]
+                .filter(Boolean)
+                .join(", and ")}
+              {" — nothing is in all of them."}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => {
+                setQuery("");
+                setListFilter(null);
+                setView("all");
+              }}
+              className="rounded-md border border-rule-2 bg-surface px-3 py-1.5 text-[13px] text-ink-2 hover:border-brick hover:text-brick"
+            >
+              Clear filters
+            </button>
+          </div>
         )}
 
         {view === "all" && listFilter !== null && (
@@ -395,6 +433,7 @@ function Table({
   setDraft,
   showList,
   onSetDefault,
+  onDelete,
 }: {
   rows: VocabValue[];
   drafts: Record<string, Draft>;
@@ -406,6 +445,7 @@ function Table({
   // value per list can be the default, so two pending changes would conflict
   // with each other at save time.
   onSetDefault: (id: string, makeDefault: boolean) => void;
+  onDelete: (value: VocabValue) => void;
 }) {
   const toggle = (id: string) => {
     const next = new Set(selected);
@@ -522,9 +562,38 @@ function Table({
             <button
               type="button"
               onClick={() => setDraft(v.id, { isActive: !active })}
+              title={
+                active
+                  ? "Stop offering this. Records already using it keep it."
+                  : "Offer this again"
+              }
               className="w-16 flex-none rounded border border-rule-2 px-2 py-1 text-[11.5px] text-muted hover:border-brick hover:text-brick"
             >
               {active ? "Retire" : "Restore"}
+            </button>
+
+            {/* Only for a value nothing points at — a typo, rather than
+                something that has been used and stopped. The action refuses
+                and says how many records are in the way if it is not. */}
+            <button
+              type="button"
+              onClick={() => onDelete(v)}
+              aria-label={`Delete ${show(v)}`}
+              title="Delete — only possible if no record uses it"
+              className="flex-none rounded border border-transparent p-1 text-faint hover:border-rule-2 hover:text-brick"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M4 6h12 M8 6V4h4v2 M6 6l1 10h6l1-10" />
+              </svg>
             </button>
           </div>
         );

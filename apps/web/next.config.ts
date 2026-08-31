@@ -41,6 +41,15 @@ const nextConfig: NextConfig = {
   // the app while the people it is being shown to are trying to judge it.
   // Compile and runtime errors still surface.
   devIndicators: false,
+
+  // The screen was called Vocabulary before it was called Master Lists, and
+  // that URL has been shared. A renamed page that 404s for whoever kept the
+  // old link is a worse outcome than one redirect.
+  async redirects() {
+    return [
+      { source: "/vocabulary", destination: "/master-lists", permanent: true },
+    ];
+  },
 };
 
 export default nextConfig;

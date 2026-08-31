@@ -4,8 +4,21 @@ import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { lookupList, lookupValue } from "@slk/db";
+import { titleCase } from "@slk/domain";
 
 import { db } from "@/lib/db";
+
+/**
+ * Every value is stored the way it should read: Init Caps, whatever was
+ * typed.
+ *
+ * The workbook keeps `colour` and `descriptor` in lower case, and the
+ * database used to match it. That leaked — the same value read Contrast on
+ * one screen and contrast on another, and a value typed into any other list
+ * was stored exactly as typed, so "dfdf" stayed "dfdf". One rule applied at
+ * the point of writing is simpler than two conventions reconciled at every
+ * point of reading.
+ */
 
 /**
  * Every action is an untrusted entry point — a Server Action is reachable by
@@ -97,14 +110,13 @@ export async function applyEdits(edits: ValueEdit[]): Promise<ActionResult> {
     }
 
     const listId = targetList?.id ?? row.listId;
-    const lowercase = targetList?.lowercaseValues ?? row.lowercase;
 
     const raw = (edit.label ?? row.label).trim();
     if (raw === "") {
       return { ok: false, message: `"${row.label}" cannot be left blank.` };
     }
 
-    const label = lowercase ? raw.toLowerCase() : raw;
+    const label = titleCase(raw);
     const key = `${listId}::${label.toLowerCase()}`;
 
     if (claimed.has(key)) {
@@ -180,7 +192,7 @@ export async function applyEdits(edits: ValueEdit[]): Promise<ActionResult> {
     }
   });
 
-  revalidatePath("/vocabulary");
+  revalidatePath("/master-lists");
 
   return {
     ok: true,
@@ -320,7 +332,7 @@ export async function mergeValues(
     await tx.delete(lookupValue).where(inArray(lookupValue.id, mergedIds));
   });
 
-  revalidatePath("/vocabulary");
+  revalidatePath("/master-lists");
   revalidatePath("/records");
 
   const names = merged.map((m) => `"${m.label}"`).join(", ");
@@ -331,6 +343,51 @@ export async function mergeValues(
       `Merged ${names} into "${survivor.label}".` +
       (moved > 0 ? ` ${moved} record${moved === 1 ? "" : "s"} moved across.` : ""),
   };
+}
+
+/**
+ * Removes a value outright.
+ *
+ * Only when nothing points at it. Retiring is the right answer for a value
+ * that has been used and is no longer offered — the records that carry it
+ * still need it to mean something. A typo is different: it was never a real
+ * value, and leaving it struck through in the list forever is just clutter.
+ */
+export async function deleteValue(valueId: string): Promise<ActionResult> {
+  const rows = await db
+    .select()
+    .from(lookupValue)
+    .where(eq(lookupValue.id, valueId));
+
+  const value = rows[0];
+  if (value === undefined) return { ok: false, message: "No such value." };
+
+  const usage = (await countUsage([valueId]))[valueId] ?? 0;
+
+  if (usage > 0) {
+    return {
+      ok: false,
+      message: `${usage} record${usage === 1 ? "" : "s"} use "${value.label}". Retire it instead — they keep the value, and it stops being offered.`,
+    };
+  }
+
+  const [children] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(lookupValue)
+    .where(eq(lookupValue.parentValueId, valueId));
+
+  if ((children?.n ?? 0) > 0) {
+    return {
+      ok: false,
+      message: `${children?.n} value${children?.n === 1 ? "" : "s"} belong to "${value.label}". Move them first.`,
+    };
+  }
+
+  await db.delete(lookupValue).where(eq(lookupValue.id, valueId));
+
+  revalidatePath("/master-lists");
+
+  return { ok: true, message: `Deleted "${value.label}".` };
 }
 
 /**
@@ -378,7 +435,7 @@ export async function setDefaultValue(
     }
   });
 
-  revalidatePath("/vocabulary");
+  revalidatePath("/master-lists");
   revalidatePath("/records");
 
   return {
@@ -425,7 +482,7 @@ export async function previewPaste(
         .map((line) => line.trim())
         .filter((line) => line !== ""),
     ),
-  ].map((line) => (list.lowercaseValues ? line.toLowerCase() : line));
+  ].map((line) => titleCase(line));
 
   const fresh: string[] = [];
   const existing: string[] = [];
@@ -462,7 +519,7 @@ export async function commitPaste(
   let order = (next?.max ?? -1) + 1;
 
   const rows = labels
-    .map((raw) => (list.lowercaseValues ? raw.toLowerCase() : raw).trim())
+    .map((raw) => titleCase(raw.trim()))
     .filter((label) => label !== "" && slugify(label) !== "")
     .map((label) => ({
       listId: list.id,
@@ -477,7 +534,7 @@ export async function commitPaste(
 
   await db.insert(lookupValue).values(rows).onConflictDoNothing();
 
-  revalidatePath("/vocabulary");
+  revalidatePath("/master-lists");
 
   return {
     ok: true,

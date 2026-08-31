@@ -51,18 +51,39 @@ PgBouncer in transaction mode, which is what stops a few hundred serverless
 functions exhausting the connection limit. 5432 is a real session, which
 migrations and the queue need and pooling silently breaks.
 
-## 4 · Create the tables and load the vocabulary
+## 4 · Migrations run themselves
 
-Migrations run from your machine against the hosted database, not from the
-build. Point one shell at it — using your own `.env`, so the password stays
-with you:
+The build runs `db:migrate` before it builds, on production deployments only:
 
-    # in slk-core, temporarily, with DATABASE_URL set to the hosted database
-    pnpm db:migrate
+    if [ "$VERCEL_ENV" = "production" ]; then pnpm --filter @slk/db run db:migrate; fi
+      && pnpm turbo run build --filter=@slk/web
+
+This is in `vercel.json` rather than left to someone to remember. It was left
+to someone to remember once, and the result was a green build and a site that
+returned a server error on every page — the code expected a column the
+database did not have. A build succeeding tells you nothing about whether the
+schema moved with it.
+
+Three properties worth keeping:
+
+- **Production only.** Preview deployments share the same `DATABASE_URL`, so
+  migrating on every preview would apply an unreviewed branch's schema to live
+  data.
+- **A failed migration fails the build.** Nothing deploys, and the previous
+  deployment stays serving. Better than deploying code the database cannot
+  answer.
+- **The direct connection.** `drizzle.config.ts` prefers `DIRECT_URL`, then
+  `DATABASE_URL_UNPOOLED`, and only then the pooled URL. DDL through PgBouncer
+  in transaction mode fails in ways that look intermittent.
+
+The seed is not part of the build — it is data, not schema, and it only ever
+needs running when a list has genuinely changed:
+
+    # with DATABASE_URL pointed at the hosted database
     pnpm db:seed
 
-`db:seed` loads the 227 values from `Master Listing - New.xlsx`. It inserts
-only what is missing and never overwrites, so it is safe to run again later.
+It loads the 227 values from `Master Listing - New.xlsx`, inserts only what is
+missing and never overwrites, so it is safe to run again.
 
 **`pnpm db:demo` refuses to run against anything that is not localhost.**
 Sample stock is not real stock and has no business in a deployed database. If
@@ -78,8 +99,12 @@ the safe way to look at a change before it reaches the live address.
 
 **Every page 500s.** `DATABASE_URL` is missing or wrong. The error says so.
 
-**Pages load but every table is empty.** The migrations ran but the seed did
-not, or they ran against a different database than the one Vercel is using.
+**Pages load but every table is empty.** The seed has not run, or it ran
+against a different database than the one Vercel is using.
+
+**A page 500s straight after a schema change.** The build should have
+migrated. Check the build log for `db:migrate` — if it was skipped, the
+deployment was a preview rather than production.
 
 **Intermittent "too many connections".** `DATABASE_URL` is pointing at the
 direct port instead of the pooler.

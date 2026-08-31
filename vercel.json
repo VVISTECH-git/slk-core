@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "buildCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then pnpm --filter @slk/db run db:migrate; fi && pnpm turbo run build --filter=@slk/web",
+  "outputDirectory": "apps/web/.next"
+}

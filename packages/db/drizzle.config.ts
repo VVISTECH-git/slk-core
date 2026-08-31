@@ -15,8 +15,16 @@ export default defineConfig({
   schema: "./src/schema/index.ts",
   out: "./migrations",
   dbCredentials: {
-    // Never the pooler: migrations need a real session.
-    url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"] ?? "",
+    // Never the pooler — migrations need a real session, and DDL through
+    // PgBouncer in transaction mode fails in ways that look intermittent.
+    // DATABASE_URL_UNPOOLED is what Neon's Vercel integration sets, so this
+    // finds the direct connection on the build server without anyone adding
+    // a second variable by hand.
+    url:
+      process.env["DIRECT_URL"] ??
+      process.env["DATABASE_URL_UNPOOLED"] ??
+      process.env["DATABASE_URL"] ??
+      "",
   },
   strict: true,
   verbose: true,

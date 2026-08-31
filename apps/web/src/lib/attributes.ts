@@ -116,3 +116,18 @@ export function defaultAttributes(
 
   return defaults;
 }
+
+/**
+ * Industry decides what the rest of the record even means.
+ *
+ * A saree and a bedsheet do not share a product type list, and asking a
+ * bedsheet whether a blouse comes with it is nonsense. The workbook keeps two
+ * sheets for exactly this reason, and the database keeps two columns —
+ * `product_type_id` and `home_product_type_id` — so the only thing missing
+ * was the form honouring it.
+ *
+ * Here rather than beside the Server Action that enforces it: a "use server"
+ * file may only export async functions, and both the form and the action need
+ * this string to agree on.
+ */
+export const HOME_INDUSTRY = "Home & Lifestyle";

@@ -735,12 +735,19 @@ function RowActions({
 }) {
   return (
     <div className="flex items-center justify-end gap-0.5">
-      {serialised && (
+      {/*
+        Only once something has actually been tagged.
+
+        This read "0p" on every saree — a cryptic badge whose whole content
+        was that there was nothing to report. A count of zero is the absence
+        of the thing being counted, not a fact about it.
+      */}
+      {serialised && pieces > 0 && (
         <span
-          className="mr-1 font-mono text-[10px] text-faint"
-          title={`${pieces} pieces tagged individually`}
+          className="mr-1 rounded bg-surface-3 px-1 font-mono text-[10px] text-muted"
+          title={`${pieces} ${pieces === 1 ? "piece" : "pieces"} tagged with their own QR code`}
         >
-          {pieces}p
+          {pieces} tagged
         </span>
       )}
       {ACTIONS.map((a) => (

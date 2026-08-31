@@ -6,6 +6,7 @@ import { titleCase } from "@slk/domain";
 
 import {
   defaultAttributes,
+  HOME_INDUSTRY,
   type AttributeKey,
   type Option,
   type Options,
@@ -42,6 +43,9 @@ type TabKey =
 const FIELD_TAB: Record<string, TabKey> = {
   industry: "basic",
   productType: "basic",
+  homeProductType: "basic",
+  homeWeavingCategory: "basic",
+  garmentType: "basic",
   colour: "basic",
   fibreType: "material",
   craftTechnique: "craft",
@@ -128,9 +132,24 @@ export function RecordEditor({
   const labelOf = (list: string, id: string | null | undefined) =>
     id ? (options[list]?.find((o) => o.id === id)?.label ?? null) : null;
 
-  const productType = labelOf("product_type", attributes.productType);
-  const isSaree = productType === "Saree";
-  const isGarment = Boolean(attributes.garmentType);
+  /**
+   * Industry decides what the rest of the form is.
+   *
+   * It used to be a required field that changed nothing: you could file a
+   * bedsheet under Home & Lifestyle and still be offered Saree and Dupatta as
+   * its product type, and Blouse could appear on it. The two sheets in the
+   * workbook and the two columns in the database both say these are different
+   * things; only the form disagreed.
+   */
+  const industry = labelOf("industry", attributes.industry);
+  const isHome = industry === HOME_INDUSTRY;
+
+  const productType = isHome
+    ? labelOf("home_product_type", attributes.homeProductType)
+    : labelOf("product_type", attributes.productType);
+
+  const isSaree = !isHome && productType === "Saree";
+  const isGarment = !isHome && Boolean(attributes.garmentType);
   const fibre = labelOf("fibre_type", attributes.fibreType);
   const craft = labelOf("craft_technique", attributes.craftTechnique);
 
@@ -182,6 +201,21 @@ export function RecordEditor({
         next.craftSubType = null;
       }
       if (key === "motifCategory") next.motif = null;
+
+      // Changing industry changes which columns apply. Clearing the other
+      // side here rather than on save means the record never briefly holds
+      // both a Saree and a Bedsheets product type — and the server refuses
+      // that combination anyway, so leaving it would only produce an error
+      // about a field the form is no longer showing.
+      if (key === "industry") {
+        if (labelOf("industry", value) === HOME_INDUSTRY) {
+          next.productType = null;
+          next.garmentType = null;
+        } else {
+          next.homeProductType = null;
+          next.homeWeavingCategory = null;
+        }
+      }
       if (key === "blouseAvailable" && labelOf("blouse_available", value) === "No") {
         const na = (list: string) =>
           options[list]?.find((o) => o.label === "Not Applicable")?.id ?? null;
@@ -318,12 +352,32 @@ export function RecordEditor({
                 <Combo label="Industry" list="industry" required
                   options={options} value={attributes.industry ?? null}
                   error={errors["industry"]} onPick={(v) => set("industry", v)} />
-                <Combo label="Product Type" list="product_type" required
-                  options={options} value={attributes.productType ?? null}
-                  error={errors["productType"]} onPick={(v) => set("productType", v)} />
-                <Combo label="Product Sub Type" list="garment_type" placeholder="Not a garment"
-                  options={options} value={attributes.garmentType ?? null}
-                  onPick={(v) => set("garmentType", v)} />
+                {/*
+                  Two different lists behind one question. A bedsheet is not a
+                  kind of saree, and offering Saree, Dupatta and Fabric to
+                  someone filing a bedsheet is offering them nothing they can
+                  use.
+                */}
+                {isHome ? (
+                  <>
+                    <Combo label="Product Type" list="home_product_type" required
+                      options={options} value={attributes.homeProductType ?? null}
+                      error={errors["homeProductType"]}
+                      onPick={(v) => set("homeProductType", v)} />
+                    <Combo label="Weaving Category" list="home_weaving_category"
+                      options={options} value={attributes.homeWeavingCategory ?? null}
+                      onPick={(v) => set("homeWeavingCategory", v)} />
+                  </>
+                ) : (
+                  <>
+                    <Combo label="Product Type" list="product_type" required
+                      options={options} value={attributes.productType ?? null}
+                      error={errors["productType"]} onPick={(v) => set("productType", v)} />
+                    <Combo label="Product Sub Type" list="garment_type" placeholder="Not a garment"
+                      options={options} value={attributes.garmentType ?? null}
+                      onPick={(v) => set("garmentType", v)} />
+                  </>
+                )}
                 <Combo label="Production Method" list="production_method"
                   options={options} value={attributes.productionMethod ?? null}
                   onPick={(v) => set("productionMethod", v)} />

@@ -23,6 +23,7 @@ export {
   ATTRIBUTES,
   ATTRIBUTE_KEYS,
   defaultAttributes,
+  HOME_INDUSTRY,
   type AttributeKey,
   type Option,
   type Options,

@@ -7,7 +7,12 @@ import { colourway, design, location, movement } from "@slk/db";
 import { designCode, designName } from "@slk/domain";
 
 import { db } from "@/lib/db";
-import { ATTRIBUTES, ATTRIBUTE_KEYS, type AttributeKey } from "@/lib/editor";
+import {
+  ATTRIBUTES,
+  ATTRIBUTE_KEYS,
+  HOME_INDUSTRY,
+  type AttributeKey,
+} from "@/lib/editor";
 
 export interface ActionResult {
   ok: boolean;
@@ -51,7 +56,6 @@ export interface RecordDraft {
 
 const REQUIRED: { key: string; label: string }[] = [
   { key: "industry", label: "Industry" },
-  { key: "productType", label: "Product type" },
   { key: "colour", label: "Colour" },
   { key: "fibreType", label: "Fiber type" },
   { key: "craftTechnique", label: "Craft technique" },
@@ -68,7 +72,7 @@ function toMinor(value: string): number | null {
   return Math.round(amount * 100);
 }
 
-function validate(draft: RecordDraft): Record<string, string> {
+async function validate(draft: RecordDraft): Promise<Record<string, string>> {
   const errors: Record<string, string> = {};
 
   for (const { key, label } of REQUIRED) {
@@ -79,6 +83,36 @@ function validate(draft: RecordDraft): Record<string, string> {
 
     if (value === null || value === undefined || value === "") {
       errors[key] = `${label} is needed`;
+    }
+  }
+
+  // Which product type is required depends on the industry, so it is checked
+  // here rather than sitting in REQUIRED. Re-read from the database rather
+  // than trusted from the client: a Server Action is reachable by POST
+  // whether or not the form rendered the field.
+  const industryId = draft.attributes.industry;
+  const industry =
+    industryId == null || industryId === ""
+      ? null
+      : ((await labelsFor([industryId])).get(industryId) ?? null);
+
+  const isHome = industry === HOME_INDUSTRY;
+  const key = isHome ? "homeProductType" : "productType";
+
+  if (!draft.attributes[key]) {
+    errors[key] = "Product type is needed";
+  }
+
+  // The other industry's fields have no meaning on this record. Refused
+  // rather than quietly dropped, because a record carrying both a Saree and a
+  // Bedsheets product type is a record nobody can explain later.
+  const foreign: AttributeKey[] = isHome
+    ? ["productType", "garmentType"]
+    : ["homeProductType", "homeWeavingCategory"];
+
+  for (const other of foreign) {
+    if (draft.attributes[other]) {
+      errors[other] = `Not applicable to ${industry ?? "this industry"}`;
     }
   }
 
@@ -111,7 +145,7 @@ async function labelsFor(
 }
 
 export async function saveRecord(draft: RecordDraft): Promise<ActionResult> {
-  const errors = validate(draft);
+  const errors = await validate(draft);
 
   if (Object.keys(errors).length > 0) {
     return { ok: false, message: "Some fields still need attention.", errors };
@@ -327,7 +361,7 @@ export async function copyRecord(colourwayId: string): Promise<ActionResult> {
 
 /** A brand-new design, minted with the next sequence number. */
 export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
-  const errors = validate(draft);
+  const errors = await validate(draft);
 
   if (Object.keys(errors).length > 0) {
     return { ok: false, message: "Some fields still need attention.", errors };

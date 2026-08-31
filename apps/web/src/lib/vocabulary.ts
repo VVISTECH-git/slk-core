@@ -14,6 +14,7 @@ export interface VocabValue {
   listLabel: string;
   lowercase: boolean;
   isActive: boolean;
+  isDefault: boolean;
   isProposed: boolean;
   needsReview: boolean;
   parentLabel: string | null;
@@ -45,6 +46,7 @@ export async function loadVocabulary(): Promise<{
       code: lookupValue.code,
       label: lookupValue.label,
       isActive: lookupValue.isActive,
+      isDefault: lookupValue.isDefault,
       isProposed: lookupValue.isProposed,
       needsReview: lookupValue.needsReview,
       meta: lookupValue.meta,
@@ -66,6 +68,7 @@ export async function loadVocabulary(): Promise<{
     listLabel: r.listLabel,
     lowercase: r.lowercase,
     isActive: r.isActive,
+    isDefault: r.isDefault,
     isProposed: r.isProposed,
     needsReview: r.needsReview,
     parentLabel: r.parentLabel,

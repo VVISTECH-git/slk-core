@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import type { Database } from "../client";
 import { lookupList, lookupValue } from "../schema/lookup";
@@ -138,6 +138,39 @@ async function seedList(
 
     report.valuesInserted += 1;
   }
+
+  await applyDefault(db, list.id, spec);
+}
+
+/**
+ * Sets the list's default, but only when it has none.
+ *
+ * The seed's rule is that it never overwrites — and a default chosen on the
+ * Values screen is a decision, not seed data. This fills an absent one so an
+ * existing database picks up a new default without a hand-written migration,
+ * and leaves a chosen one alone.
+ */
+async function applyDefault(
+  db: Database,
+  listId: string,
+  spec: SeedList,
+): Promise<void> {
+  const wanted = spec.values.find((value) => value.isDefault);
+  if (wanted === undefined) return;
+
+  const [existing] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(lookupValue)
+    .where(and(eq(lookupValue.listId, listId), eq(lookupValue.isDefault, true)));
+
+  if ((existing?.n ?? 0) > 0) return;
+
+  await db
+    .update(lookupValue)
+    .set({ isDefault: true })
+    .where(
+      and(eq(lookupValue.listId, listId), eq(lookupValue.label, wanted.label)),
+    );
 }
 
 export async function seedMasterListing(db: Database): Promise<SeedReport> {

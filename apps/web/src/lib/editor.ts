@@ -2,57 +2,32 @@ import { asc, eq, sql } from "drizzle-orm";
 
 import { lookupList, lookupValue } from "@slk/db";
 
+import {
+  ATTRIBUTES,
+  ATTRIBUTE_KEYS,
+  type AttributeKey,
+  type Options,
+  type RecordDetail,
+} from "@/lib/attributes";
 import { db } from "@/lib/db";
 
 /**
- * Which lookup list each editable attribute draws from, and which column on
- * `design` holds it.
+ * Server-side reads for the record editor.
  *
- * One table rather than three parallel ones: the editor, the validator and
- * the save all read from here, so a new attribute is a single line and cannot
- * be half-wired.
+ * The attribute map, the option shapes and `defaultAttributes` live in
+ * ./attributes, which imports nothing — the editor is a client component and
+ * pulling this module into the browser would take the Postgres driver with
+ * it.
  */
-export const ATTRIBUTES = {
-  industry: { list: "industry", column: "industry_id", label: "Industry" },
-  productType: { list: "product_type", column: "product_type_id", label: "Product type" },
-  homeProductType: { list: "home_product_type", column: "home_product_type_id", label: "Product type" },
-  garmentType: { list: "garment_type", column: "garment_type_id", label: "Product sub type" },
-  homeWeavingCategory: { list: "home_weaving_category", column: "home_weaving_category_id", label: "Weaving category" },
-  productionMethod: { list: "production_method", column: "production_method_id", label: "Production method" },
-  audienceType: { list: "audience_type", column: "audience_type_id", label: "Audience" },
-  descriptor: { list: "descriptor", column: "descriptor_id", label: "Descriptor" },
-  fibreType: { list: "fibre_type", column: "fibre_type_id", label: "Fiber type" },
-  weaveStructure: { list: "weave_structure", column: "weave_structure_id", label: "Weave structure" },
-  silkSubFamily: { list: "silk_sub_family", column: "silk_sub_family_id", label: "Silk sub family" },
-  cottonSubFamily: { list: "cotton_sub_family", column: "cotton_sub_family_id", label: "Cotton sub family" },
-  fabricType: { list: "fabric_type", column: "fabric_type_id", label: "Fabric type" },
-  craftTechnique: { list: "craft_technique", column: "craft_technique_id", label: "Craft technique" },
-  craftSubType: { list: "craft_sub_type", column: "craft_sub_type_id", label: "Craft sub type" },
-  regionalStyle: { list: "regional_style", column: "regional_style_id", label: "Region style" },
-  motifCategory: { list: "motif_category", column: "motif_category_id", label: "Motif category" },
-  motif: { list: "motif", column: "motif_id", label: "Motif" },
-  borderStyle: { list: "border_style", column: "border_style_id", label: "Border style" },
-  borderHeight: { list: "border_height", column: "border_height_id", label: "Border height" },
-  sareeLayout: { list: "saree_layout", column: "saree_layout_id", label: "Saree layout" },
-  palluDesign: { list: "pallu_design", column: "pallu_design_id", label: "Pallu design" },
-  blouseAvailable: { list: "blouse_available", column: "blouse_available_id", label: "Blouse availability" },
-  blouseStatus: { list: "blouse_status", column: "blouse_status_id", label: "Blouse status" },
-  blouseMaterial: { list: "blouse_material", column: "blouse_material_id", label: "Blouse material" },
-} as const;
-
-export type AttributeKey = keyof typeof ATTRIBUTES;
-
-export const ATTRIBUTE_KEYS = Object.keys(ATTRIBUTES) as AttributeKey[];
-
-export interface Option {
-  id: string;
-  label: string;
-  /** For motifs, the category they belong to — the list filters on it. */
-  parentId: string | null;
-  hex: string | null;
-}
-
-export type Options = Record<string, Option[]>;
+export {
+  ATTRIBUTES,
+  ATTRIBUTE_KEYS,
+  defaultAttributes,
+  type AttributeKey,
+  type Option,
+  type Options,
+  type RecordDetail,
+} from "./attributes";
 
 /** Every active value, grouped by list code, in the workbook's order. */
 export async function loadOptions(): Promise<Options> {
@@ -63,9 +38,12 @@ export async function loadOptions(): Promise<Options> {
       label: lookupValue.label,
       parentId: lookupValue.parentValueId,
       meta: lookupValue.meta,
+      isDefault: lookupValue.isDefault,
     })
     .from(lookupValue)
     .innerJoin(lookupList, eq(lookupList.id, lookupValue.listId))
+    // Retiring a value on the Values screen is what takes it out of every
+    // dropdown here — that is the control over what may be chosen.
     .where(eq(lookupValue.isActive, true))
     .orderBy(asc(lookupList.code), asc(lookupValue.sortOrder));
 
@@ -76,6 +54,7 @@ export async function loadOptions(): Promise<Options> {
       id: row.id,
       label: row.label,
       parentId: row.parentId,
+      isDefault: row.isDefault,
       hex:
         typeof row.meta === "object" &&
         row.meta !== null &&
@@ -87,43 +66,6 @@ export async function loadOptions(): Promise<Options> {
   }
 
   return options;
-}
-
-export interface RecordDetail {
-  id: string;
-  designId: string;
-  code: string;
-  name: string;
-  nameIsCustom: boolean;
-  isSerialised: boolean;
-  notes: string | null;
-  colourId: string | null;
-  costMinor: number | null;
-  makingMinor: number | null;
-  wholesaleMinor: number | null;
-  retailMinor: number | null;
-  mrpMinor: number | null;
-  attributes: Partial<Record<AttributeKey, string | null>>;
-  /** Every colour under this design — a change to attributes hits all of them. */
-  siblings: { id: string; colour: string | null }[];
-  stock: {
-    onHand: number;
-    received: number;
-    sold: number;
-    damaged: number;
-    returned: number;
-    adjusted: number;
-    byLocation: { location: string; qty: number }[];
-  };
-  movements: {
-    id: number;
-    kind: string;
-    qty: number;
-    occurredAt: string;
-    reason: string | null;
-    from: string | null;
-    to: string | null;
-  }[];
 }
 
 export async function loadRecord(
@@ -159,7 +101,7 @@ export async function loadRecord(
     select cw.id, v.label as colour
     from colourway cw
     left join lookup_value v on v.id = cw.colour_id
-    where cw.design_id = ${row["designId"] as string}
+    where cw.design_id = ${row["designId"] as string} and cw.is_active
     order by v.sort_order
   `);
 

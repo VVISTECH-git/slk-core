@@ -333,6 +333,62 @@ export async function mergeValues(
   };
 }
 
+/**
+ * Makes one value the list's default, or clears it.
+ *
+ * The old default is cleared in the same transaction — a partial unique index
+ * allows only one per list, so setting a second without clearing the first
+ * would be refused rather than quietly leaving two.
+ */
+export async function setDefaultValue(
+  valueId: string,
+  makeDefault: boolean,
+): Promise<ActionResult> {
+  const rows = await db
+    .select()
+    .from(lookupValue)
+    .where(eq(lookupValue.id, valueId));
+
+  const value = rows[0];
+  if (value === undefined) return { ok: false, message: "No such value." };
+
+  if (makeDefault && !value.isActive) {
+    return {
+      ok: false,
+      message: "A retired value cannot be the default — restore it first.",
+    };
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(lookupValue)
+      .set({ isDefault: false, updatedAt: new Date() })
+      .where(
+        and(
+          eq(lookupValue.listId, value.listId),
+          eq(lookupValue.isDefault, true),
+        ),
+      );
+
+    if (makeDefault) {
+      await tx
+        .update(lookupValue)
+        .set({ isDefault: true, updatedAt: new Date() })
+        .where(eq(lookupValue.id, valueId));
+    }
+  });
+
+  revalidatePath("/vocabulary");
+  revalidatePath("/records");
+
+  return {
+    ok: true,
+    message: makeDefault
+      ? `New records start with "${value.label}".`
+      : `"${value.label}" is no longer the default.`,
+  };
+}
+
 export interface PastePreview {
   listCode: string;
   fresh: string[];

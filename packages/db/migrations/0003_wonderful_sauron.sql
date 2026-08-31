@@ -1,0 +1,2 @@
+ALTER TABLE "lookup_value" ADD COLUMN "is_default" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "lookup_value_one_default_per_list" ON "lookup_value" USING btree ("list_id") WHERE "lookup_value"."is_default";

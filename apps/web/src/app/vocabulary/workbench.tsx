@@ -9,6 +9,7 @@ import {
   commitPaste,
   mergeValues,
   previewPaste,
+  setDefaultValue,
   type ActionResult,
   type PastePreview,
   type ValueEdit,
@@ -237,6 +238,11 @@ export function Workbench({
             setSelected={setSelected}
             setDraft={setDraft}
             showList={listFilter === null}
+            onSetDefault={(id, makeDefault) => {
+              startTransition(async () => {
+                setResult(await setDefaultValue(id, makeDefault));
+              });
+            }}
           />
         )}
 
@@ -363,6 +369,7 @@ function Table({
   setSelected,
   setDraft,
   showList,
+  onSetDefault,
 }: {
   rows: VocabValue[];
   drafts: Record<string, Draft>;
@@ -370,6 +377,10 @@ function Table({
   setSelected: (next: Set<string>) => void;
   setDraft: (id: string, patch: Draft) => void;
   showList: boolean;
+  // Applied immediately rather than staged with the other edits: at most one
+  // value per list can be the default, so two pending changes would conflict
+  // with each other at save time.
+  onSetDefault: (id: string, makeDefault: boolean) => void;
 }) {
   const toggle = (id: string) => {
     const next = new Set(selected);
@@ -457,6 +468,24 @@ function Table({
                 confirmed
               </span>
             )}
+
+            <button
+              type="button"
+              title={
+                v.isDefault
+                  ? "New records start with this — click to clear"
+                  : "Make this the value new records start with"
+              }
+              aria-pressed={v.isDefault}
+              onClick={() => onSetDefault(v.id, !v.isDefault)}
+              className={`flex-none rounded border px-2 py-1 text-[11.5px] ${
+                v.isDefault
+                  ? "border-ok bg-ok-soft text-ok"
+                  : "border-rule-2 text-muted hover:border-ok hover:text-ok"
+              }`}
+            >
+              {v.isDefault ? "Default" : "Set default"}
+            </button>
 
             <button
               type="button"

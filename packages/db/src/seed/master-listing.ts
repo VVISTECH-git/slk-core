@@ -24,6 +24,12 @@ export interface SeedValue {
   label: string;
   /** Label of the companion value in `parentList`. */
   parent?: string;
+  /**
+   * Pre-selected on a new record. Applied only when the list has no default
+   * at all, so a choice made on the Values screen is never overwritten by a
+   * re-seed.
+   */
+  isDefault?: boolean;
   /** Correction Log: PROPOSED — confirm or replace. */
   proposed?: boolean;
   /** Correction Log: NEEDS REVIEW — check against real stock. */
@@ -86,7 +92,11 @@ export const MASTER_LISTING: SeedList[] = [
     label: "Industry",
     description: "The top-level split. Decides which product type list applies.",
     isSystem: true,
-    values: plain("Clothing", "Home & Lifestyle"),
+    values: [
+      // Nearly everything SLK makes is clothing, so a new record starts there.
+      { label: "Clothing", isDefault: true },
+      { label: "Home & Lifestyle" },
+    ],
   },
   {
     code: "production_method",

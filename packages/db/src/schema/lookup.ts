@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -87,6 +88,16 @@ export const lookupValue = pgTable(
       { onDelete: "restrict" },
     ),
 
+    /**
+     * Pre-selected when a new record is created.
+     *
+     * A default belongs in the data rather than in the form: almost every
+     * saree SLK makes is Clothing, and changing that later should be a click
+     * on the Values screen, not an edit and a deploy. At most one per list —
+     * enforced by a partial unique index below.
+     */
+    isDefault: boolean("is_default").notNull().default(false),
+
     /** Correction Log marks these as proposals awaiting confirmation. */
     isProposed: boolean("is_proposed").notNull().default(false),
 
@@ -108,6 +119,11 @@ export const lookupValue = pgTable(
     uniqueIndex("lookup_value_list_label_key").on(t.listId, t.label),
     index("lookup_value_list_sort_idx").on(t.listId, t.sortOrder),
     index("lookup_value_parent_idx").on(t.parentValueId),
+    // One default per list, enforced by the database rather than by whichever
+    // code path happens to set it.
+    uniqueIndex("lookup_value_one_default_per_list")
+      .on(t.listId)
+      .where(sql`${t.isDefault}`),
   ],
 );
 

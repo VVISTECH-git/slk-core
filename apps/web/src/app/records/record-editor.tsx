@@ -427,7 +427,7 @@ export function RecordEditor({
             <Note>
               The Garments sheet defines eleven more columns — Size, Colors, Sleeve
               Length and the rest — but every one of them arrived empty in the
-              workbook. Give them values on Categories &amp; Attributes and they appear
+              workbook. Give them values on Master Lists and they appear
               here as dropdowns, with no change to this screen.
             </Note>
           )}

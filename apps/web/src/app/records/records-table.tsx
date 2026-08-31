@@ -191,7 +191,7 @@ export function RecordsTable({
             Product Records
           </h1>
           <p className="mt-1 text-[13.5px] text-muted">
-            One row per colour. Attributes come from Categories &amp; Attributes.
+            One row per colour. Every attribute comes from Master Lists.
           </p>
         </div>
 

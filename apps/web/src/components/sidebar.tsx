@@ -9,7 +9,7 @@ import { usePathname } from "next/navigation";
  * builds and is still reachable by URL; the sidebar is cut to what is being
  * worked on. Remove a line to bring a screen back.
  */
-const HIDDEN = new Set(["/stock", "/vocabulary"]);
+const HIDDEN = new Set(["/stock"]);
 
 const NAV = [
   {
@@ -23,8 +23,10 @@ const NAV = [
     icon: "M3 6l7-3 7 3v8l-7 3-7-3z M3 6l7 3 7-3 M10 9v8",
   },
   {
+    // Named for the workbook it comes from — Master Listing - New.xlsx — so
+    // it is a word the people maintaining it already use.
     href: "/vocabulary",
-    label: "Categories & Attributes",
+    label: "Master Lists",
     icon: "M3 5h14 M3 10h14 M3 15h9",
   },
 ] as const;

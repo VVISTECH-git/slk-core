@@ -152,7 +152,7 @@ export function Workbench({
         <div className="mx-auto max-w-6xl">
           <div className="mb-4 flex flex-wrap items-baseline gap-x-4 gap-y-1">
             <h1 className="text-[24px] font-semibold tracking-tight text-ink">
-              Vocabulary
+              Master Lists
             </h1>
             <span className="font-mono text-[11.5px] text-faint">
               {values.length} values · {lists.filter((l) => l.count > 0).length} lists

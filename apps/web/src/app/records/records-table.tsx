@@ -293,8 +293,22 @@ export function RecordsTable({
   };
 
   return (
-    <div className="px-8 py-8">
-      <header className="mb-5 flex flex-wrap items-end gap-3">
+    /*
+      The grid fills the window rather than shrinking to its rows.
+
+      Two reasons, and the second is the one that matters. A table sized to
+      its content leaves a field of empty ground below it, which reads as the
+      page having stopped early. But at twenty-five rows a page the column
+      headings also scrolled off the top, so by the time you were reading the
+      rows that needed identifying you could no longer see what the columns
+      were.
+
+      Giving the grid a definite height lets the body scroll inside it with
+      the headings pinned, and keeps the record count and the pager where they
+      were put instead of wherever the last row happens to end.
+    */
+    <div className="flex h-screen flex-col overflow-hidden px-8 py-8">
+      <header className="mb-5 flex flex-none flex-wrap items-end gap-3">
         <div className="mr-auto">
           <h1 className="text-[24px] font-semibold tracking-tight text-ink">
             Product Records
@@ -481,8 +495,8 @@ export function RecordsTable({
         </div>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-rule bg-surface">
-        <div className="flex items-center gap-3 border-b border-rule px-4 py-2.5">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-rule bg-surface">
+        <div className="flex flex-none items-center gap-3 border-b border-rule px-4 py-2.5">
           <span className="text-[12.5px] text-muted">
             {filtered.length.toLocaleString("en-IN")} record
             {filtered.length === 1 ? "" : "s"}
@@ -490,7 +504,7 @@ export function RecordsTable({
           </span>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="min-h-0 flex-1 overflow-auto">
           {/*
             Fixed layout with an explicit minimum: the columns keep the widths
             they were given, and the container scrolls sideways rather than
@@ -512,7 +526,7 @@ export function RecordsTable({
                     <th
                       key={c.key}
                       style={{ width: widthOf(c) }}
-                      className={`group/th relative border-b border-rule px-3 py-2.5 text-left text-[12px] font-medium whitespace-nowrap text-muted ${
+                      className={`group/th sticky top-0 z-20 border-b border-rule bg-surface px-3 py-2.5 text-left text-[12px] font-medium whitespace-nowrap text-muted ${
                         NUMERIC.has(c.key) ? "text-right" : ""
                       }`}
                     >
@@ -611,7 +625,7 @@ export function RecordsTable({
                     </th>
                   );
                 })}
-                <th className="w-[190px] border-b border-rule px-4 py-2.5 text-right text-[12px] font-medium text-muted">
+                <th className="sticky top-0 z-20 w-[190px] border-b border-rule bg-surface px-4 py-2.5 text-right text-[12px] font-medium text-muted">
                   Actions
                 </th>
               </tr>
@@ -778,7 +792,7 @@ export function RecordsTable({
           </table>
         </div>
 
-        <div className="flex items-center gap-2 border-t border-rule px-4 py-2.5">
+        <div className="flex flex-none items-center gap-2 border-t border-rule px-4 py-2.5">
           <span className="text-[12.5px] text-muted">
             Showing {filtered.length === 0 ? 0 : from + 1}–
             {Math.min(from + PER_PAGE, filtered.length)} of{" "}

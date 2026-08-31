@@ -144,6 +144,13 @@ export function RecordEditor({
   // Dupatta — so fall back rather than render nothing.
   const activeTab = tabs.some((t) => t.key === tab) ? tab : "basic";
 
+  // Recomputed rather than held in state, because the steps themselves change
+  // as the record does: choosing Saree inserts Blouse between Craft & Design
+  // and Prices, and a stored index would then point at the wrong one.
+  const step = Math.max(0, tabs.findIndex((t) => t.key === activeTab));
+  const onFirstStep = step === 0;
+  const onLastStep = step === tabs.length - 1;
+
   const set = (key: AttributeKey, value: string | null) => {
     setAttributes((prev) => {
       const next = { ...prev, [key]: value };
@@ -241,7 +248,7 @@ export function RecordEditor({
           </div>
 
           <div className="flex flex-wrap gap-1">
-            {tabs.map((t) => (
+            {tabs.map((t, i) => (
               <button
                 key={t.key}
                 type="button"
@@ -253,6 +260,16 @@ export function RecordEditor({
                     : "text-muted hover:text-ink-2"
                 }`}
               >
+                {/*
+                  Numbered only while creating, where the strip really is a
+                  sequence. On an existing record the same numbers would imply
+                  an order that does not exist.
+                */}
+                {isNew && (
+                  <span className="mr-1.5 font-mono text-[11px] text-faint tabular-nums">
+                    {i + 1}
+                  </span>
+                )}
                 {t.label}
                 {errorTabs.has(t.key) && (
                   <span
@@ -499,13 +516,35 @@ export function RecordEditor({
           )}
         </div>
 
+        {/*
+          Creating walks forward; editing does not.
+
+          A new record is a sequence — you cannot judge the prices before you
+          have said what the thing is — so it gets Back and Next, and the
+          commit only appears on the last step. An existing record is the
+          opposite: you opened it to change one field, and being made to page
+          through six tabs to reach Save would be absurd. Same dialog, two
+          footers.
+
+          The tab strip stays clickable in both. A wizard that traps you is
+          only right when the steps genuinely cannot be done out of order, and
+          these can.
+        */}
         <footer className="flex flex-wrap items-center gap-3 border-t border-rule px-6 py-3">
           {result && (
             <span className={`text-[13px] ${result.ok ? "text-ok" : "text-brick"}`}>
               {result.message}
             </span>
           )}
+
+          {isNew && result === null && (
+            <span className="text-[12.5px] text-muted">
+              Step {step + 1} of {tabs.length} — {tabs[step]?.label}
+            </span>
+          )}
+
           <span className="ml-auto" />
+
           <button
             type="button"
             onClick={onClose}
@@ -513,14 +552,42 @@ export function RecordEditor({
           >
             Cancel
           </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={pending}
-            className="rounded-md bg-brick px-4 py-2 text-[13.5px] font-medium text-on-brick hover:bg-brick-2 disabled:opacity-50"
-          >
-            {pending ? "Saving…" : isNew ? "Create record" : "Save"}
-          </button>
+
+          {isNew && (
+            <button
+              type="button"
+              onClick={() => {
+                const previous = tabs[step - 1];
+                if (previous) setTab(previous.key);
+              }}
+              disabled={onFirstStep}
+              className="rounded-md border border-rule-2 px-3 py-2 text-[13.5px] text-ink-2 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Back
+            </button>
+          )}
+
+          {isNew && !onLastStep ? (
+            <button
+              type="button"
+              onClick={() => {
+                const next = tabs[step + 1];
+                if (next) setTab(next.key);
+              }}
+              className="rounded-md bg-brick px-4 py-2 text-[13.5px] font-medium text-on-brick hover:bg-brick-2"
+            >
+              Next
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={submit}
+              disabled={pending}
+              className="rounded-md bg-brick px-4 py-2 text-[13.5px] font-medium text-on-brick hover:bg-brick-2 disabled:opacity-50"
+            >
+              {pending ? "Saving…" : isNew ? "Finish" : "Save"}
+            </button>
+          )}
         </footer>
       </div>
     </div>

@@ -57,6 +57,13 @@
       "when": 1788260300000,
       "tag": "0007_list_descriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788260400000,
+      "tag": "0008_audience_defaults_women",
+      "breakpoints": true
     }
   ]
 }

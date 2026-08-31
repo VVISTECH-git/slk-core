@@ -161,8 +161,14 @@ export const MASTER_LISTING: SeedList[] = [
   {
     code: "audience_type",
     label: "Audience Type",
-    description: "Who the piece is for.",
-    values: plain("Men", "Women", "Kids"),
+    description: "Who the piece is for. Defaults to Women.",
+    values: [
+      { label: "Men" },
+      // Every record that has an audience has this one — sarees, dupattas,
+      // the lot. Typing it on each of them is work the default should do.
+      { label: "Women", isDefault: true },
+      { label: "Kids" },
+    ],
   },
   {
     code: "craft_technique",

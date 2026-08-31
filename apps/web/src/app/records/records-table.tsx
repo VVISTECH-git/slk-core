@@ -157,7 +157,17 @@ export function RecordsTable({
 
   const [query, setQuery] = useState("");
   const [industry, setIndustry] = useState("");
-  const [filters, setFilters] = useState<Partial<Record<ColumnKey, string>>>({});
+  /**
+   * Chosen values per column, rather than one value per column.
+   *
+   * "Saree or Dupatta" is a question people actually have, and a single-value
+   * filter cannot answer it. An empty or absent array means the column is not
+   * filtering.
+   */
+  const [filters, setFilters] = useState<Partial<Record<ColumnKey, string[]>>>(
+    {},
+  );
+  const [showFilters, setShowFilters] = useState(false);
   const [visible, setVisible] = useState<Set<ColumnKey>>(
     () => new Set(COLUMNS.map((c) => c.key).filter((k) => !OFF_BY_DEFAULT.has(k))),
   );
@@ -181,8 +191,8 @@ export function RecordsTable({
       if (industry !== "" && row.industry !== industry) return false;
 
       for (const [key, want] of Object.entries(filters)) {
-        if (want === undefined || want === "") continue;
-        if (cell(row, key as ColumnKey) !== want) return false;
+        if (want === undefined || want.length === 0) continue;
+        if (!want.includes(cell(row, key as ColumnKey))) return false;
       }
 
       if (q === "") return true;
@@ -212,8 +222,8 @@ export function RecordsTable({
   const pageRows = filtered.slice(from, from + PER_PAGE);
 
   const activeFilters = Object.entries(filters).filter(
-    ([, v]) => v !== undefined && v !== "",
-  );
+    ([, v]) => v !== undefined && v.length > 0,
+  ) as [ColumnKey, string[]][];
 
   /** Distinct values actually present, so a filter can never return nothing. */
   const valuesFor = (key: ColumnKey): string[] => {
@@ -268,6 +278,43 @@ export function RecordsTable({
           aria-label="Search records"
           className="w-56 rounded-lg border border-rule-2 bg-surface px-3 py-2 text-[13.5px] text-ink placeholder:text-faint"
         />
+
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowFilters((v) => !v)}
+            aria-expanded={showFilters}
+            className={`rounded-lg border px-3 py-2 text-[13.5px] ${
+              activeFilters.length > 0
+                ? "border-brick bg-brick-soft text-brick"
+                : "border-rule-2 bg-surface text-ink-2 hover:border-ink-2"
+            }`}
+          >
+            Filter
+            {activeFilters.length > 0 && (
+              <span className="ml-1.5 font-mono text-[12px] tabular-nums">
+                {activeFilters.length}
+              </span>
+            )}
+          </button>
+
+          {showFilters && (
+            <FilterPanel
+              columns={COLUMNS.filter((c) => !NUMERIC.has(c.key))}
+              valuesFor={valuesFor}
+              filters={filters}
+              onChange={(key, values) => {
+                setFilters((prev) => ({ ...prev, [key]: values }));
+                setPage(1);
+              }}
+              onClearAll={() => {
+                setFilters({});
+                setPage(1);
+              }}
+              onClose={() => setShowFilters(false)}
+            />
+          )}
+        </div>
 
         <div className="relative">
           <button
@@ -340,19 +387,23 @@ export function RecordsTable({
 
       {activeFilters.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          {activeFilters.map(([key, value]) => (
+          {activeFilters.map(([key, values]) => (
             <button
               key={key}
               type="button"
               onClick={() =>
                 setFilters((prev) => {
-                  const { [key as ColumnKey]: _drop, ...rest } = prev;
+                  const { [key]: _drop, ...rest } = prev;
                   return rest;
                 })
               }
+              title={values.join(", ")}
               className="rounded-full border border-brick bg-brick-soft px-3 py-1 text-[12px] text-brick"
             >
-              {COLUMNS.find((c) => c.key === key)?.label}: {value} ✕
+              {COLUMNS.find((c) => c.key === key)?.label}:{" "}
+              {/* Two names fit; five do not, and "5 values" with the list on
+                  hover beats a chip that wraps onto three lines. */}
+              {values.length <= 2 ? values.join(", ") : `${values.length} values`} ✕
             </button>
           ))}
           <button
@@ -391,7 +442,6 @@ export function RecordsTable({
               <tr>
                 {columns.map((c) => {
                   const on = sort?.key === c.key;
-                  const values = valuesFor(c.key);
 
                   return (
                     <th
@@ -401,48 +451,55 @@ export function RecordsTable({
                         NUMERIC.has(c.key) ? "text-right" : ""
                       }`}
                     >
-                      <span className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setSort((prev) =>
-                              prev?.key === c.key
-                                ? { key: c.key, dir: prev.dir === 1 ? -1 : 1 }
-                                : { key: c.key, dir: 1 },
-                            )
-                          }
-                          className={`hover:text-ink ${on ? "text-ink" : ""} ${
-                            NUMERIC.has(c.key) ? "ml-auto" : ""
-                          }`}
-                        >
-                          {c.label}
-                          <span className={on ? "ml-1" : "ml-1 opacity-40"}>
-                            {on ? (sort.dir > 0 ? "↑" : "↓") : "↕"}
-                          </span>
-                        </button>
+                      {/*
+                        The header carries the column's name and its sort
+                        state, and nothing else.
 
-                        {values.length > 0 && (
-                          <select
-                            value={filters[c.key] ?? ""}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setFilters((prev) => ({ ...prev, [c.key]: v }));
-                              setPage(1);
-                            }}
-                            aria-label={`Filter by ${c.label}`}
-                            className={`w-4 shrink-0 cursor-pointer appearance-none bg-transparent text-center ${
-                              filters[c.key] ? "text-brick" : "text-faint hover:text-ink-2"
-                            }`}
-                          >
-                            <option value="">All</option>
-                            {values.map((v) => (
-                              <option key={v} value={v}>
-                                {v}
-                              </option>
-                            ))}
-                          </select>
+                        It used to also hold a filter dropdown showing its
+                        current value, so ten columns meant the word "All"
+                        printed ten times across the top of the table — and
+                        "Product Type ↑ All" left the reader parsing which
+                        part was the sort and which the filter. Filtering
+                        moved to one control above the table; what stays here
+                        is a dot saying this column is filtered, which is
+                        information rather than a control.
+                      */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSort((prev) =>
+                            prev?.key === c.key
+                              ? { key: c.key, dir: prev.dir === 1 ? -1 : 1 }
+                              : { key: c.key, dir: 1 },
+                          )
+                        }
+                        aria-label={`Sort by ${c.label}`}
+                        className={`group flex w-full items-center gap-1 hover:text-ink ${
+                          on ? "text-ink" : ""
+                        } ${NUMERIC.has(c.key) ? "justify-end" : ""}`}
+                      >
+                        {c.label}
+                        <span
+                          aria-hidden
+                          // Only once it is sorted, or on hover. An arrow on
+                          // every column at rest is the same clutter as "All"
+                          // on every column.
+                          className={
+                            on
+                              ? "text-brick"
+                              : "opacity-0 transition-opacity group-hover:opacity-40"
+                          }
+                        >
+                          {on ? (sort.dir > 0 ? "↑" : "↓") : "↕"}
+                        </span>
+
+                        {filtered.length >= 0 && (filters[c.key]?.length ?? 0) > 0 && (
+                          <span
+                            title={`Filtered: ${filters[c.key]?.join(", ")}`}
+                            className="ml-auto h-1.5 w-1.5 flex-none rounded-full bg-brick"
+                          />
                         )}
-                      </span>
+                      </button>
 
                       <ResizeHandle
                         label={c.label}
@@ -934,3 +991,169 @@ function ResizeHandle({
 const DEFAULT_WIDTHS: Record<string, number> = Object.fromEntries(
   COLUMNS.map((c) => [c.label, c.width]),
 );
+
+/**
+ * Every filter in one place, opened from one button.
+ *
+ * A dropdown per column header meant the word "All" printed across the top of
+ * the table once per column, and left "Product Type ↑ All" to be parsed into
+ * a name, a sort and a filter. Filtering is an occasional act on a screen
+ * whose job is showing data, so it lives behind a control rather than in the
+ * furniture.
+ *
+ * Multi-select, because "Saree or Dupatta" is a real question a single value
+ * cannot answer. Applied as you tick rather than behind an Apply button —
+ * the table is right there, and an Apply step adds a state that can be got
+ * wrong.
+ */
+function FilterPanel({
+  columns,
+  valuesFor,
+  filters,
+  onChange,
+  onClearAll,
+  onClose,
+}: {
+  columns: readonly { key: ColumnKey; label: string }[];
+  valuesFor: (key: ColumnKey) => string[];
+  filters: Partial<Record<ColumnKey, string[]>>;
+  onChange: (key: ColumnKey, values: string[]) => void;
+  onClearAll: () => void;
+  onClose: () => void;
+}) {
+  const [openColumn, setOpenColumn] = useState<ColumnKey | null>(null);
+  const [search, setSearch] = useState("");
+
+  const active = Object.values(filters).filter((v) => (v?.length ?? 0) > 0).length;
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="Close filters"
+        onClick={onClose}
+        className="fixed inset-0 z-10 cursor-default"
+      />
+
+      <div className="absolute right-0 z-20 mt-1 w-72 rounded-lg border border-rule-2 bg-surface p-2 shadow-lg">
+        {columns.map((c) => {
+          const chosen = filters[c.key] ?? [];
+          const values = valuesFor(c.key);
+          const isOpen = openColumn === c.key;
+
+          if (values.length === 0) return null;
+
+          const shown =
+            search.trim() === "" || !isOpen
+              ? values
+              : values.filter((v) =>
+                  v.toLowerCase().includes(search.trim().toLowerCase()),
+                );
+
+          return (
+            <div key={c.key}>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenColumn(isOpen ? null : c.key);
+                  setSearch("");
+                }}
+                aria-expanded={isOpen}
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[13px] text-ink-2 hover:bg-surface-2"
+              >
+                <span className="flex-1 truncate">{c.label}</span>
+                <span
+                  className={`truncate text-[12px] ${
+                    chosen.length > 0 ? "text-brick" : "text-faint"
+                  }`}
+                >
+                  {chosen.length === 0
+                    ? "All"
+                    : chosen.length === 1
+                      ? chosen[0]
+                      : `${chosen.length} chosen`}
+                </span>
+                <span aria-hidden className="flex-none text-faint">
+                  {isOpen ? "▴" : "▾"}
+                </span>
+              </button>
+
+              {isOpen && (
+                <div className="mb-1 ml-2 border-l border-rule pl-2">
+                  {/*
+                    Colour has forty-four values. Scrolling to find "Bottle
+                    Green" is the sort of thing that makes people stop using a
+                    filter at all.
+                  */}
+                  {values.length > 8 && (
+                    <input
+                      autoFocus
+                      type="search"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder={`Search ${c.label.toLowerCase()}`}
+                      className="mb-1 w-full rounded border border-rule-2 bg-surface px-2 py-1 text-[12.5px] text-ink placeholder:text-faint"
+                    />
+                  )}
+
+                  <div className="max-h-52 overflow-y-auto">
+                    {shown.length === 0 ? (
+                      <p className="px-1 py-2 text-[12px] text-muted">
+                        Nothing matches “{search}”.
+                      </p>
+                    ) : (
+                      shown.map((v) => (
+                        <label
+                          key={v}
+                          className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-[12.5px] text-ink-2 hover:bg-surface-2"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={chosen.includes(v)}
+                            onChange={() =>
+                              onChange(
+                                c.key,
+                                chosen.includes(v)
+                                  ? chosen.filter((x) => x !== v)
+                                  : [...chosen, v],
+                              )
+                            }
+                            className="accent-[var(--brick)]"
+                          />
+                          <span className="truncate">{v}</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+
+                  {chosen.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => onChange(c.key, [])}
+                      className="mt-1 px-1 text-[12px] text-muted hover:text-ink"
+                    >
+                      Clear {c.label}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {active > 0 && (
+          <>
+            <span className="my-1 block border-t border-rule" />
+            <button
+              type="button"
+              onClick={onClearAll}
+              className="w-full rounded px-2 py-1.5 text-left text-[13px] text-ink-2 hover:bg-surface-2"
+            >
+              Clear all filters
+            </button>
+          </>
+        )}
+      </div>
+    </>
+  );
+}

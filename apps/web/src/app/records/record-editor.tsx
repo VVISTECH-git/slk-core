@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { titleCase } from "@slk/domain";
 
@@ -26,6 +26,12 @@ import {
   type ActionResult,
   type RecordDraft,
 } from "./actions";
+import {
+  confirmImage,
+  presignImage,
+  removeImage,
+  storageStatus,
+} from "./image-actions";
 
 /**
  * One editor for a record, not four dialogs.
@@ -743,6 +749,8 @@ export function RecordEditor({
               chosen={imageSlots}
               setChosen={setImageSlots}
               taken={record?.images ?? []}
+              colourwayId={record?.id ?? null}
+              onChanged={onSaved}
             />
           )}
 
@@ -1715,25 +1723,56 @@ function Consignments({
  * Border and Blouse; SLK can add a fifth on Operational Standard and it appears here
  * with nothing to change.
  *
- * Deliberately honest about what is not built: there is nowhere to upload to
- * yet, and a disabled Upload button pretending otherwise would be worse than
- * a sentence saying so.
+ * The file goes straight from the browser to R2 with a signed URL — it never
+ * passes through this server, which would otherwise pay for every megabyte
+ * twice and need Next's 1MB body limit raised to accept a photograph at all.
  */
 function ImageSlots({
   slots,
   chosen,
   setChosen,
   taken,
+  colourwayId,
+  onChanged,
 }: {
   slots: Option[];
   chosen: string[];
   setChosen: (next: string[]) => void;
   /** Slots that already have a row, and whether a photograph has arrived. */
   taken: { slotId: string | null; url: string | null }[];
+  /**
+   * Null while the record is being created.
+   *
+   * There is nothing to attach a photograph to until Finish writes the
+   * colourway, so this tab records the intention and the pictures follow.
+   */
+  colourwayId: string | null;
+  onChanged: (message: string) => void;
 }) {
-  const filled = new Set(
-    taken.filter((t) => t.url !== null).map((t) => t.slotId ?? ""),
+  const [storage, setStorage] = useState<{
+    ready: boolean;
+    missing: string[];
+  } | null>(null);
+
+  // Asked once, when the tab is opened. Whether the bucket is configured is a
+  // fact about the server, and the alternative — threading it down from the
+  // page through the table and the editor — is four props for one sentence.
+  useEffect(() => {
+    let alive = true;
+    void storageStatus().then((s) => {
+      if (alive) setStorage(s);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const url = new Map(
+    taken
+      .filter((t) => t.slotId !== null && t.url !== null)
+      .map((t) => [t.slotId as string, t.url as string]),
   );
+  const filled = new Set(url.keys());
 
   if (slots.length === 0) {
     return (
@@ -1754,66 +1793,333 @@ function ImageSlots({
         new kind of photograph there offers it on every record.
       </p>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {slots.map((slot) => {
-          const on = chosen.includes(slot.id);
-          const has = filled.has(slot.id);
-
-          return (
-            <button
-              key={slot.id}
-              type="button"
-              // A slot with a photograph in it cannot be un-ticked here —
-              // that would be deleting the photograph by implication, which
-              // is not what a checkbox should mean.
-              disabled={has}
-              onClick={() =>
-                setChosen(
-                  on ? chosen.filter((id) => id !== slot.id) : [...chosen, slot.id],
-                )
-              }
-              title={has ? "A photograph is already here" : undefined}
-              className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed ${
-                on || has
-                  ? "border-brick bg-brick-soft"
-                  : "border-rule-2 hover:bg-surface-2"
-              }`}
-            >
-              <span
-                aria-hidden
-                className={`flex size-4 flex-none items-center justify-center rounded border text-[10px] ${
-                  on || has
-                    ? "border-brick bg-brick text-on-brick"
-                    : "border-rule-2"
-                }`}
-              >
-                {on || has ? "✓" : ""}
-              </span>
-
-              <span className="min-w-0">
-                <span
-                  className={`block truncate text-[13px] ${
-                    on || has ? "font-medium text-brick" : "text-ink-2"
-                  }`}
-                >
-                  {slot.label}
-                </span>
-                <span className="block text-[11px] text-muted">
-                  {has ? "Photographed" : on ? "To be shot" : "Not needed"}
-                </span>
-              </span>
-            </button>
-          );
-        })}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {slots.map((slot) => (
+          <SlotTile
+            key={slot.id}
+            slot={slot}
+            on={chosen.includes(slot.id)}
+            photograph={url.get(slot.id) ?? null}
+            colourwayId={colourwayId}
+            canUpload={storage?.ready === true}
+            onToggle={() =>
+              setChosen(
+                chosen.includes(slot.id)
+                  ? chosen.filter((id) => id !== slot.id)
+                  : [...chosen, slot.id],
+              )
+            }
+            onChanged={onChanged}
+          />
+        ))}
       </div>
 
-      <Note>
-        Uploading is not built yet — there is nowhere to put a file. The plan
-        is Cloudflare R2, which charges nothing for serving images out, and
-        that matters for a catalogue whose pictures end up on a storefront.
-        Until then this records which photographs are wanted, which is the half
-        that does not need storage.
-      </Note>
+      {colourwayId === null && (
+        <Note>
+          Photographs can be added once the record exists — Finish writes it,
+          and this tab is then where the pictures go. Ticking here says which
+          ones are wanted.
+        </Note>
+      )}
+
+      {storage !== null && !storage.ready && (
+        <Note>
+          Uploading is switched off: {storage.missing.join(", ")}{" "}
+          {storage.missing.length === 1 ? "is" : "are"} not set. Add the
+          Cloudflare R2 credentials to the environment and the buttons above
+          start working — nothing else needs changing. Ticking a slot still
+          records which photographs are wanted.
+        </Note>
+      )}
     </>
   );
+}
+
+/**
+ * One slot: what it is, whether it is wanted, and the photograph if it came.
+ *
+ * A tile rather than a checkbox row, because once a picture can arrive the
+ * picture is the thing worth showing — a filled slot should look filled from
+ * across the room, and an empty one should look like somewhere to put a file.
+ */
+function SlotTile({
+  slot,
+  on,
+  photograph,
+  colourwayId,
+  canUpload,
+  onToggle,
+  onChanged,
+}: {
+  slot: Option;
+  on: boolean;
+  photograph: string | null;
+  colourwayId: string | null;
+  canUpload: boolean;
+  onToggle: () => void;
+  onChanged: (message: string) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const has = photograph !== null;
+  const wanted = on || has;
+  const live = colourwayId !== null && canUpload;
+
+  /**
+   * Sign, PUT, then tell the server it landed.
+   *
+   * Three steps because the middle one does not involve this server at all.
+   * If the PUT fails the database is never told, so a slot never claims a
+   * photograph that is not in the bucket.
+   */
+  const send = async (file: File) => {
+    if (colourwayId === null) return;
+
+    setFailed(null);
+    setBusy("Preparing…");
+
+    const ticket = await presignImage(
+      colourwayId,
+      slot.id,
+      file.type,
+      file.size,
+    );
+
+    if (!ticket.ok || ticket.url === undefined || ticket.key === undefined) {
+      setBusy(null);
+      setFailed(ticket.message);
+      return;
+    }
+
+    setBusy("Uploading…");
+
+    try {
+      const put = await fetch(ticket.url, {
+        method: "PUT",
+        body: file,
+        headers: { "content-type": file.type },
+      });
+
+      if (!put.ok) {
+        setBusy(null);
+        setFailed(`The upload was refused (${put.status}).`);
+        return;
+      }
+    } catch {
+      setBusy(null);
+      setFailed("The upload did not finish. Check the connection and try again.");
+      return;
+    }
+
+    // Read off the file rather than trusting the server to open it later:
+    // the dimensions are wanted for laying the storefront out, and the
+    // browser already has the bytes decoded.
+    const size = await measure(file);
+
+    setBusy("Saving…");
+    const result = await confirmImage(
+      colourwayId,
+      slot.id,
+      ticket.key,
+      size?.width ?? null,
+      size?.height ?? null,
+    );
+
+    setBusy(null);
+    if (result.ok) onChanged(result.message);
+    else setFailed(result.message);
+  };
+
+  return (
+    <div
+      onDragOver={(e) => {
+        if (!live) return;
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => {
+        if (!live) return;
+        e.preventDefault();
+        setDragging(false);
+        const file = e.dataTransfer.files[0];
+        if (file !== undefined) void send(file);
+      }}
+      className={`overflow-hidden rounded-lg border transition-colors ${
+        dragging
+          ? "border-brick bg-brick-soft"
+          : wanted
+            ? "border-brick"
+            : "border-rule-2"
+      }`}
+    >
+      <input
+        ref={input}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/avif"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file !== undefined) void send(file);
+          // Cleared so choosing the same file twice still fires a change.
+          e.target.value = "";
+        }}
+      />
+
+      <div className="relative aspect-4/5 bg-surface-2">
+        {has ? (
+          // A plain img, not next/image: these are on a bucket whose host is
+          // configured at runtime, and the optimiser would need it at build.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={photograph}
+            alt={slot.label}
+            className="size-full object-cover"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => (live ? input.current?.click() : onToggle())}
+            className="flex size-full flex-col items-center justify-center gap-1 text-center"
+          >
+            <span aria-hidden className="text-[20px] text-faint">
+              {wanted ? "＋" : "○"}
+            </span>
+            <span className="px-2 text-[11px] leading-tight text-muted">
+              {busy ??
+                (live
+                  ? wanted
+                    ? "Add a photograph"
+                    : "Tick, then add"
+                  : wanted
+                    ? "To be shot"
+                    : "Not needed")}
+            </span>
+          </button>
+        )}
+
+        {busy !== null && has && (
+          <span className="absolute inset-0 grid place-items-center bg-surface/80 text-[11.5px] text-ink-2">
+            {busy}
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-1.5 border-t border-rule px-2 py-1.5">
+        <button
+          type="button"
+          // A slot with a photograph cannot be un-ticked — that would be
+          // deleting the picture by implication, which is not what a tick
+          // should mean. Remove the photograph first.
+          disabled={has}
+          onClick={onToggle}
+          title={has ? "Remove the photograph first" : undefined}
+          className="flex min-w-0 flex-1 items-center gap-1.5 text-left disabled:cursor-not-allowed"
+        >
+          <span
+            aria-hidden
+            className={`flex size-3.5 flex-none items-center justify-center rounded border text-[9px] ${
+              wanted ? "border-brick bg-brick text-on-brick" : "border-rule-2"
+            }`}
+          >
+            {wanted ? "✓" : ""}
+          </span>
+          <span
+            className={`truncate text-[12px] ${
+              wanted ? "font-medium text-brick" : "text-ink-2"
+            }`}
+          >
+            {slot.label}
+          </span>
+        </button>
+
+        {has && live && (
+          <>
+            <IconAction
+              label={`Replace the ${slot.label} photograph`}
+              disabled={busy !== null}
+              onClick={() => input.current?.click()}
+            >
+              ⟳
+            </IconAction>
+            <IconAction
+              label={`Remove the ${slot.label} photograph`}
+              disabled={busy !== null}
+              danger
+              onClick={() => {
+                setBusy("Removing…");
+                void removeImage(colourwayId, slot.id).then((r) => {
+                  setBusy(null);
+                  if (r.ok) onChanged(r.message);
+                  else setFailed(r.message);
+                });
+              }}
+            >
+              ×
+            </IconAction>
+          </>
+        )}
+      </div>
+
+      {failed !== null && (
+        <p className="border-t border-rule px-2 py-1.5 text-[11px] leading-relaxed text-brick">
+          {failed}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function IconAction({
+  label,
+  onClick,
+  disabled,
+  danger,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className={`flex-none rounded px-1.5 py-0.5 text-[13px] leading-none transition-colors disabled:opacity-30 ${
+        danger === true
+          ? "text-muted hover:bg-brick-soft hover:text-brick"
+          : "text-muted hover:bg-surface-3 hover:text-ink"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * The pixel dimensions, or null if the browser cannot read them.
+ *
+ * Never fatal: a photograph that uploaded is a photograph, and refusing to
+ * record it because its size could not be measured would throw away the part
+ * that matters for the part that does not.
+ */
+async function measure(
+  file: File,
+): Promise<{ width: number; height: number } | null> {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const size = { width: bitmap.width, height: bitmap.height };
+    bitmap.close();
+    return size;
+  } catch {
+    return null;
+  }
 }

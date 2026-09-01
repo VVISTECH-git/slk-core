@@ -189,6 +189,202 @@ export function ResizeHandle({
 }
 
 /**
+ * Dragging a heading to move its column.
+ *
+ * The heading is already a sort button and already carries a resize strip on
+ * its right edge, so a third gesture has to be told apart from the other two.
+ * The strip stops the event before it reaches here, and a press only becomes a
+ * drag once it has travelled far enough that it cannot have been a click —
+ * below that threshold the press is left alone and sorts, as it always did.
+ *
+ * Where it will land is read off the document rather than from a map of
+ * measured edges: `elementFromPoint` gives the heading under the pointer and
+ * its own box says which half you are on. Nothing to keep in sync when a
+ * column is resized or hidden mid-drag.
+ */
+const DRAG_THRESHOLD = 5;
+
+export interface ColumnDrag<K extends string> {
+  /** The column being dragged, or null when nothing is. */
+  active: K | null;
+  /** Where it would land: the key it would sit before, or the far end. */
+  before: K | "end" | null;
+  props: (key: K) => React.HTMLAttributes<HTMLElement> & { "data-col": string };
+}
+
+export function useColumnDrag<K extends string>(
+  /** The visible columns, left to right. */
+  columns: readonly K[],
+  onMove: (moved: K, before: K | "end") => void,
+): ColumnDrag<K> {
+  const [active, setActive] = useState<K | null>(null);
+  const [before, setBefore] = useState<K | "end" | null>(null);
+
+  const start = useRef<{ key: K; x: number } | null>(null);
+  const moved = useRef(false);
+  /** Set on the pointerup that ended a drag, so the click it spawns is eaten. */
+  const dragged = useRef(false);
+  /**
+   * The landing place, mirrored out of state.
+   *
+   * `pointerup` has to act on it, and reading it back through `setBefore` would
+   * mean doing the move inside a state updater — which React is free to run
+   * twice, and which would move the column twice with it.
+   */
+  const landing = useRef<K | "end" | null>(null);
+
+  // A plain function rather than a memo: it closes over `columns` and
+  // `onMove`, both of which change with the table, and it is called during
+  // render rather than passed anywhere that compares identities.
+  const props = (key: K) => {
+    const finish = (e: React.PointerEvent) => {
+      if (start.current === null) return;
+
+      const target = e.currentTarget as HTMLElement;
+      if (target.hasPointerCapture(e.pointerId)) {
+        target.releasePointerCapture(e.pointerId);
+      }
+
+      if (moved.current && landing.current !== null) {
+        dragged.current = true;
+        onMove(start.current.key, landing.current);
+      }
+
+      start.current = null;
+      moved.current = false;
+      landing.current = null;
+      setActive(null);
+      setBefore(null);
+    };
+
+    return {
+      "data-col": key,
+
+      onPointerDown: (e: React.PointerEvent) => {
+        // Left button only, and never from the resize strip — it stops the
+        // event before it gets here.
+        if (e.button !== 0) return;
+        start.current = { key, x: e.clientX };
+        moved.current = false;
+      },
+
+      onPointerMove: (e: React.PointerEvent) => {
+        if (start.current === null) return;
+
+        if (!moved.current) {
+          if (Math.abs(e.clientX - start.current.x) < DRAG_THRESHOLD) return;
+          moved.current = true;
+          /*
+            Captured here rather than on the press.
+
+            Capturing on pointerdown retargets the click that follows to the
+            element holding the capture — the heading — so it never reached
+            the sort button inside it, and every heading stopped sorting.
+            Taken once the press has become a drag, which is the only point
+            at which we actually need the pointer to keep reporting to us.
+          */
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+          setActive(start.current.key);
+        }
+
+        const over = document
+          .elementFromPoint(e.clientX, e.clientY)
+          ?.closest("[data-col]") as HTMLElement | null;
+
+        if (over === null || over === undefined) return;
+
+        const key = over.dataset.col as K;
+        const box = over.getBoundingClientRect();
+        const after = e.clientX > box.left + box.width / 2;
+
+        const at = columns.indexOf(key) + (after ? 1 : 0);
+        const next = at >= columns.length ? "end" : columns[at];
+
+        landing.current = next;
+        setBefore(next);
+      },
+
+      onPointerUp: finish,
+      onPointerCancel: finish,
+
+      // The drag ends on pointerup, and a click follows it onto the sort
+      // button. Sorting the table you just rearranged is not what was asked
+      // for, so the click is swallowed once.
+      onClickCapture: (e: React.MouseEvent) => {
+        if (!dragged.current) return;
+        dragged.current = false;
+        e.preventDefault();
+        e.stopPropagation();
+      },
+    };
+  };
+
+  return { active, before, props };
+}
+
+/**
+ * One column heading: its name, its sort state, its resize strip, and the grip
+ * that moves it.
+ *
+ * Shared so the two grids cannot drift on the fiddliest thing either of them
+ * does — three gestures on one element, told apart by where the press lands
+ * and how far it travels.
+ */
+export function HeaderCell<K extends string>({
+  column,
+  width,
+  numeric,
+  sortDir,
+  onSort,
+  onResize,
+  drag,
+  className = "",
+}: {
+  column: GridColumn<K>;
+  width: number;
+  numeric?: boolean;
+  sortDir: 1 | -1 | null;
+  onSort: () => void;
+  onResize: (width: number) => void;
+  drag: ColumnDrag<K>;
+  className?: string;
+}) {
+  const isActive = drag.active === column.key;
+  const landsHere = drag.active !== null && drag.before === column.key;
+
+  return (
+    <th
+      {...drag.props(column.key)}
+      style={{ width }}
+      className={`sticky top-0 z-20 border-b border-rule bg-surface px-3 py-2.5 text-left text-[12px] font-medium whitespace-nowrap text-muted ${
+        numeric ? "text-right" : ""
+      } ${isActive ? "opacity-40" : ""} ${
+        drag.active === null ? "" : "cursor-grabbing select-none"
+      } ${className}`}
+    >
+      {/* Where it would land, drawn on the edge it would land against. */}
+      {landsHere && (
+        <span aria-hidden className="absolute inset-y-0 left-0 z-10 w-0.5 bg-brick" />
+      )}
+
+      <SortButton
+        label={column.label}
+        dir={sortDir}
+        numeric={numeric}
+        onToggle={onSort}
+      />
+
+      <ResizeHandle
+        label={column.label}
+        width={width}
+        defaultWidth={column.width}
+        onResize={onResize}
+      />
+    </th>
+  );
+}
+
+/**
  * Which columns are shown, behind one button.
  *
  * Everything a row carries is available here rather than shown by default —
@@ -197,24 +393,46 @@ export function ResizeHandle({
  */
 export function ColumnsControl<K extends string>({
   columns,
+  order,
   visible,
   onChange,
+  onMove,
   chosen,
   resized,
+  ordered,
   onResetColumns,
   onResetWidths,
+  onResetOrder,
 }: {
   columns: readonly GridColumn<K>[];
+  /** Every column key in its current order, including the hidden ones. */
+  order: readonly string[];
   visible: Set<string>;
   onChange: (next: Set<string>) => void;
+  onMove: (key: K, before: K | "end") => void;
   /** Whether the reader has picked columns, so a way back can be offered. */
   chosen: boolean;
   /** Whether any width has been dragged, same reason. */
   resized: boolean;
+  /** Whether any column has been moved, same reason again. */
+  ordered: boolean;
   onResetColumns: () => void;
   onResetWidths: () => void;
+  onResetOrder: () => void;
 }) {
   const [open, setOpen] = useState(false);
+
+  /*
+    Listed in the order the table is actually in, not the order it was
+    declared in. A menu that says Product Code comes second while the table
+    plainly shows it fourth is a menu you stop trusting.
+
+    Hidden columns are listed too, and can be moved: someone tidying the order
+    should not have to switch a column on, move it, and switch it off again.
+  */
+  const listed = order
+    .map((key) => columns.find((c) => c.key === key))
+    .filter((c): c is GridColumn<K> => c !== undefined);
 
   return (
     <div className="relative">
@@ -238,27 +456,53 @@ export function ColumnsControl<K extends string>({
             className="fixed inset-0 z-10 cursor-default"
           />
           <div className="absolute right-0 z-20 mt-1 flex max-h-[calc(100vh-9rem)] w-56 flex-col overflow-y-auto rounded-lg border border-rule-2 bg-surface p-2 shadow-lg">
-            {columns.map((c) => (
-              <label
-                key={c.key}
-                className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[13px] text-ink-2 hover:bg-surface-2"
-              >
-                <input
-                  type="checkbox"
-                  checked={visible.has(c.key)}
-                  onChange={() => {
-                    const next = new Set(visible);
-                    if (next.has(c.key)) next.delete(c.key);
-                    else next.add(c.key);
-                    // Never all off. An empty table with the only way back
-                    // hidden in a menu is a corner nobody should be able to
-                    // paint themselves into.
-                    if (next.size > 0) onChange(next);
-                  }}
-                  className="accent-[var(--brick)]"
-                />
-                {c.label}
-              </label>
+            {listed.map((c, i) => (
+              <div key={c.key} className="group/row flex items-center gap-1 rounded pr-1 hover:bg-surface-2">
+                <label className="flex flex-1 cursor-pointer items-center gap-2 truncate px-2 py-1.5 text-[13px] text-ink-2">
+                  <input
+                    type="checkbox"
+                    checked={visible.has(c.key)}
+                    onChange={() => {
+                      const next = new Set(visible);
+                      if (next.has(c.key)) next.delete(c.key);
+                      else next.add(c.key);
+                      // Never all off. An empty table with the only way back
+                      // hidden in a menu is a corner nobody should be able to
+                      // paint themselves into.
+                      if (next.size > 0) onChange(next);
+                    }}
+                    className="accent-[var(--brick)]"
+                  />
+                  <span className="truncate">{c.label}</span>
+                </label>
+
+                {/*
+                  The way to reorder without a drag.
+
+                  Dragging a heading is the quick way and it is not available
+                  to everyone — a keyboard, a screen reader, a shaky hand or a
+                  trackpad on a moving train all want the slow way to exist.
+                  These are it, and they are the same operation underneath.
+                */}
+                <span className="flex flex-none">
+                  <MoveButton
+                    label={`Move ${c.label} left`}
+                    disabled={i === 0}
+                    onClick={() => onMove(c.key, listed[i - 1]!.key)}
+                  >
+                    ↑
+                  </MoveButton>
+                  <MoveButton
+                    label={`Move ${c.label} right`}
+                    disabled={i === listed.length - 1}
+                    onClick={() =>
+                      onMove(c.key, i + 2 < listed.length ? listed[i + 2]!.key : "end")
+                    }
+                  >
+                    ↓
+                  </MoveButton>
+                </span>
+              </div>
             ))}
 
             {/*
@@ -266,9 +510,21 @@ export function ColumnsControl<K extends string>({
               be left in a state its owner does not want and cannot undo by
               reloading — which is the trap of persisting anything.
             */}
-            {(resized || chosen) && (
+            {(resized || chosen || ordered) && (
               <>
                 <span className="my-1 block border-t border-rule" />
+                {ordered && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onResetOrder();
+                      setOpen(false);
+                    }}
+                    className="w-full rounded px-2 py-1.5 text-left text-[13px] text-ink-2 hover:bg-surface-2"
+                  >
+                    Reset the column order
+                  </button>
+                )}
                 {chosen && (
                   <button
                     type="button"
@@ -299,6 +555,36 @@ export function ColumnsControl<K extends string>({
         </>
       )}
     </div>
+  );
+}
+
+/** One nudge of a column, for the readers a drag does not serve. */
+function MoveButton({
+  children,
+  label,
+  disabled,
+  onClick,
+}: {
+  children: React.ReactNode;
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      // Faint until the row is hovered or the button itself is focused, so
+      // twenty-three of these do not shout over the column names — but never
+      // hidden, because a control that only exists on hover cannot be reached
+      // by the people these are for.
+      className="rounded px-1 text-[11px] text-faint opacity-40 transition-opacity group-hover/row:opacity-100 hover:bg-surface-3 hover:text-ink focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-0"
+    >
+      {children}
+    </button>
   );
 }
 

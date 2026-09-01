@@ -10,11 +10,11 @@ import {
   ColumnsControl,
   FilterChips,
   FilterControl,
+  HeaderCell,
   Pager,
-  ResizeHandle,
-  SortButton,
   Toast,
   activeFilters,
+  useColumnDrag,
   type Filters,
 } from "@/components/grid";
 import {
@@ -22,7 +22,7 @@ import {
   type Options,
   type RecordDetail,
 } from "@/lib/attributes";
-import { useColumnWidths, useVisibleColumns } from "@/lib/column-widths";
+import { useColumnOrder, useColumnWidths, useVisibleColumns } from "@/lib/column-widths";
 import type { RecordRow } from "@/lib/records";
 
 import { copyRecord, setRecordField, type InlineField } from "./actions";
@@ -73,6 +73,9 @@ const COLUMNS = [
 ] as const;
 
 type ColumnKey = (typeof COLUMNS)[number]["key"];
+
+/** Module-level so the order hook's effect does not re-run every render. */
+const COLUMN_KEYS: readonly string[] = COLUMNS.map((c) => c.key);
 
 /**
  * Craft Technique and Region Style start hidden because the Product column
@@ -284,9 +287,24 @@ export function RecordsTable({
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<string | null>(null);
 
-  const columns = COLUMNS.filter((c) => visible.has(c.key));
-
   const { widths, setWidth, reset: resetWidths, resized } = useColumnWidths("records");
+
+  const {
+    order,
+    move,
+    reset: resetOrder,
+    ordered,
+  } = useColumnOrder("records", COLUMN_KEYS);
+
+  /** The order someone put them in, less the ones they have switched off. */
+  const columns = order
+    .map((key) => COLUMNS.find((c) => c.key === key))
+    .filter((c): c is (typeof COLUMNS)[number] => c !== undefined && visible.has(c.key));
+
+  const drag = useColumnDrag<ColumnKey>(
+    columns.map((c) => c.key),
+    move,
+  );
 
   /** A dragged width if there is one, otherwise the width the column was designed at. */
   const widthOf = (c: { key: ColumnKey; width: number }) =>
@@ -417,12 +435,16 @@ export function RecordsTable({
 
         <ColumnsControl
           columns={COLUMNS}
+          order={order}
           visible={visible}
           onChange={setVisible}
+          onMove={move}
           chosen={columnsChosen}
           resized={resized}
+          ordered={ordered}
           onResetColumns={resetColumns}
           onResetWidths={resetWidths}
+          onResetOrder={resetOrder}
         />
       </header>
 
@@ -463,35 +485,30 @@ export function RecordsTable({
             <thead>
               <tr>
                 {columns.map((c) => (
-                  <th
+                  <HeaderCell
                     key={c.key}
-                    style={{ width: widthOf(c) }}
-                    className={`sticky top-0 z-20 border-b border-rule bg-surface px-3 py-2.5 text-left text-[12px] font-medium whitespace-nowrap text-muted ${
-                      NUMERIC.has(c.key) ? "text-right" : ""
-                    }`}
-                  >
-                    <SortButton
-                      label={c.label}
-                      dir={sort?.key === c.key ? sort.dir : null}
-                      numeric={NUMERIC.has(c.key)}
-                      onToggle={() =>
-                        setSort((prev) =>
-                          prev?.key === c.key
-                            ? { key: c.key, dir: prev.dir === 1 ? -1 : 1 }
-                            : { key: c.key, dir: 1 },
-                        )
-                      }
-                    />
-
-                    <ResizeHandle
-                      label={c.label}
-                      width={widthOf(c)}
-                      defaultWidth={c.width}
-                      onResize={(w) => setWidth(c.key, w)}
-                    />
-                  </th>
+                    column={c}
+                    width={widthOf(c)}
+                    numeric={NUMERIC.has(c.key)}
+                    sortDir={sort?.key === c.key ? sort.dir : null}
+                    onSort={() =>
+                      setSort((prev) =>
+                        prev?.key === c.key
+                          ? { key: c.key, dir: prev.dir === 1 ? -1 : 1 }
+                          : { key: c.key, dir: 1 },
+                      )
+                    }
+                    onResize={(w) => setWidth(c.key, w)}
+                    drag={drag}
+                  />
                 ))}
-                <th className="sticky top-0 z-20 w-[190px] border-b border-rule bg-surface px-4 py-2.5 text-right text-[12px] font-medium text-muted">
+                <th
+                  className={`sticky top-0 z-20 w-[190px] border-b border-rule bg-surface px-4 py-2.5 text-right text-[12px] font-medium text-muted ${
+                    drag.active !== null && drag.before === "end"
+                      ? "shadow-[inset_2px_0_0_0_var(--brick)]"
+                      : ""
+                  }`}
+                >
                   Actions
                 </th>
               </tr>

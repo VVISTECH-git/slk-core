@@ -133,6 +133,118 @@ export function useVisibleColumns(
   return { visible, setVisible, reset, chosen };
 }
 
+/**
+ * Folds a stored order together with the columns that exist today.
+ *
+ * A stored list is a snapshot of the table as it was when someone last
+ * dragged a heading, and the table has moved on since: columns get added and
+ * removed, and a key that means nothing now must not survive as a gap.
+ *
+ * Keys that no longer exist are dropped. Keys that are new go in at the index
+ * the table declares them at, rather than on the end — a column someone
+ * deliberately put third should appear third the first time you see it, not
+ * exiled past everything you have ever reordered.
+ */
+function mergeOrder(stored: string[], defaults: readonly string[]): string[] {
+  const known = new Set(defaults);
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  for (const key of stored) {
+    if (known.has(key) && !seen.has(key)) {
+      out.push(key);
+      seen.add(key);
+    }
+  }
+
+  defaults.forEach((key, i) => {
+    if (!seen.has(key)) out.splice(Math.min(i, out.length), 0, key);
+  });
+
+  return out;
+}
+
+/**
+ * The order the columns sit in, if someone has moved them.
+ *
+ * Held over every column rather than only the visible ones, so hiding a
+ * column and showing it again puts it back where it was rather than on the
+ * end. `move` therefore takes the key to land *before* rather than an index —
+ * an index into the visible columns means nothing to a list that also holds
+ * the hidden ones.
+ */
+export function useColumnOrder(
+  namespace: string,
+  /** Every column key, in the order the table declares them. Must be stable. */
+  defaults: readonly string[],
+): {
+  order: string[];
+  move: (key: string, before: string | "end") => void;
+  reset: () => void;
+  ordered: boolean;
+} {
+  const key = useMemo(() => `slk.${namespace}.columnOrder`, [namespace]);
+
+  const [order, setOrder] = useState<string[]>(() => [...defaults]);
+  const [ordered, setOrdered] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (raw === null) return;
+
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+
+      const stored = parsed.filter((k): k is string => typeof k === "string");
+      if (stored.length === 0) return;
+
+      setOrder(mergeOrder(stored, defaults));
+      setOrdered(true);
+    } catch {
+      // Private windows, blocked site data, or something else in the slot.
+    }
+  }, [key, defaults]);
+
+  const move = useCallback(
+    (moved: string, before: string | "end") => {
+      setOrder((prev) => {
+        if (moved === before) return prev;
+        if (prev.indexOf(moved) === -1) return prev;
+
+        const next = prev.filter((k) => k !== moved);
+        const at = before === "end" ? next.length : next.indexOf(before);
+        if (at === -1) return prev;
+
+        next.splice(at, 0, moved);
+
+        try {
+          window.localStorage.setItem(key, JSON.stringify(next));
+        } catch {
+          // Not remembering the move is better than failing to make it.
+        }
+
+        return next;
+      });
+
+      setOrdered(true);
+    },
+    [key],
+  );
+
+  const reset = useCallback(() => {
+    setOrder([...defaults]);
+    setOrdered(false);
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+      // Same again.
+    }
+  }, [defaults, key]);
+
+  return { order, move, reset, ordered };
+}
+
 export function useColumnWidths(namespace: string): {
   widths: ColumnWidths;
   setWidth: (key: string, width: number) => void;

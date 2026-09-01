@@ -203,7 +203,6 @@ export function RecordEditor({
    */
   const uom = labelOf("uom", attributes.uom);
   const perUnit = uom === null ? "" : ` per ${uom}`;
-  const fibre = labelOf("fibre_type", attributes.fibreType);
   const craft = labelOf("craft_technique", attributes.craftTechnique);
 
   const tabs = useMemo(() => {
@@ -219,7 +218,10 @@ export function RecordEditor({
     list.push({ key: "images", label: "Images" });
     list.push({ key: "stock", label: "Stock" });
     return list;
-  }, [isSaree, isGarment, isNew]);
+    // Not isNew: Images and Stock are offered whether or not the record
+    // exists yet, which is what the note above says. It stayed in the list
+    // after the gate it belonged to came out.
+  }, [isSaree, isGarment]);
 
   const errorTabs = useMemo(() => {
     const set = new Set<TabKey>();
@@ -1772,7 +1774,6 @@ function ImageSlots({
       .filter((t) => t.slotId !== null && t.url !== null)
       .map((t) => [t.slotId as string, t.url as string]),
   );
-  const filled = new Set(url.keys());
 
   if (slots.length === 0) {
     return (

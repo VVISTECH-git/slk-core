@@ -286,8 +286,6 @@ function Classifications({
               : "No classifications yet."
             : null
         }
-        allPicked={shown.length > 0 && shown.every((r) => picked.has(r.id))}
-        onPickAll={(on) => setPicked(on ? new Set(shown.map((r) => r.id)) : new Set())}
         head={
           <Head
             columns={CLASSIFICATION_COLUMNS}
@@ -635,8 +633,6 @@ function Categories({
       )}
 
       <Table
-        allPicked={shown.length > 0 && shown.every((r) => picked.has(r.id))}
-        onPickAll={(on) => setPicked(on ? new Set(shown.map((r) => r.id)) : new Set())}
         empty={
           list === ""
             ? "Choose a classification above to see its categories."
@@ -1520,14 +1516,10 @@ function Counted({
 
 function Table({
   head,
-  allPicked,
-  onPickAll,
   empty,
   children,
 }: {
   head: React.ReactNode;
-  allPicked: boolean;
-  onPickAll: (on: boolean) => void;
   empty?: string | null;
   children: React.ReactNode;
 }) {
@@ -1855,7 +1847,7 @@ export function useSortFilter<T>(
   const [filters, setFilters] = useState<Record<string, string>>({});
 
   const shown = useMemo(() => {
-    let out = rows.filter((row) =>
+    const out = rows.filter((row) =>
       columns.every((c) => {
         const want = filters[c.key];
         if (want === undefined || want === "") return true;

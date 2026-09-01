@@ -595,6 +595,20 @@ export function RecordEditor({
                     )}
                   </>
                 )}
+                {/*
+                  Shown, not asked. The product type states how the thing is
+                  measured — Fabric by the Metre, everything else by the
+                  Piece — and a record whose unit disagreed with its type
+                  would be a record whose price meant nothing. It is here
+                  because a price per Metre reads quite differently from a
+                  price per Piece, and until now nothing on this form said
+                  which.
+                */}
+                <Combo label="Unit of Measure" list="uom" disabled
+                  options={options} value={attributes.uom ?? null}
+                  hint="Follows the product type"
+                  placeholder="Set by the product type"
+                  onPick={() => undefined} />
                 <Combo label="Production Method" list="production_method"
                   options={options} value={attributes.productionMethod ?? null}
                   onPick={(v) => set("productionMethod", v)} />
@@ -1304,6 +1318,7 @@ function Combo({
   disabled,
   placeholder,
   error,
+  hint,
   parentFilter,
   fallbackToUnparented,
 }: {
@@ -1316,6 +1331,8 @@ function Combo({
   disabled?: boolean;
   placeholder?: string;
   error?: string;
+  /** A line under the field, for a rule the control cannot show. */
+  hint?: string;
   parentFilter?: string | null;
   /**
    * When the parent has no values of its own, offer the unparented ones.
@@ -1389,11 +1406,15 @@ function Combo({
           </option>
         ))}
       </select>
-      {(error ?? (values.length === 0 && !disabled)) && (
+      {(error ?? (values.length === 0 && !disabled)) ? (
         <span className="mt-1 block text-[11.5px] text-brick">
           {error ?? "No values in this list yet"}
         </span>
-      )}
+      ) : hint !== undefined ? (
+        <span className="mt-1 block text-[11.5px] leading-relaxed text-muted">
+          {hint}
+        </span>
+      ) : null}
     </label>
   );
 }

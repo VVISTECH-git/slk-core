@@ -23,6 +23,11 @@ const NAV = [
     icon: "M3 6l7-3 7 3v8l-7 3-7-3z M3 6l7 3 7-3 M10 9v8",
   },
   {
+    href: "/operational-standard",
+    label: "Operational Standard",
+    icon: "M4 4h5v5H4z M11 4h5v5h-5z M4 11h5v5H4z M11 11h5v5h-5z",
+  },
+  {
     // Named for the workbook it comes from — Master Listing - New.xlsx — so
     // it is a word the people maintaining it already use.
     href: "/master-lists",

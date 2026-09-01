@@ -1,24 +1,32 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { colourSwatch, isPaleSwatch } from "@slk/domain";
 
 import {
+  Cell,
+  ColumnsControl,
+  FilterChips,
+  FilterControl,
+  Pager,
+  ResizeHandle,
+  SortButton,
+  Toast,
+  activeFilters,
+  type Filters,
+} from "@/components/grid";
+import {
   HOME_INDUSTRY,
   type Options,
   type RecordDetail,
 } from "@/lib/attributes";
+import { useColumnWidths, useVisibleColumns } from "@/lib/column-widths";
 import type { RecordRow } from "@/lib/records";
 
 import { copyRecord, setRecordField, type InlineField } from "./actions";
 import { InlineLookupCell } from "./inline-cell";
-import {
-  MIN_COLUMN_WIDTH,
-  useColumnWidths,
-  useVisibleColumns,
-} from "./column-widths";
 import { ArchiveDialog, RecordEditor, type PickableLocation } from "./record-editor";
 
 /**
@@ -265,26 +273,23 @@ export function RecordsTable({
    * filter cannot answer it. An empty or absent array means the column is not
    * filtering.
    */
-  const [filters, setFilters] = useState<Partial<Record<ColumnKey, string[]>>>(
-    {},
-  );
-  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState<Filters<ColumnKey>>({});
   const {
     visible,
     setVisible,
     reset: resetColumns,
     chosen: columnsChosen,
   } = useVisibleColumns(
+    "records",
     () => new Set(COLUMNS.map((c) => c.key).filter((k) => !OFF_BY_DEFAULT.has(k))),
   );
-  const [showColumns, setShowColumns] = useState(false);
   const [sort, setSort] = useState<{ key: ColumnKey; dir: 1 | -1 } | null>(null);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<string | null>(null);
 
   const columns = COLUMNS.filter((c) => visible.has(c.key));
 
-  const { widths, setWidth, reset: resetWidths, resized } = useColumnWidths();
+  const { widths, setWidth, reset: resetWidths, resized } = useColumnWidths("records");
 
   /** A dragged width if there is one, otherwise the width the column was designed at. */
   const widthOf = (c: { key: ColumnKey; width: number }) =>
@@ -327,9 +332,7 @@ export function RecordsTable({
   const from = (current - 1) * PER_PAGE;
   const pageRows = filtered.slice(from, from + PER_PAGE);
 
-  const activeFilters = Object.entries(filters).filter(
-    ([, v]) => v !== undefined && v.length > 0,
-  ) as [ColumnKey, string[]][];
+  const active = activeFilters(filters);
 
   /** Distinct values actually present, so a filter can never return nothing. */
   const valuesFor = (key: ColumnKey): string[] => {
@@ -396,157 +399,42 @@ export function RecordsTable({
           className="w-56 rounded-lg border border-rule-2 bg-surface px-3 py-2 text-[13.5px] text-ink placeholder:text-faint"
         />
 
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setShowFilters((v) => !v)}
-            aria-expanded={showFilters}
-            className={`rounded-lg border px-3 py-2 text-[13.5px] ${
-              activeFilters.length > 0
-                ? "border-brick bg-brick-soft text-brick"
-                : "border-rule-2 bg-surface text-ink-2 hover:border-ink-2"
-            }`}
-          >
-            Filter
-            {activeFilters.length > 0 && (
-              <span className="ml-1.5 font-mono text-[12px] tabular-nums">
-                {activeFilters.length}
-              </span>
-            )}
-          </button>
+        <FilterControl
+          columns={COLUMNS.filter((c) => !NUMERIC.has(c.key))}
+          valuesFor={valuesFor}
+          filters={filters}
+          onChange={(key, values) => {
+            setFilters((prev) => ({ ...prev, [key]: values }));
+            setPage(1);
+          }}
+          onClearAll={() => {
+            setFilters({});
+            setPage(1);
+          }}
+        />
 
-          {showFilters && (
-            <FilterPanel
-              columns={COLUMNS.filter((c) => !NUMERIC.has(c.key))}
-              valuesFor={valuesFor}
-              filters={filters}
-              onChange={(key, values) => {
-                setFilters((prev) => ({ ...prev, [key]: values }));
-                setPage(1);
-              }}
-              onClearAll={() => {
-                setFilters({});
-                setPage(1);
-              }}
-              onClose={() => setShowFilters(false)}
-            />
-          )}
-        </div>
-
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setShowColumns((v) => !v)}
-            aria-expanded={showColumns}
-            className="rounded-lg border border-rule-2 bg-surface px-3 py-2 text-[13.5px] text-ink-2 hover:border-ink-2"
-          >
-            Columns
-          </button>
-
-          {showColumns && (
-            <>
-              {/* Clicking anywhere else closes the menu, which is what every
-                  dropdown does and what people expect. */}
-              <button
-                type="button"
-                aria-label="Close columns menu"
-                onClick={() => setShowColumns(false)}
-                className="fixed inset-0 z-10 cursor-default"
-              />
-              <div className="absolute right-0 z-20 mt-1 flex max-h-[calc(100vh-9rem)] w-56 flex-col overflow-y-auto rounded-lg border border-rule-2 bg-surface p-2 shadow-lg">
-              {COLUMNS.map((c) => (
-                <label
-                  key={c.key}
-                  className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-[13px] text-ink-2 hover:bg-surface-2"
-                >
-                  <input
-                    type="checkbox"
-                    checked={visible.has(c.key)}
-                    onChange={() => {
-                      const next = new Set(visible);
-                      if (next.has(c.key)) next.delete(c.key);
-                      else next.add(c.key);
-                      // Never all off. An empty table with the only way back
-                      // hidden in a menu is a corner nobody should be able to
-                      // paint themselves into.
-                      if (next.size > 0) setVisible(next);
-                    }}
-                    className="accent-[var(--brick)]"
-                  />
-                  {c.label}
-                </label>
-              ))}
-
-              {/*
-                A way back. Widths are dragged and remembered, so a layout can
-                be left in a state its owner does not want and cannot undo by
-                reloading — which is the trap of persisting anything.
-              */}
-              {(resized || columnsChosen) && (
-                <>
-                  <span className="my-1 block border-t border-rule" />
-                  {columnsChosen && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        resetColumns();
-                        setShowColumns(false);
-                      }}
-                      className="w-full rounded px-2 py-1.5 text-left text-[13px] text-ink-2 hover:bg-surface-2"
-                    >
-                      Reset to the default columns
-                    </button>
-                  )}
-                  {resized && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        resetWidths();
-                        setShowColumns(false);
-                      }}
-                      className="w-full rounded px-2 py-1.5 text-left text-[13px] text-ink-2 hover:bg-surface-2"
-                    >
-                      Reset column widths
-                    </button>
-                  )}
-                </>
-              )}
-              </div>
-            </>
-          )}
-        </div>
+        <ColumnsControl
+          columns={COLUMNS}
+          visible={visible}
+          onChange={setVisible}
+          chosen={columnsChosen}
+          resized={resized}
+          onResetColumns={resetColumns}
+          onResetWidths={resetWidths}
+        />
       </header>
 
-      {activeFilters.length > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          {activeFilters.map(([key, values]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() =>
-                setFilters((prev) => {
-                  const { [key]: _drop, ...rest } = prev;
-                  return rest;
-                })
-              }
-              title={values.join(", ")}
-              className="rounded-full border border-brick bg-brick-soft px-3 py-1 text-[12px] text-brick"
-            >
-              {COLUMNS.find((c) => c.key === key)?.label}:{" "}
-              {/* Two names fit; five do not, and "5 values" with the list on
-                  hover beats a chip that wraps onto three lines. */}
-              {values.length <= 2 ? values.join(", ") : `${values.length} values`} ✕
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setFilters({})}
-            className="text-[12.5px] text-muted hover:text-ink"
-          >
-            Clear All
-          </button>
-        </div>
-      )}
+      <FilterChips
+        columns={COLUMNS}
+        filters={filters}
+        onRemove={(key) =>
+          setFilters((prev) => {
+            const { [key]: _drop, ...rest } = prev;
+            return rest;
+          })
+        }
+        onClearAll={() => setFilters({})}
+      />
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-rule bg-surface">
         <div className="flex flex-none items-center gap-3 border-b border-rule px-4 py-2.5">
@@ -572,70 +460,35 @@ export function RecordsTable({
           >
             <thead>
               <tr>
-                {columns.map((c) => {
-                  const on = sort?.key === c.key;
+                {columns.map((c) => (
+                  <th
+                    key={c.key}
+                    style={{ width: widthOf(c) }}
+                    className={`sticky top-0 z-20 border-b border-rule bg-surface px-3 py-2.5 text-left text-[12px] font-medium whitespace-nowrap text-muted ${
+                      NUMERIC.has(c.key) ? "text-right" : ""
+                    }`}
+                  >
+                    <SortButton
+                      label={c.label}
+                      dir={sort?.key === c.key ? sort.dir : null}
+                      numeric={NUMERIC.has(c.key)}
+                      onToggle={() =>
+                        setSort((prev) =>
+                          prev?.key === c.key
+                            ? { key: c.key, dir: prev.dir === 1 ? -1 : 1 }
+                            : { key: c.key, dir: 1 },
+                        )
+                      }
+                    />
 
-                  return (
-                    <th
-                      key={c.key}
-                      style={{ width: widthOf(c) }}
-                      className={`sticky top-0 z-20 border-b border-rule bg-surface px-3 py-2.5 text-left text-[12px] font-medium whitespace-nowrap text-muted ${
-                        NUMERIC.has(c.key) ? "text-right" : ""
-                      }`}
-                    >
-                      {/*
-                        The header carries the column's name and its sort
-                        state, and nothing else.
-
-                        It used to also hold a filter dropdown showing its
-                        current value, so ten columns meant the word "All"
-                        printed ten times across the top of the table — and
-                        "Product Type ↑ All" left the reader parsing which
-                        part was the sort and which the filter. Filtering
-                        moved to one control above the table; what stays here
-                        is a dot saying this column is filtered, which is
-                        information rather than a control.
-                      */}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSort((prev) =>
-                            prev?.key === c.key
-                              ? { key: c.key, dir: prev.dir === 1 ? -1 : 1 }
-                              : { key: c.key, dir: 1 },
-                          )
-                        }
-                        aria-label={`Sort by ${c.label}`}
-                        className={`group flex w-full items-center gap-1 hover:text-ink ${
-                          on ? "text-ink" : ""
-                        } ${NUMERIC.has(c.key) ? "justify-end" : ""}`}
-                      >
-                        {c.label}
-                        <span
-                          aria-hidden
-                          // Only once it is sorted, or on hover. An arrow on
-                          // every column at rest is the same clutter as "All"
-                          // on every column.
-                          className={
-                            on
-                              ? "text-brick"
-                              : "opacity-0 transition-opacity group-hover:opacity-40"
-                          }
-                        >
-                          {on ? (sort.dir > 0 ? "↑" : "↓") : "↕"}
-                        </span>
-
-                      </button>
-
-                      
-                      <ResizeHandle
-                        label={c.label}
-                        width={widthOf(c)}
-                        onResize={(w) => setWidth(c.key, w)}
-                      />
-                    </th>
-                  );
-                })}
+                    <ResizeHandle
+                      label={c.label}
+                      width={widthOf(c)}
+                      defaultWidth={c.width}
+                      onResize={(w) => setWidth(c.key, w)}
+                    />
+                  </th>
+                ))}
                 <th className="sticky top-0 z-20 w-[190px] border-b border-rule bg-surface px-4 py-2.5 text-right text-[12px] font-medium text-muted">
                   Actions
                 </th>
@@ -650,7 +503,7 @@ export function RecordsTable({
                       No records match
                     </p>
                     <p className="text-[13.5px] text-muted">
-                      {industry || query || activeFilters.length
+                      {industry || query || active.length
                         ? "Clear the industry filter or the search to see everything."
                         : "Add your first record to get started."}
                     </p>
@@ -819,55 +672,15 @@ export function RecordsTable({
           </table>
         </div>
 
-        <div className="flex flex-none items-center gap-2 border-t border-rule px-4 py-2.5">
-          <span className="text-[12.5px] text-muted">
-            Showing {filtered.length === 0 ? 0 : from + 1}–
-            {Math.min(from + PER_PAGE, filtered.length)} of{" "}
-            {filtered.length.toLocaleString("en-IN")}
-          </span>
-
-          {pages > 1 && (
-            <span className="ml-auto flex items-center gap-1">
-              <PageButton disabled={current === 1} onClick={() => setPage(current - 1)}>
-                ‹
-              </PageButton>
-              {Array.from({ length: Math.min(5, pages) }, (_, i) => {
-                const lo = Math.max(1, Math.min(current - 2, pages - 4));
-                return lo + i;
-              })
-                .filter((n) => n >= 1 && n <= pages)
-                .map((n) => (
-                  <PageButton key={n} on={n === current} onClick={() => setPage(n)}>
-                    {n}
-                  </PageButton>
-                ))}
-              <PageButton
-                disabled={current === pages}
-                onClick={() => setPage(current + 1)}
-              >
-                ›
-              </PageButton>
-            </span>
-          )}
-        </div>
+        <Pager
+          total={filtered.length}
+          page={current}
+          perPage={PER_PAGE}
+          onPage={setPage}
+        />
       </div>
 
-      {toast && (
-        <div
-          role="status"
-          className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-lg border border-rule bg-surface px-4 py-2.5 text-[13.5px] text-ink shadow-lg"
-        >
-          {toast}
-          <button
-            type="button"
-            onClick={() => setToast(null)}
-            aria-label="Dismiss"
-            className="ml-3 text-muted hover:text-ink"
-          >
-            ✕
-          </button>
-        </div>
-      )}
+      {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
 
       {/*
         The dialog appears on the click, not on the response.
@@ -924,65 +737,6 @@ export function RecordsTable({
         />
       )}
     </div>
-  );
-}
-
-/**
- * One rule for every cell: never wrap, truncate with an ellipsis, and carry
- * the whole value in the title so hovering reveals what was cut.
- *
- * Applied without exception. Letting one column wrap while its neighbours
- * truncate is what made "bottle green" and "Sico (Silk-Cotton Blend)" push
- * their rows taller than the rest.
- */
-function Cell({
-  children,
-  title,
-  numeric,
-  className = "",
-}: {
-  children: React.ReactNode;
-  title: string;
-  numeric?: boolean;
-  className?: string;
-}) {
-  return (
-    <td
-      title={title}
-      className={`overflow-hidden px-3 whitespace-nowrap ${
-        numeric ? "text-right tabular-nums" : "truncate"
-      } ${className}`}
-    >
-      {children}
-    </td>
-  );
-}
-
-function PageButton({
-  children,
-  on,
-  disabled,
-  onClick,
-}: {
-  children: React.ReactNode;
-  on?: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      aria-current={on ? "page" : undefined}
-      className={`min-w-7 rounded px-2 py-1 text-[12.5px] ${
-        on
-          ? "bg-ink text-ground"
-          : "text-ink-2 hover:bg-surface-2 disabled:opacity-30 disabled:hover:bg-transparent"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -1075,259 +829,5 @@ function RowActions({
         </button>
       ))}
     </div>
-  );
-}
-
-/**
- * The grab strip on a column's right edge.
- *
- * Pointer events rather than mouse events, so a trackpad, a pen and a touch
- * screen all work, and so `setPointerCapture` keeps the drag alive when the
- * pointer leaves the four-pixel strip — which it does immediately, because
- * nobody drags in a straight line.
- *
- * The width is tracked in a ref during the drag and only committed on
- * release. Writing to localStorage on every pointermove would be a hundred
- * writes per drag for one useful value.
- */
-function ResizeHandle({
-  label,
-  width,
-  onResize,
-}: {
-  label: string;
-  width: number;
-  onResize: (width: number) => void;
-}) {
-  const [dragging, setDragging] = useState(false);
-  const start = useRef<{ x: number; width: number } | null>(null);
-  const latest = useRef(width);
-
-  return (
-    <span
-      role="separator"
-      aria-orientation="vertical"
-      aria-label={`Resize ${label} column`}
-      // Focusable and nudgeable, because a drag is not available to everyone
-      // and a column nobody can widen is the bug this was meant to fix.
-      tabIndex={0}
-      onKeyDown={(e) => {
-        const step = e.shiftKey ? 32 : 8;
-        if (e.key === "ArrowLeft") {
-          e.preventDefault();
-          onResize(width - step);
-        } else if (e.key === "ArrowRight") {
-          e.preventDefault();
-          onResize(width + step);
-        }
-      }}
-      onPointerDown={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        (e.target as HTMLElement).setPointerCapture(e.pointerId);
-        start.current = { x: e.clientX, width };
-        latest.current = width;
-        setDragging(true);
-      }}
-      onPointerMove={(e) => {
-        if (start.current === null) return;
-        latest.current = Math.max(
-          MIN_COLUMN_WIDTH,
-          start.current.width + (e.clientX - start.current.x),
-        );
-        onResize(latest.current);
-      }}
-      onPointerUp={(e) => {
-        if (start.current === null) return;
-        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-        start.current = null;
-        setDragging(false);
-        onResize(latest.current);
-      }}
-      onDoubleClick={(e) => {
-        e.stopPropagation();
-        onResize(DEFAULT_WIDTHS[label] ?? width);
-      }}
-      title="Drag to resize. Double-click to reset this column."
-      className={`absolute top-0 right-0 z-10 flex h-full w-2 cursor-col-resize touch-none items-center justify-center ${
-        dragging ? "bg-brick/15" : "hover:bg-brick/10"
-      }`}
-    >
-      <span
-        aria-hidden
-        className={`h-1/2 w-px ${dragging ? "bg-brick" : "bg-rule-2"}`}
-      />
-    </span>
-  );
-}
-
-/** Label → the width the column was designed at, for double-click to reset. */
-const DEFAULT_WIDTHS: Record<string, number> = Object.fromEntries(
-  COLUMNS.map((c) => [c.label, c.width]),
-);
-
-/**
- * Every filter in one place, opened from one button.
- *
- * A dropdown per column header meant the word "All" printed across the top of
- * the table once per column, and left "Product Type ↑ All" to be parsed into
- * a name, a sort and a filter. Filtering is an occasional act on a screen
- * whose job is showing data, so it lives behind a control rather than in the
- * furniture.
- *
- * Multi-select, because "Saree or Dupatta" is a real question a single value
- * cannot answer. Applied as you tick rather than behind an Apply button —
- * the table is right there, and an Apply step adds a state that can be got
- * wrong.
- */
-function FilterPanel({
-  columns,
-  valuesFor,
-  filters,
-  onChange,
-  onClearAll,
-  onClose,
-}: {
-  columns: readonly { key: ColumnKey; label: string }[];
-  valuesFor: (key: ColumnKey) => string[];
-  filters: Partial<Record<ColumnKey, string[]>>;
-  onChange: (key: ColumnKey, values: string[]) => void;
-  onClearAll: () => void;
-  onClose: () => void;
-}) {
-  const [openColumn, setOpenColumn] = useState<ColumnKey | null>(null);
-  const [search, setSearch] = useState("");
-
-  const active = Object.values(filters).filter((v) => (v?.length ?? 0) > 0).length;
-
-  return (
-    <>
-      <button
-        type="button"
-        aria-label="Close filters"
-        onClick={onClose}
-        className="fixed inset-0 z-10 cursor-default"
-      />
-
-      <div className="absolute right-0 z-20 mt-1 max-h-[calc(100vh-9rem)] w-72 overflow-y-auto rounded-lg border border-rule-2 bg-surface p-2 shadow-lg">
-        {columns.map((c) => {
-          const chosen = filters[c.key] ?? [];
-          const values = valuesFor(c.key);
-          const isOpen = openColumn === c.key;
-
-          if (values.length === 0) return null;
-
-          const shown =
-            search.trim() === "" || !isOpen
-              ? values
-              : values.filter((v) =>
-                  v.toLowerCase().includes(search.trim().toLowerCase()),
-                );
-
-          return (
-            <div key={c.key}>
-              <button
-                type="button"
-                onClick={() => {
-                  setOpenColumn(isOpen ? null : c.key);
-                  setSearch("");
-                }}
-                aria-expanded={isOpen}
-                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[13px] text-ink-2 hover:bg-surface-2"
-              >
-                <span className="flex-1 truncate">{c.label}</span>
-                <span
-                  className={`truncate text-[12px] ${
-                    chosen.length > 0 ? "text-brick" : "text-faint"
-                  }`}
-                >
-                  {chosen.length === 0
-                    ? "All"
-                    : chosen.length === 1
-                      ? chosen[0]
-                      : `${chosen.length} chosen`}
-                </span>
-                <span aria-hidden className="flex-none text-faint">
-                  {isOpen ? "▴" : "▾"}
-                </span>
-              </button>
-
-              {isOpen && (
-                <div className="mb-1 ml-2 border-l border-rule pl-2">
-                  {/*
-                    Colour has forty-four values. Scrolling to find "Bottle
-                    Green" is the sort of thing that makes people stop using a
-                    filter at all.
-                  */}
-                  {values.length > 8 && (
-                    <input
-                      autoFocus
-                      type="search"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                      placeholder={`Search ${c.label.toLowerCase()}`}
-                      className="mb-1 w-full rounded border border-rule-2 bg-surface px-2 py-1 text-[12.5px] text-ink placeholder:text-faint"
-                    />
-                  )}
-
-                  <div className="max-h-52 overflow-y-auto">
-                    {shown.length === 0 ? (
-                      <p className="px-1 py-2 text-[12px] text-muted">
-                        Nothing matches “{search}”.
-                      </p>
-                    ) : (
-                      shown.map((v) => (
-                        <label
-                          key={v}
-                          className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-[12.5px] text-ink-2 hover:bg-surface-2"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={chosen.includes(v)}
-                            onChange={() =>
-                              onChange(
-                                c.key,
-                                chosen.includes(v)
-                                  ? chosen.filter((x) => x !== v)
-                                  : [...chosen, v],
-                              )
-                            }
-                            className="accent-[var(--brick)]"
-                          />
-                          <span className="truncate">{v}</span>
-                        </label>
-                      ))
-                    )}
-                  </div>
-
-                  {chosen.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => onChange(c.key, [])}
-                      className="mt-1 px-1 text-[12px] text-muted hover:text-ink"
-                    >
-                      Clear {c.label}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {active > 0 && (
-          <>
-            <span className="my-1 block border-t border-rule" />
-            <button
-              type="button"
-              onClick={onClearAll}
-              className="w-full rounded px-2 py-1.5 text-left text-[13px] text-ink-2 hover:bg-surface-2"
-            >
-              Clear all filters
-            </button>
-          </>
-        )}
-      </div>
-    </>
   );
 }

@@ -25,7 +25,15 @@ export interface PieceRow {
   motifCategory: string | null;
   motif: string | null;
   location: string | null;
+  /** "01 Sep 2026" — what the table shows. */
   receivedAt: string | null;
+  /**
+   * The same date as "2026-09-01", which is what the table sorts by.
+   *
+   * Sorting the readable one puts the 1st of every month together, because
+   * text does not know that "01 Sep" comes after "31 Aug".
+   */
+  receivedOn: string | null;
   reference: string | null;
   priceMinor: number | null;
   /** Data URIs, generated server-side so the browser renders an image. */
@@ -71,6 +79,7 @@ export async function loadPieces(): Promise<PieceRow[]> {
       motif.label                               as motif,
       l.name                                    as location,
       to_char(b.received_at, 'DD Mon YYYY')     as "receivedAt",
+      to_char(b.received_at, 'YYYY-MM-DD')      as "receivedOn",
       b.reference,
       cw.retail_minor                           as "priceMinor"
     from piece p

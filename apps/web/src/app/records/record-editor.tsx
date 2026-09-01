@@ -895,6 +895,12 @@ function Combo({
     values = values.filter((o) => o.parentId === parentFilter);
   }
 
+  // A classification switched off in Operational Standard sends no values, so
+  // the question is not asked at all rather than asked with an empty list.
+  // A record that already answered it keeps its field, so the answer stays
+  // visible instead of vanishing from the form that holds it.
+  if ((options[list] ?? []).length === 0 && value === null) return null;
+
   return (
     <label className="block">
       <span className="mb-1 block text-[12.5px] text-ink-2">

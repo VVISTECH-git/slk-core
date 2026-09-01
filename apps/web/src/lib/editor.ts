@@ -1,4 +1,4 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 
 import { lookupList, lookupValue } from "@slk/db";
 
@@ -47,7 +47,10 @@ export async function loadOptions(): Promise<Options> {
     // Proposed is awaiting confirmation, and Retired has been withdrawn —
     // none of the three should be selectable on a new record. Moving a value
     // to Active on Master Lists is what puts it in every dropdown here.
-    .where(eq(lookupValue.status, "active"))
+    // …and only from classifications that are switched on. Disabling one in
+    // Operational Standard is how a question stops being asked altogether,
+    // as against retiring its values one at a time.
+    .where(and(eq(lookupValue.status, "active"), eq(lookupList.isEnabled, true)))
     .orderBy(asc(lookupList.code), asc(lookupValue.sortOrder));
 
   const options: Options = {};

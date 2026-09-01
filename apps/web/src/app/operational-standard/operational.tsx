@@ -10,7 +10,6 @@ import {
   Drawer,
   Field,
   Header,
-  RowMenu,
   ToastBar,
   inputClass,
   useToast,
@@ -89,6 +88,89 @@ export function OperationalStandard({
   );
 }
 
+/**
+ * The columns, stated once.
+ *
+ * Module level rather than inside the component so the identity is stable —
+ * `useSortFilter` memoises on the array, and rebuilding it every render would
+ * re-sort the table on every keystroke.
+ */
+const CLASSIFICATION_COLUMNS: Col<Classification>[] = [
+  { key: "name", label: "Name", width: "w-56", value: (r) => r.name, filter: "text" },
+  {
+    key: "description",
+    label: "Description",
+    value: (r) => r.description ?? "",
+    filter: "text",
+  },
+  {
+    key: "enabled",
+    label: "Enabled",
+    width: "w-20",
+    value: (r) => (r.isEnabled ? "Yes" : "No"),
+    filter: "choice",
+  },
+  {
+    key: "dependent",
+    label: "Dependent",
+    width: "w-24",
+    value: (r) => (r.dependent ? "Yes" : "No"),
+    filter: "choice",
+  },
+  {
+    key: "dependsOn",
+    label: "Dependent On",
+    width: "w-40",
+    value: (r) => r.dependsOn ?? "",
+    filter: "choice",
+  },
+  {
+    key: "status",
+    label: "Status",
+    width: "w-24",
+    value: (r) => titleish(r.status),
+    filter: "choice",
+  },
+];
+
+const CATEGORY_COLUMNS: Col<Category>[] = [
+  { key: "name", label: "Name", width: "w-56", value: (r) => r.name, filter: "text" },
+  {
+    key: "description",
+    label: "Description",
+    value: (r) => r.description ?? "",
+    filter: "text",
+  },
+  {
+    key: "enabled",
+    label: "Enabled",
+    width: "w-20",
+    value: (r) => (r.isEnabled ? "Yes" : "No"),
+    filter: "choice",
+  },
+  {
+    key: "dependent",
+    label: "Dependent",
+    width: "w-24",
+    value: (r) => (r.dependent ? "Yes" : "No"),
+    filter: "choice",
+  },
+  {
+    key: "belongsTo",
+    label: "Belongs To",
+    width: "w-40",
+    value: (r) => r.belongsTo ?? "",
+    filter: "choice",
+  },
+  {
+    key: "status",
+    label: "Status",
+    width: "w-24",
+    value: (r) => titleish(r.status),
+    filter: "choice",
+  },
+];
+
 /* ------------------------------------------------------------ section 1 */
 
 function Classifications({
@@ -104,7 +186,10 @@ function Classifications({
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
-  const chosen = [...picked];
+  const { shown, sort, toggle, filters, setFilter, clear, active } =
+    useSortFilter(rows, CLASSIFICATION_COLUMNS, sinkDisabled);
+
+  const chosen = [...picked].filter((id) => shown.some((r) => r.id === id));
   const current = rows.find((r) => r.id === editing) ?? null;
 
   return (
@@ -118,6 +203,15 @@ function Classifications({
           </Button>
         }
       />
+
+      <div className="mb-3">
+        <Counted
+          shown={shown.length}
+          total={rows.length}
+          active={active}
+          onClear={clear}
+        />
+      </div>
 
       {chosen.length > 0 && (
         <BulkBar
@@ -160,12 +254,31 @@ function Classifications({
       )}
 
       <Table
-        head={["Name", "Description", "Enabled", "Dependent", "Dependent On", "Status", ""]}
-        widths={["", "w-72", "w-20", "w-24", "w-40", "w-24", "w-12"]}
-        allPicked={rows.length > 0 && rows.every((r) => picked.has(r.id))}
-        onPickAll={(on) => setPicked(on ? new Set(rows.map((r) => r.id)) : new Set())}
+        empty={
+          shown.length === 0
+            ? active > 0
+              ? "Nothing matches those filters."
+              : "No classifications yet."
+            : null
+        }
+        allPicked={shown.length > 0 && shown.every((r) => picked.has(r.id))}
+        onPickAll={(on) => setPicked(on ? new Set(shown.map((r) => r.id)) : new Set())}
+        head={
+          <Head
+            columns={CLASSIFICATION_COLUMNS}
+            rows={rows}
+            sort={sort}
+            onSort={toggle}
+            filters={filters}
+            onFilter={setFilter}
+            allPicked={shown.length > 0 && shown.every((r) => picked.has(r.id))}
+            onPickAll={(on) =>
+              setPicked(on ? new Set(shown.map((r) => r.id)) : new Set())
+            }
+          />
+        }
       >
-        {rows.map((row) => (
+        {shown.map((row) => (
           <tr
             key={row.id}
             className={`h-11 border-b border-rule last:border-b-0 hover:bg-surface-2 ${
@@ -222,32 +335,23 @@ function Classifications({
             <Cell muted>{row.dependsOn}</Cell>
             <Cell>{titleish(row.status)}</Cell>
 
-            <td className="px-3">
-              <RowMenu
-                label={row.name}
-                items={[
-                  { label: "Modify", onSelect: () => setEditing(row.id) },
-                  {
-                    label: row.isEnabled ? "Disable" : "Enable",
-                    disabled: pending,
-                    onSelect: () =>
-                      onRun(() => setClassificationEnabled([row.id], !row.isEnabled)),
-                  },
-                  {
-                    label: "Delete",
-                    danger: true,
-                    disabled: pending || row.total > 0 || row.isSystem,
-                    hint:
-                      row.total > 0
-                        ? "It still has categories — disable it instead"
-                        : row.isSystem
-                          ? "The application reads this one by code"
-                          : undefined,
-                    onSelect: () => onRun(() => deleteClassifications([row.id])),
-                  },
-                ]}
-              />
-            </td>
+            <RowActions
+              label={row.name}
+              enabled={row.isEnabled}
+              pending={pending}
+              blocked={
+                row.total > 0
+                  ? "It still has categories — disable it instead"
+                  : row.isSystem
+                    ? "The application reads this one by code"
+                    : undefined
+              }
+              onModify={() => setEditing(row.id)}
+              onToggle={() =>
+                onRun(() => setClassificationEnabled([row.id], !row.isEnabled))
+              }
+              onDelete={() => onRun(() => deleteClassifications([row.id]))}
+            />
           </tr>
         ))}
       </Table>
@@ -278,11 +382,13 @@ function Classifications({
                 onChange={(e) => setDependsOn(e.target.value)}
               >
                 <option value="">Nothing — it stands alone</option>
-                {rows.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                  </option>
-                ))}
+                {rows
+                  .filter((r) => r.isEnabled)
+                  .map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
               </select>
             </Field>
           )}
@@ -313,21 +419,21 @@ function Categories({
   pending: boolean;
   onRun: (action: () => Promise<Result>, onOk?: () => void) => void;
 }) {
-  const [filter, setFilter] = useState("");
-  const [query, setQuery] = useState("");
+  const [list, setList] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
 
-  const shown = useMemo(() => {
-    const q = query.trim().toLowerCase();
+  // Nothing until a classification is chosen. All 227 values at once is a
+  // list of everything, which is a list of nothing in particular — the work
+  // here is always inside one classification.
+  const inList = useMemo(
+    () => (list === "" ? [] : rows.filter((r) => r.classificationId === list)),
+    [rows, list],
+  );
 
-    return rows.filter((r) => {
-      if (filter !== "" && r.classificationId !== filter) return false;
-      if (q !== "" && !r.name.toLowerCase().includes(q)) return false;
-      return true;
-    });
-  }, [rows, filter, query]);
+  const { shown, sort, toggle, filters, setFilter, clear, active } =
+    useSortFilter(inList, CATEGORY_COLUMNS, sinkDisabled);
 
   const chosen = [...picked].filter((id) => shown.some((r) => r.id === id));
   const current = rows.find((r) => r.id === editing) ?? null;
@@ -340,19 +446,25 @@ function Categories({
     const list = classifications.find((c) => c.id === row.classificationId);
     if (list?.dependsOnId == null) return [];
 
-    return rows.filter((r) => r.classificationId === list.dependsOnId);
+    // Disabled categories are not offered as a parent, but the one already
+    // chosen stays in the list so saving cannot quietly drop it.
+    return rows.filter(
+      (r) =>
+        r.classificationId === list.dependsOnId &&
+        (r.isEnabled || r.id === row.belongsToId),
+    );
   };
 
   return (
     <section>
       <SectionHead
         title="Category List"
-        lede="The values each classification can take. Filter by classification to work on one at a time."
+        lede="The values each classification can take. Choose a classification to work on one at a time."
         action={
           <Button
             tone="primary"
-            disabled={filter === ""}
-            title={filter === "" ? "Choose a classification first" : undefined}
+            disabled={list === ""}
+            title={list === "" ? "Choose a classification first" : undefined}
             onClick={() => setAdding(true)}
           >
             Add category
@@ -362,33 +474,35 @@ function Categories({
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <select
-          value={filter}
+          value={list}
           onChange={(e) => {
-            setFilter(e.target.value);
+            setList(e.target.value);
             setPicked(new Set());
+            clear();
           }}
-          aria-label="Filter by classification"
-          className="w-56 rounded-md border border-rule-2 bg-surface px-2.5 py-1.5 text-[13px] text-ink"
+          aria-label="Classification"
+          className="w-64 rounded-md border border-rule-2 bg-surface px-2.5 py-1.5 text-[13px] text-ink"
         >
-          <option value="">Every classification</option>
-          {classifications.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name} ({c.total})
-            </option>
-          ))}
+          <option value="">Choose a classification…</option>
+          {classifications
+            // Switched-off classifications are not offered. They are still
+            // in the section above, which is where they get switched back on.
+            .filter((c) => c.isEnabled)
+            .map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.total})
+              </option>
+            ))}
         </select>
 
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search categories"
-          className="w-56 rounded-md border border-rule-2 bg-surface px-2.5 py-1.5 text-[13px] text-ink placeholder:text-faint"
-        />
-
-        <span className="text-[12.5px] text-muted">
-          {shown.length} of {rows.length}
-        </span>
+        {list !== "" && (
+          <Counted
+            shown={shown.length}
+            total={inList.length}
+            active={active}
+            onClear={clear}
+          />
+        )}
       </div>
 
       {chosen.length > 0 && (
@@ -432,24 +546,30 @@ function Categories({
       )}
 
       <Table
-        head={[
-          "Name",
-          "Description",
-          "Enabled",
-          "Dependent",
-          "Belongs To",
-          "Status",
-          "",
-        ]}
-        widths={["", "w-64", "w-20", "w-24", "w-36", "w-24", "w-12"]}
         allPicked={shown.length > 0 && shown.every((r) => picked.has(r.id))}
         onPickAll={(on) => setPicked(on ? new Set(shown.map((r) => r.id)) : new Set())}
         empty={
-          shown.length === 0
-            ? rows.length === 0
-              ? "No categories yet."
-              : "Nothing matches."
-            : null
+          list === ""
+            ? "Choose a classification above to see its categories."
+            : shown.length === 0
+              ? active > 0
+                ? "Nothing matches those filters."
+                : "This classification has no categories yet."
+              : null
+        }
+        head={
+          <Head
+            columns={CATEGORY_COLUMNS}
+            rows={inList}
+            sort={sort}
+            onSort={toggle}
+            filters={filters}
+            onFilter={setFilter}
+            allPicked={shown.length > 0 && shown.every((r) => picked.has(r.id))}
+            onPickAll={(on) =>
+              setPicked(on ? new Set(shown.map((r) => r.id)) : new Set())
+            }
+          />
         }
       >
         {shown.map((row) => (
@@ -485,9 +605,9 @@ function Categories({
                 >
                   {row.name}
                 </span>
-                {filter === "" && (
-                  <span className="ml-auto flex-none truncate text-[11.5px] text-faint">
-                    {row.classification}
+                {row.usage > 0 && (
+                  <span className="ml-auto flex-none font-mono text-[11.5px] text-faint">
+                    {row.usage}
                   </span>
                 )}
               </button>
@@ -514,41 +634,32 @@ function Categories({
             <YesNo
               value={row.dependent}
               disabled
-              reason={`Set on the classification.  , so all of its categories do.`}
+              reason={` , so all of its categories do.`}
               onChange={() => undefined}
             />
             <Cell muted>{row.belongsTo}</Cell>
             <Cell>{titleish(row.status)}</Cell>
 
-            <td className="px-3">
-              <RowMenu
-                label={row.name}
-                items={[
-                  { label: "Modify", onSelect: () => setEditing(row.id) },
-                  {
-                    label: row.isEnabled ? "Disable" : "Enable",
-                    disabled: pending,
-                    onSelect: () =>
-                      onRun(() =>
-                        setCategoryStatus(
-                          [row.id],
-                          row.isEnabled ? "retired" : "active",
-                        ),
-                      ),
-                  },
-                  {
-                    label: "Delete",
-                    danger: true,
-                    disabled: pending || row.usage > 0,
-                    hint:
-                      row.usage > 0
-                        ? `${row.usage} record${row.usage === 1 ? "" : "s"} use this — disable it instead`
-                        : undefined,
-                    onSelect: () => onRun(() => deleteCategories([row.id])),
-                  },
-                ]}
-              />
-            </td>
+            <RowActions
+              label={row.name}
+              enabled={row.isEnabled}
+              pending={pending}
+              blocked={
+                row.usage > 0
+                  ? `${row.usage} record${row.usage === 1 ? "" : "s"} use this — disable it instead`
+                  : undefined
+              }
+              onModify={() => setEditing(row.id)}
+              onToggle={() =>
+                onRun(() =>
+                  setCategoryStatus(
+                    [row.id],
+                    row.isEnabled ? "retired" : "active",
+                  ),
+                )
+              }
+              onDelete={() => onRun(() => deleteCategories([row.id]))}
+            />
           </tr>
         ))}
       </Table>
@@ -563,15 +674,15 @@ function Categories({
         />
       )}
 
-      {adding && filter !== "" && (
+      {adding && list !== "" && (
         <AddDrawer
-          title={`Add to ${classifications.find((c) => c.id === filter)?.name}`}
+          title={`Add to ${classifications.find((c) => c.id === list)?.name}`}
           label="Name"
           hint="Stored as Init Caps however it is typed."
           pending={pending}
           onClose={() => setAdding(false)}
           onAdd={(name) =>
-            onRun(() => addCategory(filter, name, null), () => setAdding(false))
+            onRun(() => addCategory(list, name, null), () => setAdding(false))
           }
         />
       )}
@@ -658,11 +769,15 @@ function ClassificationDrawer({
             onChange={(e) => setDependsOn(e.target.value)}
           >
             <option value="">Nothing — it stands alone</option>
-            {others.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.name}
-              </option>
-            ))}
+            {/* Disabled classifications are not offered — except the one already
+                chosen, which stays so that saving does not quietly drop it. */}
+            {others
+              .filter((o) => o.isEnabled || o.id === row.dependsOnId)
+              .map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
           </select>
         </Field>
 
@@ -924,16 +1039,50 @@ function BulkBar({
   );
 }
 
+/**
+ * How much of the table is showing, and a way back.
+ *
+ * It lives outside the table because when the filters empty it, the head goes
+ * with the rows — leaving nowhere to clear them from if the control were in
+ * the head.
+ */
+function Counted({
+  shown,
+  total,
+  active,
+  onClear,
+}: {
+  shown: number;
+  total: number;
+  active: number;
+  onClear: () => void;
+}) {
+  return (
+    <span className="inline-flex items-center gap-3 text-[12.5px] text-muted">
+      <span>
+        {shown} of {total}
+      </span>
+      {active > 0 && (
+        <button
+          type="button"
+          onClick={onClear}
+          className="text-brick hover:underline"
+        >
+          Clear {active} filter{active === 1 ? "" : "s"}
+        </button>
+      )}
+    </span>
+  );
+}
+
 function Table({
   head,
-  widths,
   allPicked,
   onPickAll,
   empty,
   children,
 }: {
-  head: string[];
-  widths: string[];
+  head: React.ReactNode;
   allPicked: boolean;
   onPickAll: (on: boolean) => void;
   empty?: string | null;
@@ -950,30 +1099,119 @@ function Table({
   return (
     <div className="overflow-x-auto rounded-lg border border-rule bg-surface">
       <table className="w-full border-collapse">
-        <thead>
-          <tr className="border-b border-rule bg-surface-2 text-left">
-            <th scope="col" className="w-10 px-3 py-2">
-              <input
-                type="checkbox"
-                aria-label="Select all"
-                checked={allPicked}
-                onChange={(e) => onPickAll(e.target.checked)}
-              />
-            </th>
-            {head.map((h, i) => (
-              <th
-                key={h === "" ? `blank-${i}` : h}
-                scope="col"
-                className={`${widths[i] ?? ""} px-3 py-2 text-[11.5px] font-medium whitespace-nowrap text-muted`}
-              >
-                {h === "" ? <span className="sr-only">Actions</span> : h}
-              </th>
-            ))}
-          </tr>
-        </thead>
+        {head}
         <tbody>{children}</tbody>
       </table>
     </div>
+  );
+}
+
+/** Disabled rows sink. One function, module level, so the memo holds. */
+const sinkDisabled = (row: { isEnabled: boolean }): boolean => !row.isEnabled;
+
+/**
+ * Modify, disable and delete, out where they can be seen.
+ *
+ * They were behind a three-dot menu, which costs a click and a guess to reach
+ * three actions that are always the same three. At this width the icons fit,
+ * so they sit in the row — muted until the pointer is over it, so a long
+ * table does not read as a wall of controls.
+ */
+function RowActions({
+  label,
+  enabled,
+  pending,
+  blocked,
+  onModify,
+  onToggle,
+  onDelete,
+}: {
+  label: string;
+  enabled: boolean;
+  pending: boolean;
+  /** Why delete is refused, or undefined when it is allowed. */
+  blocked?: string;
+  onModify: () => void;
+  onToggle: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <td className="px-3">
+      <div className="flex items-center justify-end gap-0.5">
+        <IconButton
+          title={`Modify ${label}`}
+          disabled={pending}
+          onClick={onModify}
+        >
+          <path d="M11.5 2.5 13.5 4.5 5.5 12.5 2.5 13.5 3.5 10.5z" />
+        </IconButton>
+
+        <IconButton
+          title={`${enabled ? "Disable" : "Enable"} ${label}`}
+          disabled={pending}
+          onClick={onToggle}
+        >
+          <circle cx="8" cy="8" r="5.5" />
+          {enabled ? (
+            <path d="M4.1 11.9 11.9 4.1" />
+          ) : (
+            <path d="M5.5 8.2 7.2 10 10.5 6.2" />
+          )}
+        </IconButton>
+
+        <IconButton
+          title={blocked ?? `Delete ${label}`}
+          danger
+          disabled={pending || blocked !== undefined}
+          onClick={onDelete}
+        >
+          <path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5 5 13.5h6l.5-9" />
+        </IconButton>
+      </div>
+    </td>
+  );
+}
+
+function IconButton({
+  title,
+  onClick,
+  disabled,
+  danger,
+  children,
+}: {
+  title: string;
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onClick}
+      className={`rounded p-1 transition-colors disabled:cursor-not-allowed disabled:opacity-30 ${
+        danger === true
+          ? "text-muted hover:bg-brick-soft hover:text-brick disabled:hover:bg-transparent disabled:hover:text-muted"
+          : "text-muted hover:bg-surface-3 hover:text-ink disabled:hover:bg-transparent"
+      }`}
+    >
+      <svg
+        aria-hidden
+        viewBox="0 0 16 16"
+        width="15"
+        height="15"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {children}
+      </svg>
+    </button>
   );
 }
 
@@ -1107,5 +1345,242 @@ function YesNo({
         <option value="no">No</option>
       </select>
     </td>
+  );
+}
+
+/* -------------------------------------------------------- sort & filter */
+
+/**
+ * What a column is, for sorting and filtering.
+ *
+ * `value` is the one string the column stands for — it does the sorting, the
+ * text matching and the choice list all at once. Deriving three behaviours
+ * from one function is what stops a column sorting by one thing while
+ * filtering by another.
+ */
+export interface Col<T> {
+  key: string;
+  label: string;
+  width?: string;
+  value: (row: T) => string;
+  /** Free text matches on `value`; choice offers exactly what is present. */
+  filter: "text" | "choice";
+}
+
+export interface Sort {
+  key: string;
+  dir: 1 | -1;
+}
+
+/**
+ * Sorting and per-column filtering over a list of rows.
+ *
+ * Everything in the browser: the largest table here is 231 rows, already
+ * loaded, and a filter that goes back to the server is the difference
+ * between a list that responds as you type and one that blinks.
+ */
+export function useSortFilter<T>(
+  rows: T[],
+  columns: Col<T>[],
+  /**
+   * Rows to sink to the bottom whatever the sort — the disabled ones.
+   *
+   * Applied before the sort rather than instead of it, so the live rows stay
+   * contiguous at the top and the switched-off ones collect at the end where
+   * they can still be found and switched back on.
+   */
+  sink?: (row: T) => boolean,
+) {
+  const [sort, setSort] = useState<Sort | null>(null);
+  const [filters, setFilters] = useState<Record<string, string>>({});
+
+  const shown = useMemo(() => {
+    let out = rows.filter((row) =>
+      columns.every((c) => {
+        const want = filters[c.key];
+        if (want === undefined || want === "") return true;
+
+        const has = c.value(row);
+        return c.filter === "choice"
+          ? has === want
+          : has.toLowerCase().includes(want.toLowerCase());
+      }),
+    );
+
+    const column =
+      sort === null ? undefined : columns.find((c) => c.key === sort.key);
+
+    // Always sorted, even with no column chosen: the comparator returns 0 and
+    // Array#sort is stable, so unsorted means the order it arrived in — with
+    // the disabled rows still sunk.
+    return [...out].sort((a, b) => {
+      if (sink !== undefined) {
+        const x = sink(a) ? 1 : 0;
+        const y = sink(b) ? 1 : 0;
+        if (x !== y) return x - y;
+      }
+
+      if (column === undefined || sort === null) return 0;
+
+      // Blanks last whichever way it is sorted. A column of dashes floating
+      // to the top is never what anyone wanted.
+      const x = column.value(a);
+      const y = column.value(b);
+      if (x === "" && y !== "") return 1;
+      if (y === "" && x !== "") return -1;
+
+      return x.localeCompare(y, undefined, { numeric: true }) * sort.dir;
+    });
+  }, [rows, columns, filters, sort, sink]);
+
+  const toggle = (key: string) =>
+    setSort((prev) =>
+      prev?.key === key
+        ? prev.dir === 1
+          ? { key, dir: -1 }
+          : // Third click clears it, so there is a way back to the order the
+            // data came in rather than only two sorted states.
+            null
+        : { key, dir: 1 },
+    );
+
+  const setFilter = (key: string, value: string) =>
+    setFilters((prev) => ({ ...prev, [key]: value }));
+
+  const active = Object.values(filters).filter((v) => v !== "").length;
+
+  return {
+    shown,
+    sort,
+    toggle,
+    filters,
+    setFilter,
+    clear: () => setFilters({}),
+    active,
+  };
+}
+
+/**
+ * The head: a sort control per column, and a filter under it.
+ *
+ * The filters are a row of their own rather than hidden behind icons.
+ * Product Records went the other way — one Filter button, because filtering
+ * there is occasional and the grid is for reading. This screen exists to be
+ * worked through, so the controls stay out where they can be reached.
+ */
+export function Head<T>({
+  columns,
+  rows,
+  sort,
+  onSort,
+  filters,
+  onFilter,
+  allPicked,
+  onPickAll,
+}: {
+  columns: Col<T>[];
+  rows: T[];
+  sort: Sort | null;
+  onSort: (key: string) => void;
+  filters: Record<string, string>;
+  onFilter: (key: string, value: string) => void;
+  allPicked: boolean;
+  onPickAll: (on: boolean) => void;
+}) {
+  return (
+    <thead>
+      <tr className="bg-surface-2 text-left">
+        <th scope="col" className="w-10 px-3 pt-2">
+          <input
+            type="checkbox"
+            aria-label="Select all shown"
+            checked={allPicked}
+            onChange={(e) => onPickAll(e.target.checked)}
+          />
+        </th>
+
+        {columns.map((c) => {
+          const on = sort?.key === c.key;
+
+          return (
+            <th
+              key={c.key}
+              scope="col"
+              className={`${c.width ?? ""} px-3 pt-2 text-[11.5px] font-medium whitespace-nowrap text-muted`}
+            >
+              <button
+                type="button"
+                onClick={() => onSort(c.key)}
+                aria-label={`Sort by ${c.label}`}
+                className="group flex w-full items-center gap-1 hover:text-ink"
+              >
+                {c.label}
+                <span
+                  aria-hidden
+                  className={
+                    on
+                      ? "text-brick"
+                      : "opacity-0 transition-opacity group-hover:opacity-40"
+                  }
+                >
+                  {on ? (sort.dir > 0 ? "↑" : "↓") : "↕"}
+                </span>
+              </button>
+            </th>
+          );
+        })}
+
+        <th scope="col" className="w-24 px-3 pt-2">
+          <span className="sr-only">Actions</span>
+        </th>
+      </tr>
+
+      <tr className="border-b border-rule bg-surface-2">
+        <th className="px-3 pb-2" />
+
+        {columns.map((c) => (
+          <th key={c.key} className="px-3 pb-2">
+            {c.filter === "choice" ? (
+              <select
+                value={filters[c.key] ?? ""}
+                onChange={(e) => onFilter(c.key, e.target.value)}
+                aria-label={`Filter by ${c.label}`}
+                className={`w-full rounded border bg-surface px-1.5 py-1 text-[11.5px] font-normal ${
+                  (filters[c.key] ?? "") === ""
+                    ? "border-rule-2 text-muted"
+                    : "border-brick text-brick"
+                }`}
+              >
+                <option value="">All</option>
+                {/* Only values that are actually present, so a filter can
+                    never produce an empty table. */}
+                {[...new Set(rows.map((r) => c.value(r)).filter((v) => v !== ""))]
+                  .sort()
+                  .map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+              </select>
+            ) : (
+              <input
+                type="search"
+                value={filters[c.key] ?? ""}
+                onChange={(e) => onFilter(c.key, e.target.value)}
+                placeholder="Filter"
+                aria-label={`Filter by ${c.label}`}
+                className={`w-full rounded border bg-surface px-1.5 py-1 text-[11.5px] font-normal placeholder:text-faint ${
+                  (filters[c.key] ?? "") === ""
+                    ? "border-rule-2 text-ink"
+                    : "border-brick text-ink"
+                }`}
+              />
+            )}
+          </th>
+        ))}
+
+        <th className="px-3 pb-2" />
+      </tr>
+    </thead>
   );
 }

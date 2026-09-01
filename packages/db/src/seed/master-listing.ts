@@ -62,7 +62,7 @@ const plain = (...labels: string[]): SeedValue[] =>
 export const MASTER_LISTING: SeedList[] = [
   {
     code: "uom",
-    label: "UOM",
+    label: "Sold By",
     description:
       "Unit of measure. Added to the workbook 30 Aug 2026 — the application had been deriving it from Product Type.",
     isSystem: true,
@@ -136,7 +136,7 @@ export const MASTER_LISTING: SeedList[] = [
   },
   {
     code: "fibre_type",
-    label: "Fibre Type",
+    label: "Fiber Type",
     description: "The fibre itself. Blouse Material deliberately reuses part of this list.",
     values: plain(
       "Silk",
@@ -169,7 +169,7 @@ export const MASTER_LISTING: SeedList[] = [
   },
   {
     code: "audience_type",
-    label: "Audience Type",
+    label: "Audience",
     description: "Who the piece is for. Defaults to Women.",
     values: [
       { label: "Men" },
@@ -221,7 +221,7 @@ export const MASTER_LISTING: SeedList[] = [
   },
   {
     code: "regional_style",
-    label: "Regional Style",
+    label: "Region Style",
     description: "The weaving region or tradition the piece belongs to.",
     values: plain(
       "Banarasi",
@@ -328,7 +328,7 @@ export const MASTER_LISTING: SeedList[] = [
   },
   {
     code: "blouse_available",
-    label: "Blouse Available",
+    label: "Blouse Availability",
     description: "Saree only. Gates Blouse Status and Blouse Material.",
     isSystem: true,
     values: plain("Yes", "No"),
@@ -420,7 +420,7 @@ export const MASTER_LISTING: SeedList[] = [
 
   {
     code: "garment_type",
-    label: "Garment Type",
+    label: "Product Sub Type",
     description:
       "Garments sheet. All sold by the piece; some are multi-piece sets, carried in meta.pieces.",
     parentList: "uom",
@@ -454,7 +454,7 @@ export const MASTER_LISTING: SeedList[] = [
   },
   {
     code: "home_weaving_category",
-    label: "Home Weaving Category",
+    label: "Weaving Category",
     description: "Home and Life Style sheet. The workbook holds one value.",
     values: plain("Crochets"),
   },

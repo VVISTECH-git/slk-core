@@ -115,8 +115,13 @@ export interface RecordDetail {
     items: string[];
   }[];
 
-  /** The photographs this product should have, and which have arrived. */
-  images: { slotId: string | null; hasFile: boolean }[];
+  /**
+   * The photographs this product should have.
+   *
+   * `url` is null for a slot somebody has decided is wanted and nobody has
+   * photographed yet — which is the shot list, and worth having.
+   */
+  images: { slotId: string | null; url: string | null }[];
 
   movements: {
     id: number;

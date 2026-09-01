@@ -10,6 +10,7 @@ import {
   type RecordDetail,
 } from "@/lib/attributes";
 import { db } from "@/lib/db";
+import { publicUrl } from "@/lib/storage";
 
 /**
  * Server-side reads for the record editor.
@@ -247,9 +248,16 @@ function loadConsignments(colourwayId: string) {
  * is wanted and nobody has taken yet — which is the useful half of this
  * table until there is somewhere to upload to.
  */
-function loadImages(colourwayId: string) {
-  return db.execute<RecordDetail["images"][number]>(sql`
-    select slot_id as "slotId", (storage_key is not null) as "hasFile"
+async function loadImages(
+  colourwayId: string,
+): Promise<RecordDetail["images"]> {
+  const rows = await db.execute<{ slotId: string | null; storageKey: string | null }>(sql`
+    select slot_id as "slotId", storage_key as "storageKey"
     from image where colourway_id = ${colourwayId}
   `);
+
+  return rows.map((r) => ({
+    slotId: r.slotId,
+    url: r.storageKey === null ? null : publicUrl(r.storageKey),
+  }));
 }

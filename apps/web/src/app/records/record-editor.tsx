@@ -164,7 +164,26 @@ export function RecordEditor({
     : labelOf("product_type", attributes.productType);
 
   const isSaree = !isHome && productType === "Saree";
-  const isGarment = !isHome && Boolean(attributes.garmentType);
+
+  /**
+   * Product Sub Type is a garment question, and only garments get asked it.
+   *
+   * It used to be offered on every Clothing record, which is why a saree
+   * showed a dash in it for ever — Kurthi and Blouse are garment types and a
+   * saree is not a garment.
+   *
+   * Which product types have sub types is data, not code: a Product Sub Type
+   * value names the Product Type it belongs under, the same way a Motif names
+   * its Motif Category. Nothing is parented yet because no product type in
+   * the list is a garment, so the field is hidden — which is the right answer
+   * to "what sub type is this saree".
+   */
+  const subTypes = (options["garment_type"] ?? []).filter(
+    (o) => o.parentId === attributes.productType,
+  );
+  const hasSubTypes = !isHome && subTypes.length > 0;
+
+  const isGarment = hasSubTypes && Boolean(attributes.garmentType);
 
   /**
    * What a price is a price of.
@@ -294,6 +313,11 @@ export function RecordEditor({
         next.craftSubType = null;
       }
       if (key === "motifCategory") next.motif = null;
+
+      // A sub type belongs to one product type. Changing the product type
+      // leaves the old one meaningless, and the field it lived in may not
+      // even be on screen any more.
+      if (key === "productType") next.garmentType = null;
 
       // Unit of measure follows the product type rather than being asked for.
       // Fabric is sold by the Metre and everything else by the Piece, and the
@@ -478,9 +502,12 @@ export function RecordEditor({
                     <Combo label="Product Type" list="product_type" required
                       options={options} value={attributes.productType ?? null}
                       error={errors["productType"]} onPick={(v) => set("productType", v)} />
-                    <Combo label="Product Sub Type" list="garment_type" placeholder="Not a garment"
-                      options={options} value={attributes.garmentType ?? null}
-                      onPick={(v) => set("garmentType", v)} />
+                    {hasSubTypes && (
+                      <Combo label="Product Sub Type" list="garment_type" required
+                        options={options} value={attributes.garmentType ?? null}
+                        parentFilter={attributes.productType ?? null}
+                        onPick={(v) => set("garmentType", v)} />
+                    )}
                   </>
                 )}
                 <Combo label="Production Method" list="production_method"
@@ -1667,10 +1694,10 @@ function ImageSlots({
   chosen: string[];
   setChosen: (next: string[]) => void;
   /** Slots that already have a row, and whether a photograph has arrived. */
-  taken: { slotId: string | null; hasFile: boolean }[];
+  taken: { slotId: string | null; url: string | null }[];
 }) {
   const filled = new Set(
-    taken.filter((t) => t.hasFile).map((t) => t.slotId ?? ""),
+    taken.filter((t) => t.url !== null).map((t) => t.slotId ?? ""),
   );
 
   if (slots.length === 0) {

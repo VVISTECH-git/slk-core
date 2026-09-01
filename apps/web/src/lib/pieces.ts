@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 /**
  * Stock, one physical piece at a time.
  *
- * Product Records answers "what do we sell and how much is there"; this
+ * Product Management answers "what do we sell and how much is there"; this
  * answers "which saree is this". They are different questions and the second
  * one is asked with a scanner in hand, so it gets its own screen rather than
  * a tab on the first.

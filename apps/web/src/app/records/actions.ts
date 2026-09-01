@@ -574,7 +574,7 @@ const INLINE_FIELDS = {
   craftTechnique: "craftTechnique",
   audienceType: "audienceType",
   weaveStructure: "weaveStructure",
-  fabricType: "fabricType",
+  textileMaterial: "textileMaterial",
   craftSubType: "craftSubType",
   motifCategory: "motifCategory",
   motif: "motif",

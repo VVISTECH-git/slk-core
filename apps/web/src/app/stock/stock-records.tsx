@@ -13,7 +13,7 @@ function money(minor: number | null): string {
 /**
  * Stock, one physical piece at a time.
  *
- * Product Records answers "what do we sell and how much is there". This
+ * Product Management answers "what do we sell and how much is there". This
  * answers "which saree is this", which is the question asked with a label in
  * one hand — so the codes are the first thing on the row and the QR is
  * beside them rather than hidden behind a click.

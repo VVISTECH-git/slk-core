@@ -166,24 +166,28 @@ export function RecordEditor({
   const isSaree = !isHome && productType === "Saree";
 
   /**
-   * Product Sub Type is a garment question, and only garments get asked it.
+   * Which sub types a product type has is data, not code.
    *
-   * It used to be offered on every Clothing record, which is why a saree
-   * showed a dash in it for ever — Kurthi and Blouse are garment types and a
-   * saree is not a garment.
-   *
-   * Which product types have sub types is data, not code: a Product Sub Type
-   * value names the Product Type it belongs under, the same way a Motif names
-   * its Motif Category. Nothing is parented yet because no product type in
-   * the list is a garment, so the field is hidden — which is the right answer
-   * to "what sub type is this saree".
+   * A Product Sub Type value names the Product Type it belongs under, the way
+   * a Motif names its Motif Category, and the field offers only the ones that
+   * name the type chosen above. A saree's are its layouts — All Over, Half
+   * and Half, Langa Voni; a garment's would be its cuts. A product type with
+   * none parented to it is not asked the question at all, which is why it
+   * used to be hidden on a saree.
    */
   const subTypes = (options["garment_type"] ?? []).filter(
     (o) => o.parentId === attributes.productType,
   );
   const hasSubTypes = !isHome && subTypes.length > 0;
 
-  const isGarment = hasSubTypes && Boolean(attributes.garmentType);
+  /**
+   * The Garment tab is for garments, and a saree is not one.
+   *
+   * Having a sub type used to be the same thing as being a garment, because
+   * only garment kinds were parented. Now a saree has sub types too, and
+   * choosing All Over must not start asking for a collar and a sleeve length.
+   */
+  const isGarment = hasSubTypes && !isSaree && Boolean(attributes.garmentType);
 
   /**
    * What a price is a price of.
@@ -308,6 +312,15 @@ export function RecordEditor({
         const label = labelOf("fibre_type", value);
         if (label !== "Silk") next.silkSubFamily = null;
         if (label !== "Cotton") next.cottonSubFamily = null;
+
+        // A material that named the old fibre no longer applies. One that
+        // named no fibre — Georgette, Tissue — still does, so it stays.
+        const chosen = options["textile_material"]?.find(
+          (o) => o.id === next.textileMaterial,
+        );
+        if (chosen?.parentId != null && chosen.parentId !== value) {
+          next.textileMaterial = null;
+        }
       }
       if (key === "craftTechnique" && labelOf("craft_technique", value) !== "Kalamkari") {
         next.craftSubType = null;
@@ -502,8 +515,11 @@ export function RecordEditor({
                     <Combo label="Product Type" list="product_type" required
                       options={options} value={attributes.productType ?? null}
                       error={errors["productType"]} onPick={(v) => set("productType", v)} />
+                    {/* Required for a garment, where the cut is the thing;
+                        optional for a saree, where the layout is a description
+                        and not every piece has a name for it. */}
                     {hasSubTypes && (
-                      <Combo label="Product Sub Type" list="garment_type" required
+                      <Combo label="Product Sub Type" list="garment_type" required={!isSaree}
                         options={options} value={attributes.garmentType ?? null}
                         parentFilter={attributes.productType ?? null}
                         onPick={(v) => set("garmentType", v)} />
@@ -585,32 +601,20 @@ export function RecordEditor({
                 options={options} value={attributes.weaveStructure ?? null}
                 onPick={(v) => set("weaveStructure", v)} />
               {/*
-                One slot, not two.
+                One field where there were three.
 
-                A fibre has at most one sub-family, so showing Silk Sub Family
-                beside Cotton Sub Family with whichever does not apply greyed
-                out puts a permanently dead control on the form — and on a
-                cotton saree the greyed one is the *silk* field, which reads
-                as something broken rather than something irrelevant.
-
-                Two columns in the database, because they are different
-                vocabularies and a record must keep saying which. One field on
-                the screen, because only one can ever be answered. This is
-                what Craft Sub Type already does for Kalamkari below.
+                Silk Sub Family, Cotton Sub Family and Fabric Type all asked
+                what the cloth is, split by which fibre it happened to be —
+                and two of them could never both apply. Textile Material asks
+                it once, narrowed by the fibre chosen above: a silk is offered
+                its silks, a cotton its cottons, and the weaves that any fibre
+                can take are offered whatever the answer.
               */}
-              {fibre === "Silk" && (
-                <Combo label="Silk Sub Family" list="silk_sub_family"
-                  options={options} value={attributes.silkSubFamily ?? null}
-                  onPick={(v) => set("silkSubFamily", v)} />
-              )}
-              {fibre === "Cotton" && (
-                <Combo label="Cotton Sub Family" list="cotton_sub_family"
-                  options={options} value={attributes.cottonSubFamily ?? null}
-                  onPick={(v) => set("cottonSubFamily", v)} />
-              )}
-              <Combo label="Fabric Type" list="fabric_type"
-                options={options} value={attributes.fabricType ?? null}
-                onPick={(v) => set("fabricType", v)} />
+              <Combo label="Textile Material" list="textile_material"
+                options={options} value={attributes.textileMaterial ?? null}
+                parentFilter={attributes.fibreType ?? null} alsoUnparented
+                placeholder={fibre === null ? "Choose a fibre first" : "Choose…"}
+                onPick={(v) => set("textileMaterial", v)} />
             </Grid>
           )}
 
@@ -875,6 +879,7 @@ function Combo({
   placeholder,
   error,
   parentFilter,
+  alsoUnparented,
 }: {
   label: string;
   list: string;
@@ -886,13 +891,28 @@ function Combo({
   placeholder?: string;
   error?: string;
   parentFilter?: string | null;
+  /**
+   * Keep the values that belong to no parent at all.
+   *
+   * Textile Material needs it: Katan is a silk and Mul Mul is a cotton, but a
+   * Georgette can be either, so it names no fibre and applies to all of them.
+   * Off by default — a motif with no category is a mistake, not a wildcard.
+   */
+  alsoUnparented?: boolean;
 }) {
   let values: Option[] = options[list] ?? [];
 
   // Motifs are filtered to the chosen category, which is what the parent
   // column on the lookup value is for.
   if (parentFilter !== undefined && parentFilter !== null) {
-    values = values.filter((o) => o.parentId === parentFilter);
+    values = values.filter(
+      (o) =>
+        o.parentId === parentFilter ||
+        (alsoUnparented === true && o.parentId === null),
+    );
+  } else if (parentFilter === null && alsoUnparented === true) {
+    // Nothing chosen above yet, so only the values that need nothing chosen.
+    values = values.filter((o) => o.parentId === null);
   }
 
   // A classification switched off in Operational Standard sends no values, so

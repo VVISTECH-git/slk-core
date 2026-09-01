@@ -1464,7 +1464,7 @@ export function useSortFilter<T>(
  * The head: a sort control per column, and a filter under it.
  *
  * The filters are a row of their own rather than hidden behind icons.
- * Product Records went the other way — one Filter button, because filtering
+ * Product Management went the other way — one Filter button, because filtering
  * there is occasional and the grid is for reading. This screen exists to be
  * worked through, so the controls stay out where they can be reached.
  */

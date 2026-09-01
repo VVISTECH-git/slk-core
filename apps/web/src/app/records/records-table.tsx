@@ -22,7 +22,7 @@ import {
 import { ArchiveDialog, RecordEditor, type PickableLocation } from "./record-editor";
 
 /**
- * Product Records, as the prototype has it: twelve columns, each sortable and
+ * Product Management, as the prototype has it: twelve columns, each sortable and
  * filterable, two off by default, and six actions per row.
  *
  * Widths are sized to the longest value each column actually holds, because
@@ -50,9 +50,8 @@ const COLUMNS = [
   // Everything else the design carries. Available in the Columns menu rather
   // than shown by default — eighteen columns at once is not a table anyone
   // reads, but which eighteen matter is the reader's business, not mine.
-  { key: "subFamily", label: "Sub Family", width: 120 },
+  { key: "textileMaterial", label: "Textile Material", width: 140 },
   { key: "weaveStructure", label: "Weave Structure", width: 140 },
-  { key: "fabricType", label: "Fabric Type", width: 116 },
   { key: "craftSubType", label: "Craft Sub Type", width: 210 },
   { key: "motifCategory", label: "Motif Category", width: 140 },
   { key: "motif", label: "Motif", width: 120 },
@@ -76,9 +75,8 @@ type ColumnKey = (typeof COLUMNS)[number]["key"];
 const OFF_BY_DEFAULT = new Set<ColumnKey>([
   "craftTechnique",
   "regionalStyle",
-  "subFamily",
+  "textileMaterial",
   "weaveStructure",
-  "fabricType",
   "craftSubType",
   "motifCategory",
   "motif",
@@ -114,7 +112,7 @@ const INLINE_COLUMNS: Partial<
   craftTechnique: { field: "craftTechnique", list: "craft_technique" },
   audienceType: { field: "audienceType", list: "audience_type" },
   weaveStructure: { field: "weaveStructure", list: "weave_structure" },
-  fabricType: { field: "fabricType", list: "fabric_type" },
+  textileMaterial: { field: "textileMaterial", list: "textile_material" },
   craftSubType: { field: "craftSubType", list: "craft_sub_type" },
   motifCategory: { field: "motifCategory", list: "motif_category" },
   motif: { field: "motif", list: "motif" },
@@ -358,7 +356,7 @@ export function RecordsTable({
       <header className="mb-5 flex flex-none flex-wrap items-end gap-3">
         <div className="mr-auto">
           <h1 className="text-[24px] font-semibold tracking-tight text-ink">
-            Product Records
+            Product Management
           </h1>
         </div>
 

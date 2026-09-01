@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 
 /**
  * One row per colourway — the sellable line — with its design's attributes
- * flattened alongside it, which is how Product Records reads in the
+ * flattened alongside it, which is how Product Management reads in the
  * prototype.
  *
  * Every attribute is a join to `lookup_value` rather than a stored word, so a
@@ -33,9 +33,8 @@ export type RecordRow = {
    * plans in 49ms and executes in 2 — and fetching on demand would mean a
    * round trip every time somebody ticks a box.
    */
-  subFamily: string | null;
+  textileMaterial: string | null;
   weaveStructure: string | null;
-  fabricType: string | null;
   craftSubType: string | null;
   motifCategory: string | null;
   motif: string | null;
@@ -80,9 +79,13 @@ export async function loadRecords(): Promise<RecordRow[]> {
       colour.meta ->> 'hex'                             as "colourHex",
       motif_cat.meta ->> 'abbr'                          as "motifCode",
       latest.code                                       as "productCode",
-      coalesce(silk_sub.label, cotton_sub.label)        as "subFamily",
+      coalesce(
+        material.label,
+        -- The three it replaced. A record written before Textile Material
+        -- existed still says what its cloth is, in the column it said it in.
+        silk_sub.label, cotton_sub.label, fabric.label
+      )                                                 as "textileMaterial",
       weave.label                                       as "weaveStructure",
-      fabric.label                                      as "fabricType",
       craft_sub.label                                   as "craftSubType",
       motif_cat.label                                   as "motifCategory",
       motif.label                                       as motif,
@@ -111,6 +114,7 @@ export async function loadRecords(): Promise<RecordRow[]> {
     left join lookup_value audience           on audience.id = d.audience_type_id
     left join lookup_value colour             on colour.id = cw.colour_id
     left join lookup_value uom                on uom.id = d.uom_id
+    left join lookup_value material           on material.id = d.textile_material_id
     left join lookup_value silk_sub           on silk_sub.id = d.silk_sub_family_id
     left join lookup_value cotton_sub         on cotton_sub.id = d.cotton_sub_family_id
     left join lookup_value weave              on weave.id = d.weave_structure_id

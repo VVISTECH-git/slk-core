@@ -37,6 +37,9 @@ export const ATTRIBUTES = {
   descriptor: { list: "descriptor", column: "descriptor_id", label: "Descriptor" },
   fibreType: { list: "fibre_type", column: "fibre_type_id", label: "Fiber Type" },
   weaveStructure: { list: "weave_structure", column: "weave_structure_id", label: "Weave Structure" },
+  textileMaterial: { list: "textile_material", column: "textile_material_id", label: "Textile Material" },
+  // The three Textile Material replaces. Their lists are switched off, so
+  // nothing new is written to them; they stay because records carry them.
   silkSubFamily: { list: "silk_sub_family", column: "silk_sub_family_id", label: "Silk Sub Family" },
   cottonSubFamily: { list: "cotton_sub_family", column: "cotton_sub_family_id", label: "Cotton Sub Family" },
   fabricType: { list: "fabric_type", column: "fabric_type_id", label: "Fabric Type" },

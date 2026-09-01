@@ -29,7 +29,7 @@ export function NotBuiltYet({
         href="/records"
         className="inline-block rounded-md bg-brick px-4 py-2 text-[14px] font-medium text-on-brick hover:bg-brick-2"
       >
-        Product Records
+        Product Management
       </Link>
     </div>
   );

@@ -113,6 +113,20 @@
       "when": 1788261100000,
       "tag": "0015_sold_by_its_own_column",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1788261200000,
+      "tag": "0016_saree_sub_types",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788261300000,
+      "tag": "0017_textile_material",
+      "breakpoints": true
     }
   ]
 }

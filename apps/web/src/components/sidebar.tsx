@@ -14,7 +14,7 @@ const HIDDEN = new Set<string>([]);
 const NAV = [
   {
     href: "/records",
-    label: "Product Records",
+    label: "Product Management",
     icon: "M3 4h14v12H3z M3 8h14 M8 8v8",
   },
   {

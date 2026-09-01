@@ -81,6 +81,15 @@ export const design = pgTable(
     productionMethodId: attr("production_method_id"),
     weaveStructureId: attr("weave_structure_id"),
     fibreTypeId: attr("fibre_type_id"),
+    /**
+     * What the cloth is — Mul Mul, Katan, Georgette.
+     *
+     * One column where there were three. The three below asked the same
+     * question split by fibre, and two of them could never both apply; they
+     * stay because records still carry their values, and their lists are
+     * switched off so nothing new is written to them.
+     */
+    textileMaterialId: attr("textile_material_id"),
     silkSubFamilyId: attr("silk_sub_family_id"),
     cottonSubFamilyId: attr("cotton_sub_family_id"),
     fabricTypeId: attr("fabric_type_id"),

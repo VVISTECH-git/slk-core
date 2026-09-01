@@ -57,7 +57,9 @@ const FIELD_TAB: Record<string, TabKey> = {
   homeProductType: "basic",
   homeWeavingCategory: "basic",
   garmentType: "basic",
-  colour: "basic",
+  // Colour is asked on Craft & Design now. An error has to point at the tab
+  // the field is actually on, or Next refuses and nothing on screen says why.
+  colour: "craft",
   fibreType: "basic",
   craftTechnique: "craft",
   cost: "prices",
@@ -299,12 +301,17 @@ export function RecordEditor({
         missing["productType"] = "Choose a product type";
       }
 
-      if (!colourId) missing["colour"] = "Choose a colour";
       if (!attributes.fibreType) missing["fibreType"] = "Choose a fibre";
     }
 
-    if (which === "craft" && !attributes.craftTechnique) {
-      missing["craftTechnique"] = "Choose a craft technique";
+    if (which === "craft") {
+      // Checked where it is asked. It was still being demanded on Basic after
+      // the field moved, so Next did nothing and pointed at a field that was
+      // not there — the worst kind of refusal.
+      if (!colourId) missing["colour"] = "Choose a colour";
+      if (!attributes.craftTechnique) {
+        missing["craftTechnique"] = "Choose a craft technique";
+      }
     }
 
     if (which === "prices" && prices.retail.trim() === "") {

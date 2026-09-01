@@ -248,10 +248,7 @@ export function RecordEditor({
     // Which photographs the product needs can be decided while creating it —
     // the rows are written once the colourway exists.
     list.push({ key: "images", label: "Images" });
-    // Opening stock is asked on Basic while the record is being created, so
-    // there is nothing for a Stock tab to hold until the record exists. After
-    // that it is the ledger, which is a screen of its own.
-    if (!isNew) list.push({ key: "stock", label: "Stock" });
+    list.push({ key: "stock", label: "Stock" });
     return list;
   }, [isSaree, isGarment, isNew]);
 
@@ -573,15 +570,14 @@ export function RecordEditor({
                 }`}
               >
                 {/*
-                  Numbered only while creating, where the strip really is a
-                  sequence. On an existing record the same numbers would imply
-                  an order that does not exist.
+                  Numbered on both. The two views were a wizard and an editor
+                  wearing different chrome, and the difference was not telling
+                  anyone anything they needed — the tabs hold the same fields
+                  in the same order whether the record exists yet or not.
                 */}
-                {isNew && (
-                  <span className="mr-1.5 font-mono text-[11px] text-faint tabular-nums">
-                    {i + 1}
-                  </span>
-                )}
+                <span className="mr-1.5 font-mono text-[11px] text-faint tabular-nums">
+                  {i + 1}
+                </span>
                 {t.label}
                 {errorTabs.has(t.key) && (
                   <span
@@ -842,6 +838,15 @@ export function RecordEditor({
                     a motif, and a blouse border has the styles a saree
                     border has. The question each asks is placement.
                   */}
+                  {/*
+                    Border gets a section of its own.
+
+                    Six fields in a two-column grid wrapped the border group
+                    across three rows — Style top right, Height bottom left,
+                    Motif bottom right — so the three questions about one part
+                    of the cloth were the hardest three to read together. Each
+                    section now holds one part, and the eye stops travelling.
+                  */}
                   <Section title="Saree & Pallu">
                     <Combo label="Saree Style" list="saree_style"
                       options={options} value={attributes.sareeStyle ?? null}
@@ -852,6 +857,9 @@ export function RecordEditor({
                     <Combo label="Pallu Motif" list="motif"
                       options={options} value={attributes.palluMotif ?? null}
                       onPick={(v) => set("palluMotif", v)} />
+                  </Section>
+
+                  <Section title="Border">
                     <Combo label="Border Style" list="border_style"
                       options={options} value={attributes.borderStyle ?? null}
                       onPick={(v) => set("borderStyle", v)} />
@@ -1040,7 +1048,7 @@ export function RecordEditor({
             </span>
           )}
 
-          {isNew && result === null && (
+          {result === null && (
             <span className="text-[12.5px] text-muted">
               Step {step + 1} of {tabs.length} — {tabs[step]?.label}
             </span>
@@ -1056,21 +1064,19 @@ export function RecordEditor({
             Cancel
           </button>
 
-          {isNew && (
-            <button
-              type="button"
-              onClick={() => {
-                const previous = tabs[step - 1];
-                if (previous) setTab(previous.key);
-              }}
-              disabled={onFirstStep}
-              className="rounded-md border border-rule-2 px-3 py-2 text-[13.5px] text-ink-2 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Back
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => {
+              const previous = tabs[step - 1];
+              if (previous) setTab(previous.key);
+            }}
+            disabled={onFirstStep}
+            className="rounded-md border border-rule-2 px-3 py-2 text-[13.5px] text-ink-2 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Back
+          </button>
 
-          {isNew && !onLastStep && attempted && (
+          {!onLastStep && (
             <button
               type="button"
               onClick={goNext}
@@ -1080,24 +1086,23 @@ export function RecordEditor({
             </button>
           )}
 
-          {isNew && !onLastStep && !attempted ? (
-            <button
-              type="button"
-              onClick={goNext}
-              className="rounded-md bg-brick px-4 py-2 text-[13.5px] font-medium text-on-brick hover:bg-brick-2"
-            >
-              Next
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={submit}
-              disabled={pending}
-              className="rounded-md bg-brick px-4 py-2 text-[13.5px] font-medium text-on-brick hover:bg-brick-2 disabled:opacity-50"
-            >
-              {pending ? "Saving…" : isNew ? "Finish" : "Save"}
-            </button>
-          )}
+          {/*
+            The primary action is always offered, on both.
+
+            On a new record it used to be Next until the last step, so
+            finishing early meant clicking through tabs you had nothing to say
+            about. On an existing one there was no Next at all. Now the same
+            three buttons sit there and only the word changes — Finish makes a
+            record, Save changes one, and neither is hidden behind a step.
+          */}
+          <button
+            type="button"
+            onClick={submit}
+            disabled={pending}
+            className="rounded-md bg-brick px-4 py-2 text-[13.5px] font-medium text-on-brick hover:bg-brick-2 disabled:opacity-50"
+          >
+            {pending ? "Saving…" : isNew ? "Finish" : "Save"}
+          </button>
         </footer>
       </div>
     </div>
@@ -1530,17 +1535,20 @@ function StockTab({
   setOpeningStock: (lines: OpeningLine[]) => void;
   onMoved: (message: string) => void;
 }) {
-  // Reachable only in theory: a new record is asked for its opening stock
-  // on Basic and is offered no Stock tab at all. Kept because the prop type
-  // still admits null, and an empty screen would be worse than the form.
+  /*
+    Nothing to show yet, and no pretending otherwise.
+
+    The tab is offered on a new record so the two views match, but the ledger
+    it shows is written when Finish is pressed. Opening stock is asked once,
+    on Basic, rather than in two places that could disagree.
+  */
   if (record === null) {
     return (
-      <OpeningStock
-        locations={locations}
-        lines={openingStock}
-        setLines={setOpeningStock}
-        unit={null}
-      />
+      <Note>
+        Stock movements start once the record exists. The opening quantity and
+        where it sits are asked on Basic, and Finish writes them as the first
+        movement — after which this tab is the ledger.
+      </Note>
     );
   }
 

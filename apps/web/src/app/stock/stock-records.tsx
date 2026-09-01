@@ -225,7 +225,17 @@ export function StockRecords({
   */
   return (
     <div className="flex h-screen flex-col overflow-hidden px-8 py-8">
-      <header className="mb-5 flex flex-none flex-wrap items-end gap-3">
+      {/*
+        The control bar sits above the grid, and says so once here rather than
+        each menu bidding its z-index up against the table.
+
+        The column headings are `sticky z-20` so they survive the body
+        scrolling under them. The Columns and Filter panels were also z-20, and
+        at equal z-index the later element in the document wins — so the
+        headings painted over the open menu and swallowed whichever entries
+        happened to fall behind them. "Product" was unreachable.
+      */}
+      <header className="relative z-30 mb-5 flex flex-none flex-wrap items-end gap-3">
         <h1 className="mr-auto text-[24px] font-semibold tracking-tight text-ink">
           Stock Records
         </h1>

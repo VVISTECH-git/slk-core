@@ -353,7 +353,12 @@ export function RecordsTable({
       were put instead of wherever the last row happens to end.
     */
     <div className="flex h-screen flex-col overflow-hidden px-8 py-8">
-      <header className="mb-5 flex flex-none flex-wrap items-end gap-3">
+      {/*
+        Above the grid — the column headings are `sticky z-20`, and a menu at
+        the same z-index loses to them because the table comes later in the
+        document. See the same note on Stock Records.
+      */}
+      <header className="relative z-30 mb-5 flex flex-none flex-wrap items-end gap-3">
         <div className="mr-auto">
           <h1 className="text-[24px] font-semibold tracking-tight text-ink">
             Product Management

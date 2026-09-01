@@ -3,17 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { colourSwatch, isPaleSwatch, type LookupStatus } from "@slk/domain";
+import { colourSwatch, isPaleSwatch } from "@slk/domain";
 
-import type { ListHealth } from "@/lib/vocabulary";
 
 /* -------------------------------------------------------------------- chrome */
 
 /**
- * Every screen under Master Lists wears the same header: a breadcrumb that
- * says where you are in the hierarchy, a title, and one sentence. The
- * hierarchy is the point of the redesign, so it is visible on every level
- * rather than implied by the URL.
+ * Every screen wears the same header: an optional breadcrumb, a title, and
+ * one sentence saying what the screen is for.
  */
 export function Header({
   crumbs,
@@ -63,88 +60,8 @@ export function Header({
   );
 }
 
-/* -------------------------------------------------------------------- status */
+/* ------------------------------------------------------------------ swatch */
 
-const STATUS_STYLE: Record<LookupStatus, { bg: string; fg: string; label: string }> = {
-  draft: { bg: "var(--off-soft)", fg: "var(--off)", label: "Draft" },
-  proposed: { bg: "var(--warn-soft)", fg: "var(--warn)", label: "Proposed" },
-  active: { bg: "var(--ok-soft)", fg: "var(--ok)", label: "Active" },
-  retired: { bg: "var(--off-soft)", fg: "var(--off)", label: "Retired" },
-};
-
-/** The label to show for a status. Real text, not a CSS `capitalize`. */
-export function statusLabel(status: LookupStatus): string {
-  return STATUS_STYLE[status].label;
-}
-
-export function StatusPill({ status }: { status: LookupStatus }) {
-  const s = STATUS_STYLE[status];
-
-  return (
-    <span
-      // A dot as well as the colour. Draft and Retired share a neutral, and
-      // colour alone is not a distinction everyone can see.
-      className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap"
-      style={{ background: s.bg, color: s.fg }}
-    >
-      <span
-        aria-hidden
-        className="h-1.5 w-1.5 rounded-full"
-        style={{
-          background: "currentColor",
-          opacity: status === "retired" ? 0.4 : 1,
-        }}
-      />
-      {s.label}
-    </span>
-  );
-}
-
-const HEALTH_TEXT: Record<ListHealth, string> = {
-  empty: "Empty",
-  review: "Needs review",
-  retired: "Retired",
-  healthy: "Healthy",
-};
-
-const HEALTH_COLOUR: Record<ListHealth, string> = {
-  empty: "var(--faint)",
-  review: "var(--warn)",
-  retired: "var(--off)",
-  healthy: "var(--ok)",
-};
-
-/**
- * A type's health, stated rather than implied.
- *
- * Each state names a specific condition — no values at all, or something
- * flagged for a decision — so the row says what to do rather than only that
- * something is wrong.
- */
-export function HealthMark({ health }: { health: ListHealth }) {
-  return (
-    <span
-      className="inline-flex items-center gap-1.5 text-[12px] whitespace-nowrap"
-      style={{ color: HEALTH_COLOUR[health] }}
-    >
-      <span
-        aria-hidden
-        className="h-1.5 w-1.5 flex-none rounded-full"
-        style={{ background: "currentColor" }}
-      />
-      {HEALTH_TEXT[health]}
-    </span>
-  );
-}
-
-/* ------------------------------------------------------------------- swatch */
-
-/**
- * Takes the whole value, because whether to draw a swatch at all is a
- * property of the list it belongs to. `colourSwatch` answers with a grey when
- * it does not recognise the word, which is right in a colour column and a
- * meaningless dot beside Ajrakh.
- */
 export function Swatch({
   value,
 }: {

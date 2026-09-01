@@ -883,7 +883,7 @@ export async function recordMovement(
     if (counterpart === undefined) {
       return {
         ok: false,
-        message: `No ${spec.other} location is set up. Add one on Master Lists → Locations.`,
+        message: `No ${spec.other} location is set up. Add one on Locations.`,
       };
     }
 

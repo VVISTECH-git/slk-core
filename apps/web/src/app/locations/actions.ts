@@ -8,7 +8,11 @@ import { titleCase } from "@slk/domain";
 
 import { db } from "@/lib/db";
 
-import type { ActionResult } from "../actions";
+/** What every action here answers with: did it work, and what to say. */
+export interface ActionResult {
+  ok: boolean;
+  message: string;
+}
 
 /**
  * Every action here is an untrusted entry point — a Server Action is
@@ -25,8 +29,7 @@ function slugify(name: string): string {
 }
 
 function revalidate() {
-  revalidatePath("/master-lists");
-  revalidatePath("/master-lists/locations");
+  revalidatePath("/locations");
   // The Stock tab picks locations from this list.
   revalidatePath("/records");
 }

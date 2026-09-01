@@ -9,7 +9,6 @@ import { stockAt, titleCase } from "@slk/domain";
 // than following this client component into the browser bundle.
 import type { LocationRow } from "@/lib/locations";
 
-import type { ActionResult } from "../actions";
 import {
   Button,
   Drawer,
@@ -19,15 +18,19 @@ import {
   ToastBar,
   inputClass,
   useToast,
-} from "../ui";
-import { createLocation, deleteLocation, saveLocation } from "./actions";
+} from "@/components/ui";
+import {
+  createLocation,
+  deleteLocation,
+  saveLocation,
+  type ActionResult,
+} from "./actions";
 
 /**
- * Locations sit on Master Lists because that is where someone goes to
- * maintain a controlled list. Underneath they are their own table rather than
- * a lookup list — the ledger points at them, on hand is defined as internal
- * minus external, and a location will want an address one day — but that is
- * the schema's business, not the reader's.
+ * Locations have a screen of their own rather than a place among the lookup
+ * lists. Underneath they are their own table — the ledger points at them, on
+ * hand is defined as internal minus external, and a location will want an
+ * address one day — but that is the schema's business, not the reader's.
  */
 export function Locations({ locations }: { locations: LocationRow[] }) {
   const router = useRouter();
@@ -56,7 +59,6 @@ export function Locations({ locations }: { locations: LocationRow[] }) {
   return (
     <div className="flex min-h-screen flex-col">
       <Header
-        crumbs={[{ label: "Master Lists", href: "/master-lists" }, { label: "Locations" }]}
         title="Locations"
         lede={`Where stock sits, and where it goes when it leaves. ${held} unit${held === 1 ? "" : "s"} held across ${internal.length} internal location${internal.length === 1 ? "" : "s"}.`}
         actions={

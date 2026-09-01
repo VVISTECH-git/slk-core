@@ -46,7 +46,7 @@ export async function loadOptions(): Promise<Options> {
     // Only Active values are offered. Draft is still being worked out,
     // Proposed is awaiting confirmation, and Retired has been withdrawn —
     // none of the three should be selectable on a new record. Moving a value
-    // to Active on Master Lists is what puts it in every dropdown here.
+    // to Active on Operational Standard is what puts it in every dropdown here.
     // …and only from classifications that are switched on. Disabling one in
     // Operational Standard is how a question stops being asked altogether,
     // as against retiring its values one at a time.

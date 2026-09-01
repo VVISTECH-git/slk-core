@@ -3,6 +3,8 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { findDuplicates } from "@slk/domain";
+
 import type { Category, Classification } from "@/lib/operational";
 
 import {
@@ -10,10 +12,11 @@ import {
   Drawer,
   Field,
   Header,
+  Swatch,
   ToastBar,
   inputClass,
   useToast,
-} from "../master-lists/ui";
+} from "@/components/ui";
 import {
   addCategory,
   addClassification,
@@ -25,18 +28,33 @@ import {
   setClassificationEnabled,
   type Result,
 } from "./actions";
+import {
+  clearReview,
+  commitPaste,
+  mergeValues,
+  previewPaste,
+  setDefaultValue,
+  type PastePreview,
+} from "./value-actions";
 
 const LIST_STATUSES = ["draft", "active", "retired"];
 const VALUE_STATUSES = ["draft", "proposed", "active", "retired"];
 
 /**
- * The vocabulary as a structure, in two halves.
+ * The whole vocabulary, in two halves.
  *
- * Master Lists is for filling lists in — open Colour, add a colour. This is
- * for the shape above that: which classifications exist, which depend on
- * which, and which are switched on. Different question, so a different
- * screen, and the second section is filtered by the first because a category
- * only means anything inside a classification.
+ * Above: which classifications exist, which depend on which, and which are
+ * switched on — the shape of the taxonomy. Below: what one of them can
+ * actually hold. The second is filtered by the first because a category only
+ * means anything inside a classification, and shows nothing until one is
+ * chosen because all 231 values at once is a list of nothing in particular.
+ *
+ * This was two screens. Master Lists filled the lists in and this one
+ * described their shape, which meant the same rows were maintained in two
+ * places with no rule about which. Master Lists is gone and everything it
+ * could do is here: defaults, the review flag, colour swatches, merging two
+ * values that were always the same thing, and pasting a column in from a
+ * spreadsheet.
  */
 export function OperationalStandard({
   classifications,
@@ -160,6 +178,13 @@ const CATEGORY_COLUMNS: Col<Category>[] = [
     label: "Belongs To",
     width: "w-40",
     value: (r) => r.belongsTo ?? "",
+    filter: "choice",
+  },
+  {
+    key: "review",
+    label: "Review",
+    width: "w-20",
+    value: (r) => (r.needsReview ? "Yes" : "No"),
     filter: "choice",
   },
   {
@@ -423,6 +448,7 @@ function Categories({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [merging, setMerging] = useState(false);
 
   // Nothing until a classification is chosen. All 227 values at once is a
   // list of everything, which is a list of nothing in particular — the work
@@ -437,6 +463,33 @@ function Categories({
 
   const chosen = [...picked].filter((id) => shown.some((r) => r.id === id));
   const current = rows.find((r) => r.id === editing) ?? null;
+  const chosenList = classifications.find((c) => c.id === list) ?? null;
+
+  // Colour is the one classification whose values have a look as well as a
+  // name, and a row of names is a poor way to pick one.
+  const isColour = chosenList?.code === "colour";
+
+  const flagged = inList.filter((r) => r.needsReview).length;
+
+  /**
+   * Pairs that look like the same thing said twice — Kanchi and Kanchipuram.
+   *
+   * Marked rather than acted on: the machine can see that two labels are a
+   * transliteration apart, and only a person can say whether they are the
+   * same saree. Selecting both and pressing Merge is what settles it.
+   */
+  const similar = useMemo(() => {
+    const hints = findDuplicates(
+      inList.map((r) => ({ id: r.id, label: r.name, listCode: list })),
+    );
+
+    const marked = new Map<string, string>();
+    for (const { a, b, reason } of hints) {
+      marked.set(a.id, reason);
+      marked.set(b.id, reason);
+    }
+    return marked;
+  }, [inList, list]);
 
   /** Candidate parents: the values of whatever this one's classification depends on. */
   const parentsFor = (categoryId: string): Category[] => {
@@ -503,6 +556,17 @@ function Categories({
             onClear={clear}
           />
         )}
+
+        {flagged > 0 && (
+          <button
+            type="button"
+            onClick={() => setFilter("review", "Yes")}
+            className="rounded-full px-2 py-0.5 text-[11.5px] font-medium"
+            style={{ background: "var(--warn-soft)", color: "var(--warn)" }}
+          >
+            {flagged} to review
+          </button>
+        )}
       </div>
 
       {chosen.length > 0 && (
@@ -530,6 +594,31 @@ function Categories({
                 }
               >
                 Disable
+              </Button>
+              <Button
+                disabled={pending}
+                onClick={() =>
+                  onRun(() => clearReview(chosen), () => setPicked(new Set()))
+                }
+              >
+                Mark checked
+              </Button>
+              {/*
+                Merging says the two were always the same thing — Kanchi into
+                Kanchipuram. Every record pointing at a loser is repointed at
+                the survivor and the losers are deleted, so it needs at least
+                two rows and a decision about which one survives.
+              */}
+              <Button
+                disabled={pending || chosen.length < 2}
+                title={
+                  chosen.length < 2
+                    ? "Select the survivor and the ones to fold into it"
+                    : undefined
+                }
+                onClick={() => setMerging(true)}
+              >
+                Merge
               </Button>
               <Button
                 tone="danger"
@@ -598,6 +687,7 @@ function Categories({
                 onClick={() => setEditing(row.id)}
                 className="flex w-full items-center gap-2 text-left"
               >
+                <Swatch value={{ label: row.name, hex: row.hex, isColour }} />
                 <span
                   className={`truncate text-[13.5px] ${
                     row.isEnabled ? "text-ink" : "text-muted line-through"
@@ -605,6 +695,21 @@ function Categories({
                 >
                   {row.name}
                 </span>
+                {row.isDefault && (
+                  <Tag tone="brick" title="New records start with this">
+                    Default
+                  </Tag>
+                )}
+                {row.needsReview && (
+                  <Tag tone="warn" title="Flagged for checking against real stock">
+                    Review
+                  </Tag>
+                )}
+                {!row.needsReview && similar.has(row.id) && (
+                  <Tag tone="warn" title={similar.get(row.id)}>
+                    Similar
+                  </Tag>
+                )}
                 {row.usage > 0 && (
                   <span className="ml-auto flex-none font-mono text-[11.5px] text-faint">
                     {row.usage}
@@ -634,10 +739,22 @@ function Categories({
             <YesNo
               value={row.dependent}
               disabled
-              reason={` , so all of its categories do.`}
+              reason={`${row.classification} ${
+                row.dependent ? "depends on another classification" : "stands alone"
+              }, so all of its categories do.`}
               onChange={() => undefined}
             />
             <Cell muted>{row.belongsTo}</Cell>
+            <YesNo
+              value={row.needsReview}
+              onChange={(on) =>
+                onRun(() =>
+                  on
+                    ? saveCategory(row.id, { needsReview: true })
+                    : clearReview([row.id]),
+                )
+              }
+            />
             <Cell>{titleish(row.status)}</Cell>
 
             <RowActions
@@ -674,16 +791,27 @@ function Categories({
         />
       )}
 
-      {adding && list !== "" && (
-        <AddDrawer
-          title={`Add to ${classifications.find((c) => c.id === list)?.name}`}
-          label="Name"
-          hint="Stored as Init Caps however it is typed."
+      {merging && (
+        <MergeDrawer
+          rows={chosen
+            .map((id) => rows.find((r) => r.id === id))
+            .filter((r): r is Category => r !== undefined)}
+          pending={pending}
+          onClose={() => setMerging(false)}
+          onRun={onRun}
+          onDone={() => {
+            setMerging(false);
+            setPicked(new Set());
+          }}
+        />
+      )}
+
+      {adding && chosenList !== null && (
+        <AddCategoryDrawer
+          classification={chosenList}
           pending={pending}
           onClose={() => setAdding(false)}
-          onAdd={(name) =>
-            onRun(() => addCategory(list, name, null), () => setAdding(false))
-          }
+          onRun={onRun}
         />
       )}
     </section>
@@ -691,6 +819,273 @@ function Categories({
 }
 
 /* ------------------------------------------------------------- drawers */
+
+/**
+ * Folds several categories into one.
+ *
+ * Which one survives is the whole question, so it is asked plainly rather
+ * than assumed from the order they were ticked. Every record pointing at a
+ * loser is repointed at the survivor before the losers go, so nothing is
+ * orphaned and nothing needs re-entering.
+ */
+function MergeDrawer({
+  rows,
+  pending,
+  onClose,
+  onRun,
+  onDone,
+}: {
+  rows: Category[];
+  pending: boolean;
+  onClose: () => void;
+  onRun: (action: () => Promise<Result>, onOk?: () => void) => void;
+  onDone: () => void;
+}) {
+  const [survivorId, setSurvivorId] = useState(rows[0]?.id ?? "");
+
+  const survivor = rows.find((r) => r.id === survivorId) ?? null;
+  const losers = rows.filter((r) => r.id !== survivorId);
+  const moving = losers.reduce((sum, r) => sum + r.usage, 0);
+
+  return (
+    <Drawer
+      open
+      title={`Merge ${rows.length} categories`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            tone="danger"
+            disabled={pending || survivor === null || losers.length === 0}
+            onClick={() =>
+              onRun(
+                () => mergeValues(survivorId, losers.map((r) => r.id)),
+                onDone,
+              )
+            }
+          >
+            Merge
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-5">
+        <Field
+          label="Keep"
+          hint="The one that stays. The rest are deleted once every record using them points here instead."
+        >
+          <select
+            className={inputClass}
+            value={survivorId}
+            onChange={(e) => setSurvivorId(e.target.value)}
+          >
+            {rows.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <div className="rounded-lg border border-rule bg-surface-2 p-3 text-[12.5px] leading-relaxed text-ink-2">
+          {losers.length === 0 ? (
+            "Nothing to merge — that is the only one selected."
+          ) : (
+            <>
+              <span className="text-muted">Going: </span>
+              {losers.map((r) => r.name).join(", ")}
+              <br />
+              <span className="text-muted">
+                {moving === 0
+                  ? "No records use them."
+                  : `${moving} record${moving === 1 ? "" : "s"} will point at "${survivor?.name}" instead.`}
+              </span>
+            </>
+          )}
+        </div>
+
+        <p className="text-[12px] leading-relaxed text-muted">
+          This cannot be undone. Merging says the two were always the same
+          thing; if they are merely similar, retire one instead.
+        </p>
+      </div>
+    </Drawer>
+  );
+}
+
+/**
+ * Adding categories: one by name, or a column pasted from a spreadsheet.
+ *
+ * The vocabulary came from a workbook and keeps arriving that way, so typing
+ * forty colours one at a time is the wrong shape of work. The paste is shown
+ * back before it is written — what is new, what is already there, and what
+ * differs only in casing — because a bulk insert nobody previewed is how a
+ * list ends up with Kanchi and Kanchipuram.
+ */
+function AddCategoryDrawer({
+  classification,
+  pending,
+  onClose,
+  onRun,
+}: {
+  classification: Classification;
+  pending: boolean;
+  onClose: () => void;
+  onRun: (action: () => Promise<Result>, onOk?: () => void) => void;
+}) {
+  const [mode, setMode] = useState<"one" | "many">("one");
+  const [name, setName] = useState("");
+  const [text, setText] = useState("");
+  const [preview, setPreview] = useState<PastePreview | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  const look = () => {
+    setChecking(true);
+    void previewPaste(classification.code, text).then((result) => {
+      setChecking(false);
+      setPreview("fresh" in result ? result : null);
+    });
+  };
+
+  return (
+    <Drawer
+      open
+      title={`Add to ${classification.name}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          {mode === "one" ? (
+            <Button
+              tone="primary"
+              disabled={pending || name.trim() === ""}
+              onClick={() =>
+                onRun(() => addCategory(classification.id, name, null), onClose)
+              }
+            >
+              Add
+            </Button>
+          ) : preview === null ? (
+            <Button
+              tone="primary"
+              disabled={checking || text.trim() === ""}
+              onClick={look}
+            >
+              {checking ? "Checking…" : "Check"}
+            </Button>
+          ) : (
+            <Button
+              tone="primary"
+              disabled={pending || preview.fresh.length === 0}
+              onClick={() =>
+                onRun(
+                  () => commitPaste(classification.code, preview.fresh),
+                  onClose,
+                )
+              }
+            >
+              Add {preview.fresh.length}
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="flex flex-col gap-5">
+        <div className="flex gap-1.5">
+          <Choice on={mode === "one"} onPick={() => setMode("one")}>
+            One
+          </Choice>
+          <Choice
+            on={mode === "many"}
+            onPick={() => {
+              setMode("many");
+              setPreview(null);
+            }}
+          >
+            Paste a list
+          </Choice>
+        </div>
+
+        {mode === "one" ? (
+          <Field label="Name" hint="Stored as Init Caps however it is typed.">
+            <input
+              className={inputClass}
+              value={name}
+              autoFocus
+              onChange={(e) => setName(e.target.value)}
+            />
+          </Field>
+        ) : (
+          <>
+            <Field
+              label="Values"
+              hint="One per line, or a column copied straight out of a spreadsheet."
+            >
+              <textarea
+                className={`${inputClass} min-h-40 resize-y font-mono text-[12.5px]`}
+                value={text}
+                onChange={(e) => {
+                  setText(e.target.value);
+                  setPreview(null);
+                }}
+                placeholder={"Kanchipuram\nGadwal\nVenkatagiri"}
+              />
+            </Field>
+
+            {preview !== null && (
+              <div className="flex flex-col gap-2 rounded-lg border border-rule bg-surface-2 p-3 text-[12.5px] leading-relaxed">
+                <PasteLine
+                  n={preview.fresh.length}
+                  label="new"
+                  items={preview.fresh}
+                />
+                <PasteLine
+                  n={preview.existing.length}
+                  label="already there"
+                  items={preview.existing}
+                  muted
+                />
+                <PasteLine
+                  n={preview.caseOnly.length}
+                  label="differ only in casing — the stored spelling wins"
+                  items={preview.caseOnly.map((c) => `${c.pasted} → ${c.stored}`)}
+                  muted
+                />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </Drawer>
+  );
+}
+
+function PasteLine({
+  n,
+  label,
+  items,
+  muted,
+}: {
+  n: number;
+  label: string;
+  items: string[];
+  muted?: boolean;
+}) {
+  if (n === 0) return null;
+
+  return (
+    <div className={muted === true ? "text-muted" : "text-ink-2"}>
+      <span className="font-medium">
+        {n} {label}
+      </span>
+      <span className="text-faint"> — {items.slice(0, 8).join(", ")}</span>
+      {items.length > 8 && (
+        <span className="text-faint"> and {items.length - 8} more</span>
+      )}
+    </div>
+  );
+}
 
 function ClassificationDrawer({
   row,
@@ -837,6 +1232,7 @@ function CategoryDrawer({
   const [description, setDescription] = useState(row.description ?? "");
   const [belongsTo, setBelongsTo] = useState(row.belongsToId ?? "");
   const [status, setStatus] = useState<string>(row.status);
+  const [needsReview, setNeedsReview] = useState(row.needsReview);
 
   return (
     <Drawer
@@ -856,6 +1252,7 @@ function CategoryDrawer({
                     name,
                     description,
                     status,
+                    needsReview,
                     belongsToId: belongsTo === "" ? null : belongsTo,
                   }),
                 onClose,
@@ -915,6 +1312,52 @@ function CategoryDrawer({
                 {titleish(s)}
               </Choice>
             ))}
+          </div>
+        </Field>
+
+        <label className="flex items-start gap-2.5">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={needsReview}
+            onChange={(e) => setNeedsReview(e.target.checked)}
+          />
+          <span>
+            <span className="block text-[12.5px] font-medium text-ink-2">
+              Needs review
+            </span>
+            <span className="mt-0.5 block text-[11.5px] leading-relaxed text-muted">
+              Flagged for checking against real stock. Not a status — a
+              category can need checking whatever state it is in.
+            </span>
+          </span>
+        </label>
+
+        {/*
+          Its own control rather than a checkbox, because it is a fact about
+          the classification, not this row: setting it here clears whichever
+          other category held it. The database enforces the one-per-list rule
+          as well, with a partial unique index.
+        */}
+        <Field
+          label="Default"
+          hint="Pre-selected when a new record is created. Only an Active category can be one."
+        >
+          <div className="flex gap-1.5">
+            <Choice
+              on={row.isDefault}
+              onPick={() => onRun(() => setDefaultValue(row.id, true))}
+            >
+              New records start with this
+            </Choice>
+            {row.isDefault && (
+              <Choice
+                on={false}
+                onPick={() => onRun(() => setDefaultValue(row.id, false))}
+              >
+                Clear
+              </Choice>
+            )}
           </div>
         </Field>
 
@@ -1281,11 +1724,28 @@ function Choice({
   );
 }
 
-function Tag({ children }: { children: React.ReactNode }) {
+function Tag({
+  children,
+  tone,
+  title,
+}: {
+  children: React.ReactNode;
+  /** Grey says "a fact about this row"; brick and warn ask to be noticed. */
+  tone?: "brick" | "warn";
+  title?: string;
+}) {
+  const paint =
+    tone === "brick"
+      ? { background: "var(--brick-soft)", color: "var(--brick)" }
+      : tone === "warn"
+        ? { background: "var(--warn-soft)", color: "var(--warn)" }
+        : { background: "var(--surface-3)", color: "var(--muted)" };
+
   return (
     <span
+      title={title}
       className="flex-none rounded px-1.5 py-0.5 text-[10.5px] font-medium"
-      style={{ background: "var(--surface-3)", color: "var(--muted)" }}
+      style={paint}
     >
       {children}
     </span>

@@ -7,9 +7,10 @@ import { db } from "@/lib/db";
 /**
  * The vocabulary seen as a structure rather than as lists to fill in.
  *
- * Master Lists answers "what values does Colour have". This answers "what
- * classifications exist, which depend on which, and which are switched on" —
- * the shape of the taxonomy rather than its contents.
+ * Two questions, one screen. What classifications exist, which depend on
+ * which and which are switched on; and, inside one of them, what values it
+ * can take. Master Lists asked the second on a screen of its own until the
+ * two were merged here.
  */
 
 export interface Classification {
@@ -42,6 +43,12 @@ export interface Category {
   belongsTo: string | null;
   status: LookupStatus;
   usage: number;
+  /** Colour swatch, where the value has one. */
+  hex: string | null;
+  /** New records start with this one. At most one per classification. */
+  isDefault: boolean;
+  /** Flagged for checking against real stock — the workbook's own doubt. */
+  needsReview: boolean;
 }
 
 export async function loadClassifications(): Promise<Classification[]> {
@@ -106,6 +113,9 @@ export async function loadCategories(): Promise<Category[]> {
     depends_on_id: string | null;
     belongs_to_id: string | null;
     belongs_to: string | null;
+    hex: string | null;
+    is_default: boolean;
+    needs_review: boolean;
   }>(sql`
     select
       v.id, v.label as name, v.description, v.status,
@@ -113,7 +123,10 @@ export async function loadCategories(): Promise<Category[]> {
       l.label as classification,
       l.parent_list_id as depends_on_id,
       v.parent_value_id as belongs_to_id,
-      p.label as belongs_to
+      p.label as belongs_to,
+      v.meta ->> 'hex' as hex,
+      v.is_default,
+      v.needs_review
     from lookup_value v
     join lookup_list l on l.id = v.list_id
     left join lookup_value p on p.id = v.parent_value_id
@@ -157,6 +170,9 @@ export async function loadCategories(): Promise<Category[]> {
     belongsToId: r.belongs_to_id,
     belongsTo: r.belongs_to,
     status: r.status,
+    hex: r.hex,
+    isDefault: r.is_default,
+    needsReview: r.needs_review,
     usage: (usage as Map<string, number>).get(r.id) ?? 0,
   }));
 }

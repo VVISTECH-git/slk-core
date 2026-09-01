@@ -28,11 +28,11 @@ const NAV = [
     icon: "M4 4h5v5H4z M11 4h5v5h-5z M4 11h5v5H4z M11 11h5v5h-5z",
   },
   {
-    // Named for the workbook it comes from — Master Listing - New.xlsx — so
-    // it is a word the people maintaining it already use.
-    href: "/master-lists",
-    label: "Master Lists",
-    icon: "M3 5h14 M3 10h14 M3 15h9",
+    // Where stock sits. Not vocabulary — a location is a real place with real
+    // stock in it — so it stands on its own rather than under the lists.
+    href: "/locations",
+    label: "Locations",
+    icon: "M10 17s5.5-4.6 5.5-9a5.5 5.5 0 1 0-11 0c0 4.4 5.5 9 5.5 9z M10 8.5v.01",
   },
 ] as const;
 

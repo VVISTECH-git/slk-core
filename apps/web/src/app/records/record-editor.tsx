@@ -682,7 +682,7 @@ export function RecordEditor({
             <Note>
               The Garments sheet defines eleven more columns — Size, Colors, Sleeve
               Length and the rest — but every one of them arrived empty in the
-              workbook. Give them values on Master Lists and they appear
+              workbook. Give them values on Operational Standard and they appear
               here as dropdowns, with no change to this screen.
             </Note>
           )}
@@ -941,7 +941,7 @@ function Combo({
             {/*
               Shown exactly as stored. Title-casing here is what turned
               "Up to 3 Inch" into "Up To 3 Inch" and "3D Print" into "3d
-              Print" — the label is already correct, because Master Lists
+              Print" — the label is already correct, because Operational Standard
               applies the casing rule when it is written.
             */}
             {o.label}
@@ -1261,7 +1261,7 @@ function OpeningStock({
   if (internal.length === 0) {
     return (
       <Note>
-        No locations are set up to hold stock. Add one on Master Lists →
+        No locations are set up to hold stock. Add one on Locations →
         Locations, and it will be offered here.
       </Note>
     );
@@ -1403,7 +1403,7 @@ function RecordMovement({
   if (internal.length === 0) {
     return (
       <Note>
-        No locations are set up to hold stock. Add one on Master Lists →
+        No locations are set up to hold stock. Add one on Locations →
         Locations.
       </Note>
     );
@@ -1703,7 +1703,7 @@ function Consignments({
  * Choosing the slots and taking the pictures are different acts, usually days
  * apart and often different people — so this records the intention, and the
  * photograph arrives against it later. A saree is judged on its Body, Pallu,
- * Border and Blouse; SLK can add a fifth on Master Lists and it appears here
+ * Border and Blouse; SLK can add a fifth on Operational Standard and it appears here
  * with nothing to change.
  *
  * Deliberately honest about what is not built: there is nowhere to upload to
@@ -1729,7 +1729,7 @@ function ImageSlots({
   if (slots.length === 0) {
     return (
       <Note>
-        No image slots are set up. Add them on Master Lists → Image Slot, and
+        No image slots are set up. Add them on Operational Standard → Image Slot, and
         they will be offered here.
       </Note>
     );
@@ -1741,7 +1741,7 @@ function ImageSlots({
         Photographs This Product Needs
       </h3>
       <p className="mb-3 text-[12px] leading-relaxed text-muted">
-        Tick what should be shot. The list comes from Master Lists, so adding a
+        Tick what should be shot. The list comes from Operational Standard, so adding a
         new kind of photograph there offers it on every record.
       </p>
 

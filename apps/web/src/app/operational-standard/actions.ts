@@ -30,7 +30,7 @@ function slugify(label: string): string {
 
 function done(): void {
   revalidatePath("/operational-standard");
-  revalidatePath("/master-lists");
+  revalidatePath("/operational-standard");
   revalidatePath("/records");
 }
 
@@ -223,6 +223,14 @@ export interface CategoryPatch {
   description?: string | null;
   status?: string;
   belongsToId?: string | null;
+  /**
+   * Flagged for checking against real stock.
+   *
+   * Deliberately not a status: a category can need checking while it is
+   * draft, proposed or active, and answering the question does not move it
+   * along its life.
+   */
+  needsReview?: boolean;
 }
 
 export async function saveCategory(
@@ -278,6 +286,11 @@ export async function saveCategory(
     }
     set.push("parent_value_id");
     values.push(patch.belongsToId);
+  }
+
+  if (patch.needsReview !== undefined) {
+    set.push("needs_review");
+    values.push(patch.needsReview);
   }
 
   if (set.length === 0) return { ok: true, message: "Nothing to change." };

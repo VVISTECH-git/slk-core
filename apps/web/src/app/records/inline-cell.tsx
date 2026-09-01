@@ -29,7 +29,7 @@ export function InlineLookupCell({
 }: {
   /** The label as it currently reads, or null for unset. */
   value: string | null;
-  /** Choosable values, from Master Lists. Retired ones are not among them. */
+  /** Choosable values, from Operational Standard. Retired ones are not among them. */
   options: Option[];
   disabled?: boolean;
   disabledReason?: string;

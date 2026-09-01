@@ -221,8 +221,14 @@ export function RecordEditor({
   const perUnit = uom === null ? "" : ` per ${uom}`;
   const craft = labelOf("craft_technique", attributes.craftTechnique);
 
-  /** Every blouse question greys together when there is no blouse. */
-  const noBlouse = labelOf("blouse_available", attributes.blouseAvailable) === "No";
+  /**
+   * Whether a blouse comes with it, which is the Product Sub Type.
+   *
+   * With Blouse / Without Blouse is what that field means for a saree now,
+   * and the six blouse questions have no answer at all without it — so they
+   * appear as a group rather than sitting greyed out waiting.
+   */
+  const withBlouse = labelOf("garment_type", attributes.garmentType) === "With Blouse";
 
   const tabs = useMemo(() => {
     const list: { key: TabKey; label: string }[] = [
@@ -562,8 +568,17 @@ export function RecordEditor({
                   </>
                 ) : (
                   <>
+                    {/*
+                      Saree, Dupatta, Fabric are Clothing product types, and
+                      each one now names Clothing as its parent. Under any
+                      other industry the list is empty and the question is
+                      not asked — which is what a third industry made
+                      necessary, since "not Home" had been standing in for
+                      "Clothing".
+                    */}
                     <Combo label="Product Type" list="product_type" required
                       options={options} value={attributes.productType ?? null}
+                      parentFilter={attributes.industry ?? null}
                       error={errors["productType"]} onPick={(v) => set("productType", v)} />
                     {/* Required for a garment, where the cut is the thing;
                         optional for a saree, where the layout is a description
@@ -615,6 +630,16 @@ export function RecordEditor({
                   options={options} value={attributes.textileMaterial ?? null}
                   parentFilter={attributes.fibreType ?? null} fallbackToUnparented
                   onPick={(v) => set("textileMaterial", v)} />
+                {/*
+                  Nothing renders above until a fibre is chosen: the field is
+                  narrowed by Fiber Type, and with no fibre there is nothing
+                  it could honestly offer. Say so, rather than leaving a gap.
+                */}
+                {attributes.fibreType == null && (
+                  <p className="self-center text-[12px] leading-relaxed text-muted">
+                    Textile Material is offered once a fibre is chosen.
+                  </p>
+                )}
               </Grid>
 
               {/*
@@ -742,9 +767,9 @@ export function RecordEditor({
               <Combo label="Saree Body Motif" list="motif"
                 options={options} value={attributes.sareeBodyMotif ?? null}
                 onPick={(v) => set("sareeBodyMotif", v)} />
-              <Combo label="Pallu Motif" list="pallu_design"
-                options={options} value={attributes.palluDesign ?? null}
-                onPick={(v) => set("palluDesign", v)} />
+              <Combo label="Pallu Motif" list="motif"
+                options={options} value={attributes.palluMotif ?? null}
+                onPick={(v) => set("palluMotif", v)} />
 
               <Combo label="Border Style" list="border_style"
                 options={options} value={attributes.borderStyle ?? null}
@@ -753,29 +778,34 @@ export function RecordEditor({
                 options={options} value={attributes.borderHeight ?? null}
                 onPick={(v) => set("borderHeight", v)} />
 
-              <Combo label="Blouse Availability" list="blouse_available"
-                options={options} value={attributes.blouseAvailable ?? null}
-                onPick={(v) => set("blouseAvailable", v)} />
-              <Combo label="Blouse Status" list="blouse_status"
-                options={options} value={attributes.blouseStatus ?? null}
-                disabled={noBlouse}
-                onPick={(v) => set("blouseStatus", v)} />
-              <Combo label="Blouse Style" list="blouse_style"
-                options={options} value={attributes.blouseStyle ?? null}
-                disabled={noBlouse}
-                onPick={(v) => set("blouseStyle", v)} />
-              <Combo label="Blouse Material" list="blouse_material"
-                options={options} value={attributes.blouseMaterial ?? null}
-                disabled={noBlouse}
-                onPick={(v) => set("blouseMaterial", v)} />
-              <Combo label="Blouse Border" list="border_style"
-                options={options} value={attributes.blouseBorder ?? null}
-                disabled={noBlouse}
-                onPick={(v) => set("blouseBorder", v)} />
-              <Combo label="Blouse Motif" list="motif"
-                options={options} value={attributes.blouseMotif ?? null}
-                disabled={noBlouse}
-                onPick={(v) => set("blouseMotif", v)} />
+              {/*
+                Asked only when the sub type says a blouse comes with it.
+                With Blouse and Without Blouse is the answer these six
+                questions depend on, so they appear together and vanish
+                together rather than sitting greyed out in a row.
+              */}
+              {withBlouse && (
+                <>
+                <Combo label="Blouse Availability" list="blouse_available"
+                  options={options} value={attributes.blouseAvailable ?? null}
+                  onPick={(v) => set("blouseAvailable", v)} />
+                <Combo label="Blouse Status" list="blouse_status"
+                  options={options} value={attributes.blouseStatus ?? null}
+                  onPick={(v) => set("blouseStatus", v)} />
+                <Combo label="Blouse Style" list="blouse_style"
+                  options={options} value={attributes.blouseStyle ?? null}
+                  onPick={(v) => set("blouseStyle", v)} />
+                <Combo label="Blouse Material" list="blouse_material"
+                  options={options} value={attributes.blouseMaterial ?? null}
+                  onPick={(v) => set("blouseMaterial", v)} />
+                <Combo label="Blouse Border" list="border_style"
+                  options={options} value={attributes.blouseBorder ?? null}
+                  onPick={(v) => set("blouseBorder", v)} />
+                <Combo label="Blouse Motif" list="motif"
+                  options={options} value={attributes.blouseMotif ?? null}
+                  onPick={(v) => set("blouseMotif", v)} />
+                </>
+              )}
             </Grid>
           )}
 
@@ -1099,23 +1129,35 @@ function Combo({
 
   // Motifs are filtered to the chosen category, which is what the parent
   // column on the lookup value is for.
-  if (parentFilter !== undefined && parentFilter !== null) {
-    const own = values.filter((o) => o.parentId === parentFilter);
+  if (parentFilter !== undefined) {
+    if (parentFilter === null) {
+      // Nothing chosen above, so nothing to offer. Not "the values that
+      // belong to nobody" — an unparented value is a value that applies to
+      // every parent, not one that applies before a parent is picked.
+      values = [];
+    } else {
+      const own = values.filter((o) => o.parentId === parentFilter);
 
-    values =
-      fallbackToUnparented === true && own.length === 0
-        ? values.filter((o) => o.parentId === null)
-        : own;
-  } else if (parentFilter === null && fallbackToUnparented === true) {
-    // Nothing chosen above yet, so the ones that need nothing chosen.
-    values = values.filter((o) => o.parentId === null);
+      values =
+        fallbackToUnparented === true && own.length === 0
+          ? values.filter((o) => o.parentId === null)
+          : own;
+    }
   }
 
-  // A classification switched off in Master Lists sends no values, so
-  // the question is not asked at all rather than asked with an empty list.
-  // A record that already answered it keeps its field, so the answer stays
-  // visible instead of vanishing from the form that holds it.
-  if ((options[list] ?? []).length === 0 && value === null) return null;
+  /*
+    A question with no possible answer is not asked.
+
+    Three ways that happens, and they all deserve the same treatment: the
+    classification is switched off in Master Lists and sends no values; the
+    answer above has not been given yet, so Textile Material has no fibre to
+    narrow to; or it has been given and offers nothing, so Product Type is
+    empty under an industry that is not Clothing.
+
+    A record that already answered keeps its field either way, so an answer
+    never vanishes from the form that holds it.
+  */
+  if (values.length === 0 && value === null) return null;
 
   return (
     <label className="block">

@@ -51,7 +51,10 @@ export async function loadOptions(): Promise<Options> {
     // Master Lists is how a question stops being asked altogether,
     // as against retiring its values one at a time.
     .where(and(eq(lookupValue.status, "active"), eq(lookupList.isEnabled, true)))
-    .orderBy(asc(lookupList.code), asc(lookupValue.sortOrder));
+    // Alphabetical, not the workbook order. Twenty-seven motifs and a
+    // hundred and forty-seven colours are found by scanning for a word, and
+    // a reader cannot scan an order only the spreadsheet knew.
+    .orderBy(asc(lookupList.code), asc(lookupValue.label));
 
   const options: Options = {};
 

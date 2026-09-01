@@ -176,6 +176,13 @@
       "when": 1788262000000,
       "tag": "0024_universal_colour_list",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788262100000,
+      "tag": "0025_product_type_belongs_to_clothing",
+      "breakpoints": true
     }
   ]
 }

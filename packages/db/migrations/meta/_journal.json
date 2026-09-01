@@ -211,6 +211,13 @@
       "when": 1788262500000,
       "tag": "0029_blouse_material_back_on",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1788262600000,
+      "tag": "0030_border_height_matches_production",
+      "breakpoints": true
     }
   ]
 }

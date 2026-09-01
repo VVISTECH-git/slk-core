@@ -1578,7 +1578,11 @@ function StockTab({
 
   return (
     <>
-      <div className="divide-y divide-rule overflow-hidden rounded-lg border border-rule bg-surface">
+      {/*
+        Six counts across three, so the ledger reads as two rows rather than
+        a column six tall that pushes everything below it off the screen.
+      */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {tiles.map((t) => (
           <div key={t.k} className="rounded-lg border border-rule bg-surface px-4 py-3">
             <div className="text-[12px] font-medium text-muted">{t.k}</div>

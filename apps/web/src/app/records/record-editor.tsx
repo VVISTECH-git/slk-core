@@ -1558,7 +1558,7 @@ function StockTab({
 
   return (
     <>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="divide-y divide-rule overflow-hidden rounded-lg border border-rule bg-surface">
         {tiles.map((t) => (
           <div key={t.k} className="rounded-lg border border-rule bg-surface px-4 py-3">
             <div className="text-[12px] font-medium text-muted">{t.k}</div>
@@ -2284,6 +2284,9 @@ function ImageSlots({
     missing: string[];
   } | null>(null);
 
+  /** The photograph being looked at properly, or null. */
+  const [enlarged, setEnlarged] = useState<string | null>(null);
+
   // Asked once, when the tab is opened. Whether the bucket is configured is a
   // fact about the server, and the alternative — threading it down from the
   // page through the table and the editor — is four props for one sentence.
@@ -2322,7 +2325,7 @@ function ImageSlots({
         new kind of photograph there offers it on every record.
       </p>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="divide-y divide-rule overflow-hidden rounded-lg border border-rule bg-surface">
         {slots.map((slot) => (
           <SlotTile
             key={slot.id}
@@ -2339,9 +2342,14 @@ function ImageSlots({
               )
             }
             onChanged={onChanged}
+            onEnlarge={setEnlarged}
           />
         ))}
       </div>
+
+      {enlarged !== null && (
+        <Lightbox url={enlarged} onClose={() => setEnlarged(null)} />
+      )}
 
       {colourwayId === null && (
         <Note>
@@ -2379,6 +2387,7 @@ function SlotTile({
   canUpload,
   onToggle,
   onChanged,
+  onEnlarge,
 }: {
   slot: Option;
   on: boolean;
@@ -2387,6 +2396,8 @@ function SlotTile({
   canUpload: boolean;
   onToggle: () => void;
   onChanged: (message: string) => void;
+  /** Show it at its own size. The row is a reference, not the photograph. */
+  onEnlarge: (url: string) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -2477,13 +2488,7 @@ function SlotTile({
         const file = e.dataTransfer.files[0];
         if (file !== undefined) void send(file);
       }}
-      className={`overflow-hidden rounded-lg border transition-colors ${
-        dragging
-          ? "border-brick bg-brick-soft"
-          : wanted
-            ? "border-brick"
-            : "border-rule-2"
-      }`}
+      className={dragging ? "bg-brick-soft" : ""}
     >
       <input
         ref={input}
@@ -2498,99 +2503,98 @@ function SlotTile({
         }}
       />
 
-      <div className="relative aspect-4/5 bg-surface-2">
-        {has ? (
-          // A plain img, not next/image: these are on a bucket whose host is
-          // configured at runtime, and the optimiser would need it at build.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={photograph}
-            alt={slot.label}
-            className="size-full object-cover"
-          />
-        ) : (
-          <button
-            type="button"
-            onClick={() => (live ? input.current?.click() : onToggle())}
-            className="flex size-full flex-col items-center justify-center gap-1 text-center"
-          >
-            <span aria-hidden className="text-[20px] text-faint">
-              {wanted ? "＋" : "○"}
-            </span>
-            <span className="px-2 text-[11px] leading-tight text-muted">
-              {busy ??
-                (live
-                  ? wanted
-                    ? "Add a photograph"
-                    : "Tick, then add"
-                  : wanted
-                    ? "To be shot"
-                    : "Not needed")}
-            </span>
-          </button>
-        )}
+      {/*
+        A tick, a state, a thumbnail and its actions — on one line.
 
-        {busy !== null && has && (
-          <span className="absolute inset-0 grid place-items-center bg-surface/80 text-[11.5px] text-ink-2">
-            {busy}
-          </span>
-        )}
-      </div>
-
-      <div className="flex items-center gap-1.5 border-t border-rule px-2 py-1.5">
+        These were tall cards, and four of them filled the tab and pushed
+        Finish off the screen. A photograph is worth looking at properly and
+        worth almost no space until then, so the thumbnail opens the real
+        thing rather than standing in for it.
+      */}
+      <div className="flex items-center gap-3 px-3 py-2">
         <button
           type="button"
-          // A slot with a photograph cannot be un-ticked — that would be
-          // deleting the picture by implication, which is not what a tick
-          // should mean. Remove the photograph first.
+          // A slot with a photograph cannot be un-ticked — that would delete
+          // the picture by implication, which is not what a tick should mean.
           disabled={has}
           onClick={onToggle}
           title={has ? "Remove the photograph first" : undefined}
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-left disabled:cursor-not-allowed"
+          className="flex min-w-0 flex-1 items-center gap-2.5 text-left disabled:cursor-not-allowed"
         >
           <span
             aria-hidden
-            className={`flex size-3.5 flex-none items-center justify-center rounded border text-[9px] ${
+            className={`flex size-4 flex-none items-center justify-center rounded border text-[10px] ${
               wanted ? "border-brick bg-brick text-on-brick" : "border-rule-2"
             }`}
           >
             {wanted ? "✓" : ""}
           </span>
           <span
-            className={`truncate text-[12px] ${
-              wanted ? "font-medium text-brick" : "text-ink-2"
+            className={`truncate text-[13px] ${
+              wanted ? "font-medium text-ink" : "text-muted"
             }`}
           >
             {slot.label}
           </span>
         </button>
 
-        {has && live && (
-          <>
-            <IconAction
-              label={`Replace the ${slot.label} photograph`}
-              disabled={busy !== null}
-              onClick={() => input.current?.click()}
-            >
-              ⟳
-            </IconAction>
-            <IconAction
-              label={`Remove the ${slot.label} photograph`}
-              disabled={busy !== null}
-              danger
-              onClick={() => {
-                setBusy("Removing…");
-                void removeImage(colourwayId, slot.id).then((r) => {
-                  setBusy(null);
-                  if (r.ok) onChanged(r.message);
-                  else setFailed(r.message);
-                });
-              }}
-            >
-              ×
-            </IconAction>
-          </>
+        <span className="flex-none text-[11.5px] text-muted">
+          {busy ?? (has ? "Photographed" : wanted ? "To be shot" : "Not needed")}
+        </span>
+
+        {has ? (
+          <button
+            type="button"
+            onClick={() => onEnlarge(photograph)}
+            title={`See ${slot.label} full size`}
+            className="h-11 w-9 flex-none overflow-hidden rounded border border-rule-2 hover:border-brick"
+          >
+            {/*
+              A plain img, not next/image: the bucket host is configured at
+              runtime and the optimiser would need it at build time.
+            */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={photograph} alt={slot.label} className="size-full object-cover" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => (live ? input.current?.click() : onToggle())}
+            title={live ? `Add the ${slot.label} photograph` : undefined}
+            className="grid h-11 w-9 flex-none place-items-center rounded border border-dashed border-rule-2 text-[15px] text-faint hover:border-brick hover:text-brick"
+          >
+            ＋
+          </button>
         )}
+
+        <span className="flex w-14 flex-none justify-end gap-0.5">
+          {has && live && (
+            <>
+              <IconAction
+                label={`Replace the ${slot.label} photograph`}
+                disabled={busy !== null}
+                onClick={() => input.current?.click()}
+              >
+                ⟳
+              </IconAction>
+              <IconAction
+                label={`Remove the ${slot.label} photograph`}
+                disabled={busy !== null}
+                danger
+                onClick={() => {
+                  setBusy("Removing…");
+                  void removeImage(colourwayId, slot.id).then((r) => {
+                    setBusy(null);
+                    if (r.ok) onChanged(r.message);
+                    else setFailed(r.message);
+                  });
+                }}
+              >
+                ×
+              </IconAction>
+            </>
+          )}
+        </span>
       </div>
 
       {failed !== null && (
@@ -2598,6 +2602,48 @@ function SlotTile({
           {failed}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * One photograph, as large as it will go.
+ *
+ * At its own size up to the window, not stretched to fill it: a saree
+ * photographed at 800px looks worse blown up to 1600 than it does at 800,
+ * and the reason to open this is to judge the cloth.
+ */
+function Lightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  useEffect(() => {
+    function escape(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [onClose]);
+
+  return (
+    <div
+      role="dialog"
+      aria-label="Photograph"
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt=""
+        onClick={(e) => e.stopPropagation()}
+        className="max-h-full max-w-full rounded object-contain shadow-2xl"
+      />
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Close"
+        className="absolute top-4 right-5 text-[26px] leading-none text-white/80 hover:text-white"
+      >
+        ×
+      </button>
     </div>
   );
 }

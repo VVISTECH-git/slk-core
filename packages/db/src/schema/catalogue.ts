@@ -122,6 +122,7 @@ export const design = pgTable(
      * question is placement, not vocabulary.
      */
     palluMotifId: attr("pallu_motif_id"),
+    borderMotifId: attr("border_motif_id"),
     sareeBodyMotifId: attr("saree_body_motif_id"),
     blouseMotifId: attr("blouse_motif_id"),
     blouseBorderId: attr("blouse_border_id"),
@@ -204,7 +205,10 @@ export const colourway = pgTable(
     designId: uuid("design_id")
       .notNull()
       .references(() => design.id, { onDelete: "cascade" }),
+    /** The primary colour. With the design, it identifies the colourway. */
     colourId: attr("colour_id"),
+    /** A contrast pallu, a border in another shade. Not part of the identity. */
+    secondaryColourId: attr("secondary_colour_id"),
 
     /**
      * The five prices the prototype carries, in paise. Integers, never floats

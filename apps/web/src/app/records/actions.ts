@@ -37,7 +37,10 @@ export interface RecordDraft {
    * what the design should carry, not a diff.
    */
   descriptors: string[];
+  /** The primary colour, which with the design identifies the colourway. */
   colourId: string | null;
+  /** The second colour, where there is one. Not part of the identity. */
+  secondaryColourId: string | null;
   prices: {
     cost: string;
     making: string;
@@ -228,6 +231,7 @@ export async function saveRecord(draft: RecordDraft): Promise<ActionResult> {
       .update(colourway)
       .set({
         colourId: draft.colourId,
+        secondaryColourId: draft.secondaryColourId,
         costMinor: toMinor(draft.prices.cost),
         makingMinor: toMinor(draft.prices.making),
         wholesaleMinor: toMinor(draft.prices.wholesale),
@@ -462,6 +466,7 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
     .values({
       designId: created.id,
       colourId: draft.colourId,
+      secondaryColourId: draft.secondaryColourId,
       costMinor: toMinor(draft.prices.cost),
       makingMinor: toMinor(draft.prices.making),
       wholesaleMinor: toMinor(draft.prices.wholesale),

@@ -197,6 +197,13 @@
       "when": 1788262300000,
       "tag": "0027_saree_style_values",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1788262400000,
+      "tag": "0028_border_motif_secondary_colour_image_type",
+      "breakpoints": true
     }
   ]
 }

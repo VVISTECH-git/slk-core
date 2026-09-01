@@ -121,6 +121,9 @@ export function RecordEditor({
     Partial<Record<AttributeKey, string | null>>
   >(() => record?.attributes ?? defaultAttributes(options));
   const [colourId, setColourId] = useState<string | null>(record?.colourId ?? null);
+  const [secondaryColourId, setSecondaryColourId] = useState<string | null>(
+    record?.secondaryColourId ?? null,
+  );
   const [prices, setPrices] = useState({
     cost: rupees(record?.costMinor ?? null),
     making: rupees(record?.makingMinor ?? null),
@@ -235,9 +238,9 @@ export function RecordEditor({
       { key: "basic", label: "Basic" },
       { key: "craft", label: "Craft & Design" },
     ];
-    if (isSaree) {
-      list.push({ key: "blouse", label: "Additional Product Details" });
-    }
+    // Always offered, because Descriptor lives here and describes any
+    // product. What is saree-only is the saree half of the tab, not the tab.
+    list.push({ key: "blouse", label: "Additional Product Details" });
     if (isGarment) list.push({ key: "garment", label: "Garment" });
     list.push({ key: "prices", label: "Prices" });
     // Which photographs the product needs can be decided while creating it —
@@ -447,6 +450,7 @@ export function RecordEditor({
       attributes,
       descriptors,
       colourId,
+      secondaryColourId,
       prices,
       quantity,
       openingStock,
@@ -597,15 +601,6 @@ export function RecordEditor({
                 <Combo label="Audience" list="audience_type"
                   options={options} value={attributes.audienceType ?? null}
                   onPick={(v) => set("audienceType", v)} />
-                <MultiCombo label="Descriptor" list="descriptor"
-                  options={options} values={descriptors}
-                  onChange={setDescriptors} />
-                <Combo label="Colour" list="colour" required
-                  options={options} value={colourId} error={errors["colour"]}
-                  onPick={(v) => {
-                    setColourId(v);
-                    setErrors((p) => { const { colour: _d, ...r } = p; return r; });
-                  }} />
 
                 {/*
                   What the cloth is, asked here rather than on a Material tab
@@ -657,6 +652,7 @@ export function RecordEditor({
                     locations={locations}
                     lines={openingStock}
                     setLines={setOpeningStock}
+                    unit={uom}
                   />
                 </div>
               )}
@@ -712,6 +708,28 @@ export function RecordEditor({
 
           {activeTab === "craft" && (
             <Grid>
+              {/*
+                Colour leads, because on a hand-painted saree it is the first
+                thing anyone says about the piece and the thing that makes one
+                colourway different from the next under the same design.
+
+                Two of them. The primary is the colour the record is filed
+                under — with the design, it is what identifies this row. The
+                secondary is the contrast: a pallu in another shade, a border
+                that does not match. It is a description, not part of the
+                identity, so two records cannot differ by it alone.
+              */}
+              <Combo label="Primary Colour" list="colour" required
+                options={options} value={colourId} error={errors["colour"]}
+                onPick={(v) => {
+                  setColourId(v);
+                  setErrors((p) => { const { colour: _d, ...r } = p; return r; });
+                }} />
+              <Combo label="Secondary Colour" list="colour"
+                options={options} value={secondaryColourId}
+                placeholder="None"
+                onPick={setSecondaryColourId} />
+
               <Combo label="Craft Technique" list="craft_technique" required
                 options={options} value={attributes.craftTechnique ?? null}
                 error={errors["craftTechnique"]} onPick={(v) => set("craftTechnique", v)} />
@@ -749,6 +767,8 @@ export function RecordEditor({
           */}
           {activeTab === "blouse" && (
             <Grid>
+              {isSaree && (
+                <>
               {/*
                 Read outward from the cloth: the saree, then its border, then
                 the blouse that comes with it. The blouse questions grey
@@ -777,6 +797,9 @@ export function RecordEditor({
               <Combo label="Border Height" list="border_height"
                 options={options} value={attributes.borderHeight ?? null}
                 onPick={(v) => set("borderHeight", v)} />
+              <Combo label="Border Motif" list="motif"
+                options={options} value={attributes.borderMotif ?? null}
+                onPick={(v) => set("borderMotif", v)} />
 
               {/*
                 Asked only when the sub type says a blouse comes with it.
@@ -806,6 +829,17 @@ export function RecordEditor({
                   onPick={(v) => set("blouseMotif", v)} />
                 </>
               )}
+                </>
+              )}
+
+              {/*
+                Last, and outside the saree half: the adjectives describe the
+                whole piece rather than any part of it, they are what the
+                product name is built from, and a dupatta has them too.
+              */}
+              <MultiCombo label="Descriptor" list="descriptor"
+                options={options} values={descriptors}
+                onChange={setDescriptors} />
             </Grid>
           )}
 
@@ -883,7 +917,18 @@ export function RecordEditor({
 
           {activeTab === "images" && (
             <ImageSlots
-              slots={options["image_slot"] ?? []}
+              /*
+                Which photographs a product needs depends on what it is: a
+                saree is judged on Body, Pallu, Border and Blouse, and a
+                bedsheet is not. A slot that names a product type is offered
+                only under it; one that names none is offered on everything,
+                which is what the four existing slots do.
+              */
+              slots={(options["image_slot"] ?? []).filter(
+                (o) =>
+                  o.parentId === null ||
+                  o.parentId === (attributes.productType ?? attributes.homeProductType),
+              )}
               chosen={imageSlots}
               setChosen={setImageSlots}
               taken={record?.images ?? []}
@@ -1241,12 +1286,16 @@ function StockTab({
   setOpeningStock: (lines: OpeningLine[]) => void;
   onMoved: (message: string) => void;
 }) {
+  // Reachable only in theory: a new record is asked for its opening stock
+  // on Basic and is offered no Stock tab at all. Kept because the prop type
+  // still admits null, and an empty screen would be worse than the form.
   if (record === null) {
     return (
       <OpeningStock
         locations={locations}
         lines={openingStock}
         setLines={setOpeningStock}
+        unit={null}
       />
     );
   }
@@ -1474,10 +1523,19 @@ function OpeningStock({
   locations,
   lines,
   setLines,
+  unit,
 }: {
   locations: PickableLocation[];
   lines: OpeningLine[];
   setLines: (lines: OpeningLine[]) => void;
+  /**
+   * What is being counted — Piece, Metre.
+   *
+   * Never asked for: the product type states it and the record follows. A
+   * bare 12 beside a length of fabric is the one number on this form that
+   * could mean two quite different things.
+   */
+  unit: string | null;
 }) {
   const internal = locations.filter((l) => l.isInternal);
 
@@ -1512,6 +1570,13 @@ function OpeningStock({
         <span className="text-[12.5px] text-muted">
           Total{" "}
           <span className="font-mono text-[13.5px] tabular-nums text-ink">{total}</span>
+          {unit !== null && (
+            <span className="text-muted">
+              {" "}
+              {unit.toLowerCase()}
+              {total === 1 ? "" : "s"}
+            </span>
+          )}
         </span>
       </div>
 

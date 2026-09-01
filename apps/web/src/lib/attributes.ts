@@ -54,6 +54,7 @@ export const ATTRIBUTES = {
   blouseStyle: { list: "blouse_style", column: "blouse_style_id", label: "Blouse Style" },
   // Placement, not vocabulary: all three read a list that already exists.
   palluMotif: { list: "motif", column: "pallu_motif_id", label: "Pallu Motif" },
+  borderMotif: { list: "motif", column: "border_motif_id", label: "Border Motif" },
   sareeBodyMotif: { list: "motif", column: "saree_body_motif_id", label: "Saree Body Motif" },
   blouseMotif: { list: "motif", column: "blouse_motif_id", label: "Blouse Motif" },
   blouseBorder: { list: "border_style", column: "blouse_border_id", label: "Blouse Border" },
@@ -93,6 +94,7 @@ export interface RecordDetail {
   isSerialised: boolean;
   notes: string | null;
   colourId: string | null;
+  secondaryColourId: string | null;
   costMinor: number | null;
   makingMinor: number | null;
   wholesaleMinor: number | null;
@@ -163,22 +165,49 @@ export function defaultAttributes(
 ): Partial<Record<AttributeKey, string | null>> {
   const defaults: Partial<Record<AttributeKey, string | null>> = {};
 
+  /*
+    Two passes, because a default can belong to another default.
+
+    Saree is the default Product Type and belongs to Clothing, which is the
+    default Industry — so it applies. Mul Mul is the default Textile Material
+    and belongs to Cotton, which is not the default fibre and may never be
+    chosen — so it does not, and is applied when the fibre is answered.
+
+    The rule is the same in both cases: a parented default applies only where
+    its parent has actually been settled. One pass would have made that
+    depend on the order the attributes happen to be declared in.
+  */
+  const applied = new Set<string>();
+
   for (const key of ATTRIBUTE_KEYS) {
     const chosen = options[ATTRIBUTES[key].list]?.find((o) => o.isDefault);
-    if (chosen === undefined) continue;
-
-    /*
-      A default that belongs to a parent waits for that parent.
-
-      Mul Mul is the default Textile Material and belongs to Cotton. Applied
-      here it would put Mul Mul on a record whose fibre has not been chosen —
-      and leave it there if the fibre turned out to be Silk, which does not
-      offer it. Those are applied when the parent is answered instead.
-    */
-    if (chosen.parentId !== null) continue;
+    if (chosen === undefined || chosen.parentId !== null) continue;
 
     defaults[key] = chosen.id;
+    applied.add(chosen.id);
   }
+
+  for (const key of ATTRIBUTE_KEYS) {
+    const chosen = options[ATTRIBUTES[key].list]?.find((o) => o.isDefault);
+    if (chosen === undefined || chosen.parentId === null) continue;
+    if (!applied.has(chosen.parentId)) continue;
+
+    defaults[key] = chosen.id;
+    applied.add(chosen.id);
+  }
+
+  /*
+    Unit of measure follows from the product type rather than being asked.
+
+    Set here as well as on every change, or a record created without touching
+    Product Type would be priced "per" nothing — which is what happened the
+    moment Saree started arriving as a default rather than being chosen.
+  */
+  const productType = (options["product_type"] ?? [])
+    .concat(options["home_product_type"] ?? [])
+    .find((o) => o.id === (defaults.productType ?? defaults.homeProductType));
+
+  if (productType?.soldById != null) defaults.uom = productType.soldById;
 
   return defaults;
 }

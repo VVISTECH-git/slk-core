@@ -375,6 +375,17 @@ export function RecordEditor({
       }
       if (key === "motifCategory") next.motif = null;
 
+      /*
+        The motif chosen on Craft & Design is the one on the body of the
+        saree, nine times in ten — it is what the piece is described by. So
+        Saree Body Motif starts there rather than at nothing, and the two
+        fields stop being the same answer typed twice.
+
+        Only where it is still empty. Somebody who has said the body carries
+        a different motif from the design motif meant it.
+      */
+      if (key === "motif" && value !== null) next.sareeBodyMotif ??= value;
+
       // A sub type belongs to one product type. Changing the product type
       // leaves the old one meaningless, and the field it lived in may not
       // even be on screen any more.
@@ -809,78 +820,75 @@ export function RecordEditor({
             that decorated it.
           */}
           {activeTab === "blouse" && (
-            <Grid>
+            <>
               {isSaree && (
                 <>
-              {/*
-                Read outward from the cloth: the saree, then its border, then
-                the blouse that comes with it. The blouse questions grey
-                together when there is no blouse, so the group is also the
-                unit that switches off.
+                  {/*
+                    Two sections, because a saree and its blouse are two
+                    things. Everything in the first describes the cloth you
+                    unfold — the field, the pallu, the border that runs down
+                    it. Everything in the second describes the piece that
+                    comes folded in with it, and it is there at all only if
+                    the sub type says one does.
 
-                Saree Style is what Product Sub Type used to carry — a layout
-                is not a sub type of anything. Nothing below invents
-                vocabulary: a motif on the blouse is a motif, and a blouse
-                border has the styles a saree border has. The question each
-                asks is placement.
-              */}
-              <Combo label="Saree Style" list="saree_style"
-                options={options} value={attributes.sareeStyle ?? null}
-                onPick={(v) => set("sareeStyle", v)} />
-              <Combo label="Saree Body Motif" list="motif"
-                options={options} value={attributes.sareeBodyMotif ?? null}
-                onPick={(v) => set("sareeBodyMotif", v)} />
-              <Combo label="Pallu Motif" list="motif"
-                options={options} value={attributes.palluMotif ?? null}
-                onPick={(v) => set("palluMotif", v)} />
+                    Nothing here invents vocabulary: a motif on the blouse is
+                    a motif, and a blouse border has the styles a saree
+                    border has. The question each asks is placement.
+                  */}
+                  <Section title="Saree & Pallu">
+                    <Combo label="Saree Style" list="saree_style"
+                      options={options} value={attributes.sareeStyle ?? null}
+                      onPick={(v) => set("sareeStyle", v)} />
+                    <Combo label="Saree Body Motif" list="motif"
+                      options={options} value={attributes.sareeBodyMotif ?? null}
+                      onPick={(v) => set("sareeBodyMotif", v)} />
+                    <Combo label="Pallu Motif" list="motif"
+                      options={options} value={attributes.palluMotif ?? null}
+                      onPick={(v) => set("palluMotif", v)} />
+                    <Combo label="Border Style" list="border_style"
+                      options={options} value={attributes.borderStyle ?? null}
+                      onPick={(v) => set("borderStyle", v)} />
+                    <Combo label="Border Height" list="border_height"
+                      options={options} value={attributes.borderHeight ?? null}
+                      onPick={(v) => set("borderHeight", v)} />
+                    <Combo label="Border Motif" list="motif"
+                      options={options} value={attributes.borderMotif ?? null}
+                      onPick={(v) => set("borderMotif", v)} />
+                  </Section>
 
-              <Combo label="Border Style" list="border_style"
-                options={options} value={attributes.borderStyle ?? null}
-                onPick={(v) => set("borderStyle", v)} />
-              <Combo label="Border Height" list="border_height"
-                options={options} value={attributes.borderHeight ?? null}
-                onPick={(v) => set("borderHeight", v)} />
-              <Combo label="Border Motif" list="motif"
-                options={options} value={attributes.borderMotif ?? null}
-                onPick={(v) => set("borderMotif", v)} />
-
-              {/*
-                Asked only when the sub type says a blouse comes with it.
-                With Blouse and Without Blouse is the answer these six
-                questions depend on, so they appear together and vanish
-                together rather than sitting greyed out in a row.
-              */}
-              {withBlouse && (
-                <>
-                <Combo label="Blouse Status" list="blouse_status"
-                  options={options} value={attributes.blouseStatus ?? null}
-                  onPick={(v) => set("blouseStatus", v)} />
-                <Combo label="Blouse Style" list="blouse_style"
-                  options={options} value={attributes.blouseStyle ?? null}
-                  onPick={(v) => set("blouseStyle", v)} />
-                <Combo label="Blouse Material" list="blouse_material"
-                  options={options} value={attributes.blouseMaterial ?? null}
-                  onPick={(v) => set("blouseMaterial", v)} />
-                <Combo label="Blouse Border" list="border_style"
-                  options={options} value={attributes.blouseBorder ?? null}
-                  onPick={(v) => set("blouseBorder", v)} />
-                <Combo label="Blouse Motif" list="motif"
-                  options={options} value={attributes.blouseMotif ?? null}
-                  onPick={(v) => set("blouseMotif", v)} />
-                </>
-              )}
+                  {withBlouse && (
+                    <Section title="Blouse">
+                      <Combo label="Blouse Status" list="blouse_status"
+                        options={options} value={attributes.blouseStatus ?? null}
+                        onPick={(v) => set("blouseStatus", v)} />
+                      <Combo label="Blouse Style" list="blouse_style"
+                        options={options} value={attributes.blouseStyle ?? null}
+                        onPick={(v) => set("blouseStyle", v)} />
+                      <Combo label="Blouse Material" list="blouse_material"
+                        options={options} value={attributes.blouseMaterial ?? null}
+                        onPick={(v) => set("blouseMaterial", v)} />
+                      <Combo label="Blouse Border" list="border_style"
+                        options={options} value={attributes.blouseBorder ?? null}
+                        onPick={(v) => set("blouseBorder", v)} />
+                      <Combo label="Blouse Motif" list="motif"
+                        options={options} value={attributes.blouseMotif ?? null}
+                        onPick={(v) => set("blouseMotif", v)} />
+                    </Section>
+                  )}
                 </>
               )}
 
               {/*
-                Last, and outside the saree half: the adjectives describe the
-                whole piece rather than any part of it, they are what the
-                product name is built from, and a dupatta has them too.
+                Outside both, because the adjectives describe the whole piece
+                rather than any part of it, they are what the product name is
+                built from, and a dupatta has them too.
               */}
-              <MultiCombo label="Descriptor" list="descriptor"
-                options={options} values={descriptors}
-                onChange={setDescriptors} />
-            </Grid>
+              <Section title="Description">
+                <MultiCombo label="Descriptor" list="descriptor"
+                  options={options} values={descriptors}
+                  onChange={setDescriptors} />
+              </Section>
+            </>
           )}
 
           {activeTab === "garment" && (
@@ -1086,6 +1094,30 @@ export function RecordEditor({
         </footer>
       </div>
     </div>
+  );
+}
+
+/**
+ * A titled group of fields.
+ *
+ * The rule under the heading rather than a box around the fields: a tab of
+ * boxes reads as several forms, and this is one form with parts. The first
+ * section skips the top margin so the tab does not open with a gap.
+ */
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="mt-6 first:mt-0">
+      <h3 className="mb-3 border-b border-rule pb-1.5 text-[12px] font-semibold tracking-wide text-muted uppercase">
+        {title}
+      </h3>
+      <Grid>{children}</Grid>
+    </section>
   );
 }
 

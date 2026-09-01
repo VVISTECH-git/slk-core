@@ -155,6 +155,20 @@
       "when": 1788261700000,
       "tag": "0021_saree_style_and_blouse_style",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1788261800000,
+      "tag": "0022_remaining_saree_details",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788261900000,
+      "tag": "0023_pallu_motif_values_are_active",
+      "breakpoints": true
     }
   ]
 }

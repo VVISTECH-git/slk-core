@@ -113,6 +113,17 @@ export const design = pgTable(
      */
     sareeStyleId: attr("saree_style_id"),
     blouseStyleId: attr("blouse_style_id"),
+
+    /**
+     * Where a motif appears, and what kind of border the blouse has.
+     *
+     * All three draw on lists that already exist — a motif on the blouse is
+     * a motif, and a blouse border has the styles a saree border has. The
+     * question is placement, not vocabulary.
+     */
+    sareeBodyMotifId: attr("saree_body_motif_id"),
+    blouseMotifId: attr("blouse_motif_id"),
+    blouseBorderId: attr("blouse_border_id"),
     palluDesignId: attr("pallu_design_id"),
     blouseAvailableId: attr("blouse_available_id"),
     blouseStatusId: attr("blouse_status_id"),

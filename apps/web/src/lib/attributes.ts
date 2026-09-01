@@ -52,6 +52,10 @@ export const ATTRIBUTES = {
   borderHeight: { list: "border_height", column: "border_height_id", label: "Border Height" },
   sareeStyle: { list: "saree_style", column: "saree_style_id", label: "Saree Style" },
   blouseStyle: { list: "blouse_style", column: "blouse_style_id", label: "Blouse Style" },
+  // Placement, not vocabulary: all three read a list that already exists.
+  sareeBodyMotif: { list: "motif", column: "saree_body_motif_id", label: "Saree Body Motif" },
+  blouseMotif: { list: "motif", column: "blouse_motif_id", label: "Blouse Motif" },
+  blouseBorder: { list: "border_style", column: "blouse_border_id", label: "Blouse Border" },
   // Superseded by Saree Style. Its list is switched off, so nothing new is
   // written to it; the column stays because records still carry it.
   sareeLayout: { list: "saree_layout", column: "saree_layout_id", label: "Saree Layout" },

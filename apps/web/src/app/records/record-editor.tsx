@@ -221,6 +221,9 @@ export function RecordEditor({
   const perUnit = uom === null ? "" : ` per ${uom}`;
   const craft = labelOf("craft_technique", attributes.craftTechnique);
 
+  /** Every blouse question greys together when there is no blouse. */
+  const noBlouse = labelOf("blouse_available", attributes.blouseAvailable) === "No";
+
   const tabs = useMemo(() => {
     const list: { key: TabKey; label: string }[] = [
       { key: "basic", label: "Basic" },
@@ -707,11 +710,6 @@ export function RecordEditor({
                 disabled={!attributes.motifCategory}
                 placeholder={attributes.motifCategory ? "Choose…" : "Pick a category first"}
                 onPick={(v) => set("motif", v)} />
-              {isSaree && (
-                <Combo label="Pallu Design" list="pallu_design"
-                  options={options} value={attributes.palluDesign ?? null}
-                  onPick={(v) => set("palluDesign", v)} />
-              )}
             </Grid>
           )}
 
@@ -727,41 +725,57 @@ export function RecordEditor({
           {activeTab === "blouse" && (
             <Grid>
               {/*
+                Read outward from the cloth: the saree, then its border, then
+                the blouse that comes with it. The blouse questions grey
+                together when there is no blouse, so the group is also the
+                unit that switches off.
+
                 Saree Style is what Product Sub Type used to carry — a layout
-                is not a sub type of anything. Saree Layout asked the same
-                question with one value missing and is switched off, so its
-                field no longer renders; the column stays for records that
-                answered it.
+                is not a sub type of anything. Nothing below invents
+                vocabulary: a motif on the blouse is a motif, and a blouse
+                border has the styles a saree border has. The question each
+                asks is placement.
               */}
               <Combo label="Saree Style" list="saree_style"
                 options={options} value={attributes.sareeStyle ?? null}
                 onPick={(v) => set("sareeStyle", v)} />
-              <Combo label="Saree Layout" list="saree_layout"
-                options={options} value={attributes.sareeLayout ?? null}
-                onPick={(v) => set("sareeLayout", v)} />
+              <Combo label="Saree Body Motif" list="motif"
+                options={options} value={attributes.sareeBodyMotif ?? null}
+                onPick={(v) => set("sareeBodyMotif", v)} />
+              <Combo label="Pallu Motif" list="pallu_design"
+                options={options} value={attributes.palluDesign ?? null}
+                onPick={(v) => set("palluDesign", v)} />
+
+              <Combo label="Border Style" list="border_style"
+                options={options} value={attributes.borderStyle ?? null}
+                onPick={(v) => set("borderStyle", v)} />
               <Combo label="Border Height" list="border_height"
                 options={options} value={attributes.borderHeight ?? null}
                 onPick={(v) => set("borderHeight", v)} />
+
               <Combo label="Blouse Availability" list="blouse_available"
                 options={options} value={attributes.blouseAvailable ?? null}
                 onPick={(v) => set("blouseAvailable", v)} />
               <Combo label="Blouse Status" list="blouse_status"
                 options={options} value={attributes.blouseStatus ?? null}
-                disabled={labelOf("blouse_available", attributes.blouseAvailable) === "No"}
+                disabled={noBlouse}
                 onPick={(v) => set("blouseStatus", v)} />
-              <Combo label="Blouse Material" list="blouse_material"
-                options={options} value={attributes.blouseMaterial ?? null}
-                disabled={labelOf("blouse_available", attributes.blouseAvailable) === "No"}
-                onPick={(v) => set("blouseMaterial", v)} />
-              {/*
-                Self or Contrast — whether the blouse piece is cut from the
-                same cloth as the saree or deliberately unlike it. Greyed with
-                the rest of the blouse questions when there is no blouse.
-              */}
               <Combo label="Blouse Style" list="blouse_style"
                 options={options} value={attributes.blouseStyle ?? null}
-                disabled={labelOf("blouse_available", attributes.blouseAvailable) === "No"}
+                disabled={noBlouse}
                 onPick={(v) => set("blouseStyle", v)} />
+              <Combo label="Blouse Material" list="blouse_material"
+                options={options} value={attributes.blouseMaterial ?? null}
+                disabled={noBlouse}
+                onPick={(v) => set("blouseMaterial", v)} />
+              <Combo label="Blouse Border" list="border_style"
+                options={options} value={attributes.blouseBorder ?? null}
+                disabled={noBlouse}
+                onPick={(v) => set("blouseBorder", v)} />
+              <Combo label="Blouse Motif" list="motif"
+                options={options} value={attributes.blouseMotif ?? null}
+                disabled={noBlouse}
+                onPick={(v) => set("blouseMotif", v)} />
             </Grid>
           )}
 

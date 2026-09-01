@@ -69,6 +69,13 @@ export const MASTER_LISTING: SeedList[] = [
     values: plain("Piece", "Metre"),
   },
   {
+    code: "image_slot",
+    label: "Image Slot",
+    description:
+      "The photographs a product carries. Body, Pallu, Border and Blouse are the parts a saree is judged by; add more and they are offered on every record.",
+    values: plain("Body", "Pallu", "Border", "Blouse"),
+  },
+  {
     code: "motif_category",
     label: "Motif Category",
     description:

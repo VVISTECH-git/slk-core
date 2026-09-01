@@ -52,6 +52,15 @@ export interface RecordDraft {
    */
   openingStock: { locationId: string; qty: string }[];
 
+  /**
+   * The image slots this product should have, as lookup value ids.
+   *
+   * A slot with a photograph in it is never removed by this — un-ticking a
+   * filled slot would be deleting a photograph by implication, and the form
+   * does not offer it.
+   */
+  imageSlots: string[];
+
   notes: string;
   name: string;
   nameIsCustom: boolean;
@@ -218,6 +227,8 @@ export async function saveRecord(draft: RecordDraft): Promise<ActionResult> {
       })
       .where(eq(colourway.id, cw.id));
   });
+
+  await setImageSlots(cw.id, draft.imageSlots);
 
   const adjustment = await correctCount(cw.id, draft.quantity);
 
@@ -443,6 +454,8 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
       mrpMinor: toMinor(draft.prices.mrp),
     })
     .returning({ id: colourway.id });
+
+  if (cw !== undefined) await setImageSlots(cw.id, draft.imageSlots);
 
   const opening =
     cw === undefined ? null : await recordOpeningStock(cw.id, draft.openingStock);
@@ -1017,3 +1030,64 @@ async function openConsignment(
   return { id: batch.id, code: batch.code, items: items.map((i) => i.code) };
 }
 
+
+/**
+ * Records which photographs a product should have.
+ *
+ * Adds the newly ticked, removes the un-ticked — but never one that has a
+ * file against it. Un-ticking a filled slot would delete a photograph by
+ * implication, and a checkbox should not be able to mean that. The form does
+ * not offer it either; this is the same rule kept on the side that a POST
+ * cannot get around.
+ */
+async function setImageSlots(
+  colourwayId: string,
+  chosen: string[],
+): Promise<void> {
+  const wanted = [...new Set(chosen.filter((id) => id !== ""))];
+
+  const existing = await db.execute<{ slotId: string; hasFile: boolean }>(sql`
+    select slot_id as "slotId", (storage_key is not null) as "hasFile"
+    from image where colourway_id = ${colourwayId} and slot_id is not null
+  `);
+
+  const have = new Set(existing.map((e) => e.slotId));
+  const filled = new Set(existing.filter((e) => e.hasFile).map((e) => e.slotId));
+
+  const toAdd = wanted.filter((id) => !have.has(id));
+  const toDrop = existing
+    .filter((e) => !wanted.includes(e.slotId) && !filled.has(e.slotId))
+    .map((e) => e.slotId);
+
+  if (toAdd.length > 0) {
+    // Only values from the image slot list. A Server Action takes whatever is
+    // POSTed to it, and an unchecked id here would let any lookup value —
+    // a colour, a motif — be filed as a photograph.
+    const valid = await db.execute<{ id: string }>(sql`
+      select v.id from lookup_value v
+      join lookup_list l on l.id = v.list_id
+      where l.code = 'image_slot' and v.status = 'active'
+        and v.id in (${sql.join(toAdd.map((id) => sql`${id}`), sql`, `)})
+    `);
+
+    if (valid.length > 0) {
+      await db.execute(sql`
+        insert into image (colourway_id, slot_id, sort_order)
+        values ${sql.join(
+          valid.map((v, i) => sql`(${colourwayId}, ${v.id}, ${i})`),
+          sql`, `,
+        )}
+        on conflict (colourway_id, slot_id) do nothing
+      `);
+    }
+  }
+
+  if (toDrop.length > 0) {
+    await db.execute(sql`
+      delete from image
+      where colourway_id = ${colourwayId}
+        and storage_key is null
+        and slot_id in (${sql.join(toDrop.map((id) => sql`${id}`), sql`, `)})
+    `);
+  }
+}

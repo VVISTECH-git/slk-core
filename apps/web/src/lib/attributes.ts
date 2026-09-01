@@ -115,6 +115,9 @@ export interface RecordDetail {
     items: string[];
   }[];
 
+  /** The photographs this product should have, and which have arrived. */
+  images: { slotId: string | null; hasFile: boolean }[];
+
   movements: {
     id: number;
     kind: string;

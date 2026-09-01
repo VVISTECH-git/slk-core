@@ -126,6 +126,15 @@ export function RecordEditor({
   const [openingStock, setOpeningStock] = useState<OpeningLine[]>(() => [
     { locationId: locations.find((l) => l.isInternal)?.id ?? "", qty: "" },
   ]);
+  /**
+   * Which photographs this product should have.
+   *
+   * Held here rather than written on each tick, because on a new record
+   * there is no colourway to attach them to until Finish.
+   */
+  const [imageSlots, setImageSlots] = useState<string[]>(
+    () => record?.images.map((i) => i.slotId ?? "").filter(Boolean) ?? [],
+  );
   const [notes, setNotes] = useState(record?.notes ?? "");
   const [name, setName] = useState(record?.name ?? "");
   const [nameIsCustom, setNameIsCustom] = useState(record?.nameIsCustom ?? false);
@@ -178,8 +187,9 @@ export function RecordEditor({
     if (isSaree) list.push({ key: "blouse", label: "Blouse" });
     if (isGarment) list.push({ key: "garment", label: "Garment" });
     list.push({ key: "prices", label: "Prices" });
-    // Photographs hang off a colourway, and a new record has none yet.
-    if (!isNew) list.push({ key: "images", label: "Images" });
+    // Which photographs the product needs can be decided while creating it —
+    // the rows are written once the colourway exists.
+    list.push({ key: "images", label: "Images" });
     list.push({ key: "stock", label: "Stock" });
     return list;
   }, [isSaree, isGarment, isNew]);
@@ -347,6 +357,7 @@ export function RecordEditor({
       prices,
       quantity,
       openingStock,
+      imageSlots,
       notes,
       name,
       nameIsCustom,
@@ -690,12 +701,12 @@ export function RecordEditor({
           )}
 
           {activeTab === "images" && (
-            <Note>
-              Photographs go in slots decided by product type — a saree has Body,
-              Pallu, Border and Blouse. Nothing can be uploaded until there is
-              somewhere to put it: the plan plans Cloudflare R2, which has no egress
-              fee and matters for an image-heavy catalogue served to storefronts.
-            </Note>
+            <ImageSlots
+              slots={options["image_slot"] ?? []}
+              chosen={imageSlots}
+              setChosen={setImageSlots}
+              taken={record?.images ?? []}
+            />
           )}
 
           {activeTab === "stock" && (
@@ -1630,5 +1641,117 @@ function Consignments({
         </span>
       </div>
     </div>
+  );
+}
+
+/**
+ * Which photographs this product needs.
+ *
+ * Choosing the slots and taking the pictures are different acts, usually days
+ * apart and often different people — so this records the intention, and the
+ * photograph arrives against it later. A saree is judged on its Body, Pallu,
+ * Border and Blouse; SLK can add a fifth on Master Lists and it appears here
+ * with nothing to change.
+ *
+ * Deliberately honest about what is not built: there is nowhere to upload to
+ * yet, and a disabled Upload button pretending otherwise would be worse than
+ * a sentence saying so.
+ */
+function ImageSlots({
+  slots,
+  chosen,
+  setChosen,
+  taken,
+}: {
+  slots: Option[];
+  chosen: string[];
+  setChosen: (next: string[]) => void;
+  /** Slots that already have a row, and whether a photograph has arrived. */
+  taken: { slotId: string | null; hasFile: boolean }[];
+}) {
+  const filled = new Set(
+    taken.filter((t) => t.hasFile).map((t) => t.slotId ?? ""),
+  );
+
+  if (slots.length === 0) {
+    return (
+      <Note>
+        No image slots are set up. Add them on Master Lists → Image Slot, and
+        they will be offered here.
+      </Note>
+    );
+  }
+
+  return (
+    <>
+      <h3 className="mb-1 text-[15px] font-semibold text-ink">
+        Photographs This Product Needs
+      </h3>
+      <p className="mb-3 text-[12px] leading-relaxed text-muted">
+        Tick what should be shot. The list comes from Master Lists, so adding a
+        new kind of photograph there offers it on every record.
+      </p>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {slots.map((slot) => {
+          const on = chosen.includes(slot.id);
+          const has = filled.has(slot.id);
+
+          return (
+            <button
+              key={slot.id}
+              type="button"
+              // A slot with a photograph in it cannot be un-ticked here —
+              // that would be deleting the photograph by implication, which
+              // is not what a checkbox should mean.
+              disabled={has}
+              onClick={() =>
+                setChosen(
+                  on ? chosen.filter((id) => id !== slot.id) : [...chosen, slot.id],
+                )
+              }
+              title={has ? "A photograph is already here" : undefined}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left transition-colors disabled:cursor-not-allowed ${
+                on || has
+                  ? "border-brick bg-brick-soft"
+                  : "border-rule-2 hover:bg-surface-2"
+              }`}
+            >
+              <span
+                aria-hidden
+                className={`flex size-4 flex-none items-center justify-center rounded border text-[10px] ${
+                  on || has
+                    ? "border-brick bg-brick text-on-brick"
+                    : "border-rule-2"
+                }`}
+              >
+                {on || has ? "✓" : ""}
+              </span>
+
+              <span className="min-w-0">
+                <span
+                  className={`block truncate text-[13px] ${
+                    on || has ? "font-medium text-brick" : "text-ink-2"
+                  }`}
+                >
+                  {slot.label}
+                </span>
+                <span className="block text-[11px] text-muted">
+                  {has ? "Photographed" : on ? "To be shot" : "Not needed"}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <Note>
+        Uploading is not built yet — there is nowhere to put a file. The plan
+        is Cloudflare R2, which charges nothing for serving images out, and
+        that matters for a catalogue whose pictures end up on a storefront.
+        Until then this records which photographs are wanted, which is the half
+        that does not need storage.
+      </Note>
+    </>
   );
 }

@@ -257,9 +257,21 @@ export const image = pgTable(
       .notNull()
       .references(() => colourway.id, { onDelete: "cascade" }),
 
-    /** Body, Pallu, Border, Blouse — the parts you actually judge a saree by. */
-    slot: text("slot").notNull(),
-    storageKey: text("storage_key").notNull(),
+    /**
+     * Which photograph this is — Body, Pallu, Border, Blouse, or whatever
+     * else SLK adds. A lookup value rather than free text, so the list is
+     * maintained on Master Lists instead of in this file.
+     */
+    slotId: attr("slot_id"),
+
+    /**
+     * Null until a photograph exists.
+     *
+     * Choosing which pictures a product needs and taking them are different
+     * acts, days apart and often different people. A row with a slot and no
+     * file is the list of what is still to be shot.
+     */
+    storageKey: text("storage_key"),
     width: integer("width"),
     height: integer("height"),
     sortOrder: integer("sort_order").notNull().default(0),
@@ -269,7 +281,7 @@ export const image = pgTable(
       .defaultNow(),
   },
   (t) => [
-    uniqueIndex("image_colourway_slot_key").on(t.colourwayId, t.slot),
+    uniqueIndex("image_colourway_slot_key").on(t.colourwayId, t.slotId),
     index("image_colourway_idx").on(t.colourwayId),
   ],
 );

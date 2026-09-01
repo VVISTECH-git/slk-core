@@ -13,6 +13,7 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
     "db:demo": "tsx scripts/demo.ts",
+    "db:clean": "tsx scripts/clean.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

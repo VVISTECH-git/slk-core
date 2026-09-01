@@ -90,8 +90,15 @@ export async function loadRecord(
     first query was fetching. A subquery on an indexed primary key costs
     nothing and dissolves the dependency, so nothing has to wait.
   */
-  const [rows, siblings, totalsRows, byLocation, movements, consignments] =
-    await Promise.all([
+  const [
+    rows,
+    siblings,
+    totalsRows,
+    byLocation,
+    movements,
+    consignments,
+    images,
+  ] = await Promise.all([
     db.execute<Record<string, unknown>>(sql`
       select
         cw.id as id, d.id as "designId", d.code, d.name,
@@ -120,6 +127,7 @@ export async function loadRecord(
     loadByLocation(colourwayId),
     loadMovements(colourwayId),
     loadConsignments(colourwayId),
+    loadImages(colourwayId),
   ]);
 
   const row = rows[0];
@@ -150,6 +158,7 @@ export async function loadRecord(
     siblings,
     stock: { ...totals!, byLocation },
     consignments,
+    images,
     movements,
   };
 }
@@ -228,5 +237,19 @@ function loadConsignments(colourwayId: string) {
     where b.colourway_id = ${colourwayId}
     group by b.id, l.name
     order by b.received_at desc, b.code desc
+  `);
+}
+
+/**
+ * Which photographs this product should have, and which have arrived.
+ *
+ * A row with a slot and no storage key is a photograph somebody has decided
+ * is wanted and nobody has taken yet — which is the useful half of this
+ * table until there is somewhere to upload to.
+ */
+function loadImages(colourwayId: string) {
+  return db.execute<RecordDetail["images"][number]>(sql`
+    select slot_id as "slotId", (storage_key is not null) as "hasFile"
+    from image where colourway_id = ${colourwayId}
   `);
 }

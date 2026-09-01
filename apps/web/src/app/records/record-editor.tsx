@@ -37,7 +37,6 @@ import {
 
 type TabKey =
   | "basic"
-  | "material"
   | "craft"
   | "blouse"
   | "garment"
@@ -53,7 +52,7 @@ const FIELD_TAB: Record<string, TabKey> = {
   homeWeavingCategory: "basic",
   garmentType: "basic",
   colour: "basic",
-  fibreType: "material",
+  fibreType: "basic",
   craftTechnique: "craft",
   cost: "prices",
   making: "prices",
@@ -204,7 +203,6 @@ export function RecordEditor({
   const tabs = useMemo(() => {
     const list: { key: TabKey; label: string }[] = [
       { key: "basic", label: "Basic" },
-      { key: "material", label: "Material" },
       { key: "craft", label: "Craft & Design" },
     ];
     if (isSaree) list.push({ key: "blouse", label: "Blouse" });
@@ -264,10 +262,7 @@ export function RecordEditor({
       }
 
       if (!colourId) missing["colour"] = "Choose a colour";
-    }
-
-    if (which === "material" && !attributes.fibreType) {
-      missing["fibreType"] = "Choose a fibre";
+      if (!attributes.fibreType) missing["fibreType"] = "Choose a fibre";
     }
 
     if (which === "craft" && !attributes.craftTechnique) {
@@ -355,6 +350,16 @@ export function RecordEditor({
         } else {
           next.homeProductType = null;
           next.homeWeavingCategory = null;
+
+          // Coming back to Clothing lands on Saree again, the same value a
+          // new record starts on. Nearly everything SLK makes is one, and
+          // which value that is stays data: it is whichever Product Type is
+          // marked default on Operational Standard.
+          const fallback = options["product_type"]?.find((o) => o.isDefault);
+          next.productType ??= fallback?.id ?? null;
+          next.uom = options["product_type"]?.find(
+            (o) => o.id === next.productType,
+          )?.soldById ?? null;
         }
       }
       if (key === "blouseAvailable" && labelOf("blouse_available", value) === "No") {
@@ -541,6 +546,30 @@ export function RecordEditor({
                     setColourId(v);
                     setErrors((p) => { const { colour: _d, ...r } = p; return r; });
                   }} />
+
+                {/*
+                  What the cloth is, asked here rather than on a Material tab
+                  of its own. Three fields did not justify a step in a wizard,
+                  and Fibre is answered in the same breath as Product Type by
+                  whoever is holding the piece.
+
+                  Textile Material is one field where there were three — Silk
+                  Sub Family, Cotton Sub Family and Fabric Type all asked what
+                  the cloth is, split by the fibre it happened to be. It is
+                  narrowed by the fibre above: Silk names its twenty-three
+                  weaves, Cotton names three, and every other fibre falls
+                  through to the ten that name no fibre at all.
+                */}
+                <Combo label="Fiber Type" list="fibre_type" required
+                  options={options} value={attributes.fibreType ?? null}
+                  error={errors["fibreType"]} onPick={(v) => set("fibreType", v)} />
+                <Combo label="Weave Structure" list="weave_structure"
+                  options={options} value={attributes.weaveStructure ?? null}
+                  onPick={(v) => set("weaveStructure", v)} />
+                <Combo label="Textile Material" list="textile_material"
+                  options={options} value={attributes.textileMaterial ?? null}
+                  parentFilter={attributes.fibreType ?? null} fallbackToUnparented
+                  onPick={(v) => set("textileMaterial", v)} />
               </Grid>
 
               {!isNew && record.siblings.length > 1 && (
@@ -592,32 +621,6 @@ export function RecordEditor({
             </>
           )}
 
-          {activeTab === "material" && (
-            <Grid>
-              <Combo label="Fiber Type" list="fibre_type" required
-                options={options} value={attributes.fibreType ?? null}
-                error={errors["fibreType"]} onPick={(v) => set("fibreType", v)} />
-              <Combo label="Weave Structure" list="weave_structure"
-                options={options} value={attributes.weaveStructure ?? null}
-                onPick={(v) => set("weaveStructure", v)} />
-              {/*
-                One field where there were three.
-
-                Silk Sub Family, Cotton Sub Family and Fabric Type all asked
-                what the cloth is, split by which fibre it happened to be —
-                and two of them could never both apply. Textile Material asks
-                it once, narrowed by the fibre chosen above: a silk is offered
-                its silks, a cotton its cottons, and the weaves that any fibre
-                can take are offered whatever the answer.
-              */}
-              <Combo label="Textile Material" list="textile_material"
-                options={options} value={attributes.textileMaterial ?? null}
-                parentFilter={attributes.fibreType ?? null} alsoUnparented
-                placeholder={fibre === null ? "Choose a fibre first" : "Choose…"}
-                onPick={(v) => set("textileMaterial", v)} />
-            </Grid>
-          )}
-
           {activeTab === "craft" && (
             <Grid>
               <Combo label="Craft Technique" list="craft_technique" required
@@ -628,9 +631,12 @@ export function RecordEditor({
                   options={options} value={attributes.craftSubType ?? null}
                   onPick={(v) => set("craftSubType", v)} />
               )}
-              <Combo label="Region Style" list="regional_style"
-                options={options} value={attributes.regionalStyle ?? null}
-                onPick={(v) => set("regionalStyle", v)} />
+              {/*
+                Region Style is not asked any more. It was renamed Textile
+                Material on the live screen and then folded into it, so the
+                twenty-three weaves are offered there, gated by Silk. The
+                column stays on the design holding what it always held.
+              */}
               <Combo label="Motif Category" list="motif_category"
                 options={options} value={attributes.motifCategory ?? null}
                 onPick={(v) => set("motifCategory", v)} />
@@ -879,7 +885,7 @@ function Combo({
   placeholder,
   error,
   parentFilter,
-  alsoUnparented,
+  fallbackToUnparented,
 }: {
   label: string;
   list: string;
@@ -892,26 +898,29 @@ function Combo({
   error?: string;
   parentFilter?: string | null;
   /**
-   * Keep the values that belong to no parent at all.
+   * When the parent has no values of its own, offer the unparented ones.
    *
-   * Textile Material needs it: Katan is a silk and Mul Mul is a cotton, but a
-   * Georgette can be either, so it names no fibre and applies to all of them.
-   * Off by default — a motif with no category is a mistake, not a wildcard.
+   * Textile Material needs it. Silk names twenty-three weaves and Cotton
+   * names three, so those two answer for themselves; every other fibre —
+   * Viscose, Linen, Jute — names none, and falls through to the ten that name
+   * no fibre. Off by default: a motif with no category is a mistake, not a
+   * catch-all.
    */
-  alsoUnparented?: boolean;
+  fallbackToUnparented?: boolean;
 }) {
   let values: Option[] = options[list] ?? [];
 
   // Motifs are filtered to the chosen category, which is what the parent
   // column on the lookup value is for.
   if (parentFilter !== undefined && parentFilter !== null) {
-    values = values.filter(
-      (o) =>
-        o.parentId === parentFilter ||
-        (alsoUnparented === true && o.parentId === null),
-    );
-  } else if (parentFilter === null && alsoUnparented === true) {
-    // Nothing chosen above yet, so only the values that need nothing chosen.
+    const own = values.filter((o) => o.parentId === parentFilter);
+
+    values =
+      fallbackToUnparented === true && own.length === 0
+        ? values.filter((o) => o.parentId === null)
+        : own;
+  } else if (parentFilter === null && fallbackToUnparented === true) {
+    // Nothing chosen above yet, so the ones that need nothing chosen.
     values = values.filter((o) => o.parentId === null);
   }
 

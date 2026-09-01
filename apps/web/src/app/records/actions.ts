@@ -570,7 +570,6 @@ const INLINE_FIELDS = {
   subType: "garmentType",
   productionMethod: "productionMethod",
   fibreType: "fibreType",
-  regionalStyle: "regionalStyle",
   craftTechnique: "craftTechnique",
   audienceType: "audienceType",
   weaveStructure: "weaveStructure",

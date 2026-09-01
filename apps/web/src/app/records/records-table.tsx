@@ -48,7 +48,6 @@ const COLUMNS = [
   { key: "subType", label: "Product Sub Type", width: 138 },
   { key: "productionMethod", label: "Production Method", width: 150 },
   { key: "fibreType", label: "Fiber Type", width: 178 },
-  { key: "regionalStyle", label: "Region Style", width: 126 },
   { key: "craftTechnique", label: "Craft Technique", width: 148 },
   { key: "productCode", label: "Product Code", width: 118 },
   { key: "code", label: "Design Code", width: 150 },
@@ -82,7 +81,6 @@ type ColumnKey = (typeof COLUMNS)[number]["key"];
  */
 const OFF_BY_DEFAULT = new Set<ColumnKey>([
   "craftTechnique",
-  "regionalStyle",
   "textileMaterial",
   "weaveStructure",
   "craftSubType",
@@ -116,7 +114,6 @@ const INLINE_COLUMNS: Partial<
   subType: { field: "subType", list: "garment_type" },
   productionMethod: { field: "productionMethod", list: "production_method" },
   fibreType: { field: "fibreType", list: "fibre_type" },
-  regionalStyle: { field: "regionalStyle", list: "regional_style" },
   craftTechnique: { field: "craftTechnique", list: "craft_technique" },
   audienceType: { field: "audienceType", list: "audience_type" },
   weaveStructure: { field: "weaveStructure", list: "weave_structure" },

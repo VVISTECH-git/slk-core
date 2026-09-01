@@ -127,6 +127,13 @@
       "when": 1788261300000,
       "tag": "0017_textile_material",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788261400000,
+      "tag": "0018_textile_material_by_fibre",
+      "breakpoints": true
     }
   ]
 }

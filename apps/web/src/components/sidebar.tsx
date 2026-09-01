@@ -9,7 +9,7 @@ import { usePathname } from "next/navigation";
  * builds and is still reachable by URL; the sidebar is cut to what is being
  * worked on. Remove a line to bring a screen back.
  */
-const HIDDEN = new Set<string>(["/stock"]);
+const HIDDEN = new Set<string>([]);
 
 const NAV = [
   {
@@ -19,7 +19,7 @@ const NAV = [
   },
   {
     href: "/stock",
-    label: "Stock",
+    label: "Stock Records",
     icon: "M3 6l7-3 7 3v8l-7 3-7-3z M3 6l7 3 7-3 M10 9v8",
   },
   {

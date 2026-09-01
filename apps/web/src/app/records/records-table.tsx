@@ -271,13 +271,6 @@ export function RecordsTable({
     {},
   );
   const [showFilters, setShowFilters] = useState(false);
-  /** A column whose filter should be open when the panel appears. */
-  const [focusFilter, setFocusFilter] = useState<ColumnKey | null>(null);
-
-  const setColumnFilter = (key: ColumnKey) => {
-    setFocusFilter(key);
-    setShowFilters(true);
-  };
   const {
     visible,
     setVisible,
@@ -367,9 +360,6 @@ export function RecordsTable({
           <h1 className="text-[24px] font-semibold tracking-tight text-ink">
             Product Records
           </h1>
-          <p className="mt-1 text-[13.5px] text-muted">
-            One row per colour. Every attribute comes from Master Lists.
-          </p>
         </div>
 
         <button
@@ -440,11 +430,7 @@ export function RecordsTable({
                 setFilters({});
                 setPage(1);
               }}
-              openColumn={focusFilter}
-              onClose={() => {
-                setShowFilters(false);
-                setFocusFilter(null);
-              }}
+              onClose={() => setShowFilters(false)}
             />
           )}
         </div>
@@ -595,7 +581,7 @@ export function RecordsTable({
                     <th
                       key={c.key}
                       style={{ width: widthOf(c) }}
-                      className={`group/th sticky top-0 z-20 border-b border-rule bg-surface px-3 py-2.5 text-left text-[12px] font-medium whitespace-nowrap text-muted ${
+                      className={`sticky top-0 z-20 border-b border-rule bg-surface px-3 py-2.5 text-left text-[12px] font-medium whitespace-nowrap text-muted ${
                         NUMERIC.has(c.key) ? "text-right" : ""
                       }`}
                     >
@@ -643,49 +629,7 @@ export function RecordsTable({
 
                       </button>
 
-                      {/*
-                        The filter for this column, distinct from the cells
-                        below it. A funnel belongs to the column and changes
-                        which rows you see; the caret in a cell belongs to the
-                        value and changes what a record says. They must not
-                        look alike.
-
-                        Shown when the column is filtered, and on hover
-                        otherwise, so ten columns do not carry ten permanent
-                        controls.
-                      */}
-                      {!NUMERIC.has(c.key) && valuesFor(c.key).length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setColumnFilter(c.key)}
-                          aria-label={`Filter by ${c.label}`}
-                          title={
-                            (filters[c.key]?.length ?? 0) > 0
-                              ? `Filtered: ${filters[c.key]?.join(", ")}`
-                              : `Filter by ${c.label}`
-                          }
-                          className={`absolute top-1/2 right-3 -translate-y-1/2 rounded p-0.5 transition-opacity ${
-                            (filters[c.key]?.length ?? 0) > 0
-                              ? "text-brick opacity-100"
-                              : "text-faint opacity-0 hover:text-ink-2 group-hover/th:opacity-100"
-                          }`}
-                        >
-                          <svg
-                            width="11"
-                            height="11"
-                            viewBox="0 0 12 12"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.4"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            aria-hidden
-                          >
-                            <path d="M1 2h10l-4 4.5V11L5 9.5V6.5z" />
-                          </svg>
-                        </button>
-                      )}
-
+                      
                       <ResizeHandle
                         label={c.label}
                         width={widthOf(c)}
@@ -1244,7 +1188,6 @@ function FilterPanel({
   filters,
   onChange,
   onClearAll,
-  openColumn: initialColumn,
   onClose,
 }: {
   columns: readonly { key: ColumnKey; label: string }[];
@@ -1252,10 +1195,9 @@ function FilterPanel({
   filters: Partial<Record<ColumnKey, string[]>>;
   onChange: (key: ColumnKey, values: string[]) => void;
   onClearAll: () => void;
-  openColumn: ColumnKey | null;
   onClose: () => void;
 }) {
-  const [openColumn, setOpenColumn] = useState<ColumnKey | null>(initialColumn);
+  const [openColumn, setOpenColumn] = useState<ColumnKey | null>(null);
   const [search, setSearch] = useState("");
 
   const active = Object.values(filters).filter((v) => (v?.length ?? 0) > 0).length;

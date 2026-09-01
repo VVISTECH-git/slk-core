@@ -206,8 +206,19 @@ function Classifications({
             </td>
 
             <Cell muted>{row.description}</Cell>
-            <Cell>{row.isEnabled ? "Yes" : "No"}</Cell>
-            <Cell>{row.dependent ? "Yes" : "No"}</Cell>
+            <YesNo
+              value={row.isEnabled}
+              onChange={(on) => onRun(() => setClassificationEnabled([row.id], on))}
+            />
+            <YesNo
+              value={row.dependent}
+              onChange={(on) => {
+                // Yes on its own says nothing — a dependency needs something
+                // to depend on, so choosing it opens the drawer to ask.
+                if (on) setEditing(row.id);
+                else onRun(() => saveClassification(row.id, { dependsOnId: null }));
+              }}
+            />
             <Cell muted>{row.dependsOn}</Cell>
             <Cell>{titleish(row.status)}</Cell>
 
@@ -483,8 +494,29 @@ function Categories({
             </td>
 
             <Cell muted>{row.description}</Cell>
-            <Cell>{row.isEnabled ? "Yes" : "No"}</Cell>
-            <Cell>{row.dependent ? "Yes" : "No"}</Cell>
+            <YesNo
+              value={row.isEnabled}
+              onChange={(on) =>
+                onRun(() =>
+                  setCategoryStatus([row.id], on ? "active" : "retired"),
+                )
+              }
+            />
+            {/*
+              Read-only, and not for want of wiring.
+
+              Whether a category is dependent is a fact about its
+              classification, not about it: every Motif is dependent because
+              Motif depends on Motif Category. Letting one Motif be dependent
+              and the next not would describe a shape the form cannot ask
+              for. It is changed one row up, in Classification Structure.
+            */}
+            <YesNo
+              value={row.dependent}
+              disabled
+              reason={`Set on the classification.  , so all of its categories do.`}
+              onChange={() => undefined}
+            />
             <Cell muted>{row.belongsTo}</Cell>
             <Cell>{titleish(row.status)}</Cell>
 
@@ -1025,4 +1057,55 @@ function Tag({ children }: { children: React.ReactNode }) {
 /** Draft → Draft. Only ever applied to the status words, which are one word. */
 function titleish(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+/**
+ * A Yes/No cell you can change where it sits.
+ *
+ * Plain text until the pointer is over it, like the lookup cells on Product
+ * Records — a grid whose every cell looks like a form control has stopped
+ * being a grid. The two share nothing but the idea; this one has two fixed
+ * answers and no popover to place.
+ */
+function YesNo({
+  value,
+  onChange,
+  disabled,
+  reason,
+}: {
+  value: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+  /** Why it cannot be changed, shown on hover. */
+  reason?: string;
+}) {
+  if (disabled === true) {
+    return (
+      <td className="px-3">
+        <span
+          title={reason}
+          className="text-[12.5px] text-muted"
+          // Dotted underline rather than a disabled control: there is nothing
+          // to disable, because this one is worked out rather than chosen.
+          style={{ textDecoration: "underline dotted", textUnderlineOffset: 3 }}
+        >
+          {value ? "Yes" : "No"}
+        </span>
+      </td>
+    );
+  }
+
+  return (
+    <td className="px-3">
+      <select
+        value={value ? "yes" : "no"}
+        onChange={(e) => onChange(e.target.value === "yes")}
+        aria-label={value ? "Yes" : "No"}
+        className="-mx-1 w-full cursor-pointer rounded border border-transparent bg-transparent px-1 py-0.5 text-[12.5px] text-ink-2 hover:border-rule-2 hover:bg-surface focus:border-brick focus:outline-none"
+      >
+        <option value="yes">Yes</option>
+        <option value="no">No</option>
+      </select>
+    </td>
+  );
 }

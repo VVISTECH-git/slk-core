@@ -50,6 +50,10 @@ export const ATTRIBUTES = {
   motif: { list: "motif", column: "motif_id", label: "Motif" },
   borderStyle: { list: "border_style", column: "border_style_id", label: "Border Style" },
   borderHeight: { list: "border_height", column: "border_height_id", label: "Border Height" },
+  sareeStyle: { list: "saree_style", column: "saree_style_id", label: "Saree Style" },
+  blouseStyle: { list: "blouse_style", column: "blouse_style_id", label: "Blouse Style" },
+  // Superseded by Saree Style. Its list is switched off, so nothing new is
+  // written to it; the column stays because records still carry it.
   sareeLayout: { list: "saree_layout", column: "saree_layout_id", label: "Saree Layout" },
   palluDesign: { list: "pallu_design", column: "pallu_design_id", label: "Pallu Design" },
   blouseAvailable: { list: "blouse_available", column: "blouse_available_id", label: "Blouse Availability" },

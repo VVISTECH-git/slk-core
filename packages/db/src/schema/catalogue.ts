@@ -103,6 +103,16 @@ export const design = pgTable(
     borderStyleId: attr("border_style_id"),
     borderHeightId: attr("border_height_id"),
     sareeLayoutId: attr("saree_layout_id"),
+
+    /**
+     * How the design sits on the cloth, and how the blouse relates to it.
+     *
+     * Saree Style holds what Product Sub Type was carrying — a layout is not
+     * a sub type of anything — and supersedes Saree Layout, which asked the
+     * same question with one value missing.
+     */
+    sareeStyleId: attr("saree_style_id"),
+    blouseStyleId: attr("blouse_style_id"),
     palluDesignId: attr("pallu_design_id"),
     blouseAvailableId: attr("blouse_available_id"),
     blouseStatusId: attr("blouse_status_id"),

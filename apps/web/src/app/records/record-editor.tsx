@@ -726,6 +726,16 @@ export function RecordEditor({
           */}
           {activeTab === "blouse" && (
             <Grid>
+              {/*
+                Saree Style is what Product Sub Type used to carry — a layout
+                is not a sub type of anything. Saree Layout asked the same
+                question with one value missing and is switched off, so its
+                field no longer renders; the column stays for records that
+                answered it.
+              */}
+              <Combo label="Saree Style" list="saree_style"
+                options={options} value={attributes.sareeStyle ?? null}
+                onPick={(v) => set("sareeStyle", v)} />
               <Combo label="Saree Layout" list="saree_layout"
                 options={options} value={attributes.sareeLayout ?? null}
                 onPick={(v) => set("sareeLayout", v)} />
@@ -743,6 +753,15 @@ export function RecordEditor({
                 options={options} value={attributes.blouseMaterial ?? null}
                 disabled={labelOf("blouse_available", attributes.blouseAvailable) === "No"}
                 onPick={(v) => set("blouseMaterial", v)} />
+              {/*
+                Self or Contrast — whether the blouse piece is cut from the
+                same cloth as the saree or deliberately unlike it. Greyed with
+                the rest of the blouse questions when there is no blouse.
+              */}
+              <Combo label="Blouse Style" list="blouse_style"
+                options={options} value={attributes.blouseStyle ?? null}
+                disabled={labelOf("blouse_available", attributes.blouseAvailable) === "No"}
+                onPick={(v) => set("blouseStyle", v)} />
             </Grid>
           )}
 

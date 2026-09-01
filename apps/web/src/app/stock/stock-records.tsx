@@ -639,8 +639,14 @@ function PiecePanel({
             Both codes, big enough to scan off the screen. The item code is
             this saree; the product code is the consignment it arrived in, and
             every piece in that consignment carries the same one.
+
+            Stacked rather than side by side. Two of these in a row took 264px
+            of a 640px dialog to show two numbers, and what paid for it was the
+            column beside them — "Kalamkari Kashmiri Mul Mul Cotton Saree" came
+            out as "Kalamkari Kashmiri Mul Mul C…". A panel whose whole job is
+            telling you what a code is attached to cannot cut off the answer.
           */}
-          <div className="flex flex-none gap-4">
+          <div className="flex flex-none flex-row gap-4 sm:flex-col">
             <Code label="Item" code={piece.itemCode} qr={piece.itemQr} onCopy={onCopy} />
             <Code
               label="Product"
@@ -656,8 +662,15 @@ function PiecePanel({
                 key={label}
                 className="flex gap-3 border-b border-rule py-1.5 last:border-b-0"
               >
-                <dt className="w-32 flex-none text-[12.5px] text-muted">{label}</dt>
-                <dd className="min-w-0 flex-1 truncate text-[13.5px] text-ink" title={value}>
+                <dt className="w-28 flex-none text-[12.5px] text-muted">{label}</dt>
+                {/*
+                  Wraps rather than truncates — the opposite of the rule the
+                  table follows, and for the opposite reason. A row truncates
+                  so every row is the same height; a panel is read one at a
+                  time, and a value it will not show in full is a value it has
+                  failed to report.
+                */}
+                <dd className="min-w-0 flex-1 text-[13.5px] break-words text-ink">
                   {value}
                 </dd>
               </div>

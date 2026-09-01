@@ -59,7 +59,10 @@ const COLUMNS = [
 
 type ColumnKey = (typeof COLUMNS)[number]["key"];
 
-/** Module-level so the order hook's effect does not re-run every render. */
+/**
+ * Module-level, so the stored-preference hooks are handed the same array
+ * every render and can memoise against it.
+ */
 const COLUMN_KEYS: readonly string[] = COLUMNS.map((c) => c.key);
 
 const OFF_BY_DEFAULT = new Set<ColumnKey>([
@@ -68,6 +71,10 @@ const OFF_BY_DEFAULT = new Set<ColumnKey>([
   "reference",
   "serial",
 ]);
+
+const DEFAULT_VISIBLE: readonly string[] = COLUMN_KEYS.filter(
+  (k) => !OFF_BY_DEFAULT.has(k as ColumnKey),
+);
 
 const NUMERIC = new Set<ColumnKey>(["serial", "price"]);
 
@@ -157,10 +164,7 @@ export function StockRecords({
     setVisible,
     reset: resetColumns,
     chosen: columnsChosen,
-  } = useVisibleColumns(
-    "stock",
-    () => new Set(COLUMNS.map((c) => c.key).filter((k) => !OFF_BY_DEFAULT.has(k))),
-  );
+  } = useVisibleColumns("stock", DEFAULT_VISIBLE);
 
   const { widths, setWidth, reset: resetWidths, resized } = useColumnWidths("stock");
 

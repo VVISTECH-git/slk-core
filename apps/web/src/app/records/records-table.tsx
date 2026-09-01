@@ -74,7 +74,10 @@ const COLUMNS = [
 
 type ColumnKey = (typeof COLUMNS)[number]["key"];
 
-/** Module-level so the order hook's effect does not re-run every render. */
+/**
+ * Module-level, so the stored-preference hooks are handed the same array
+ * every render and can memoise against it.
+ */
 const COLUMN_KEYS: readonly string[] = COLUMNS.map((c) => c.key);
 
 /**
@@ -95,6 +98,10 @@ const OFF_BY_DEFAULT = new Set<ColumnKey>([
   "descriptor",
   "motifCode",
 ]);
+
+const DEFAULT_VISIBLE: readonly string[] = COLUMN_KEYS.filter(
+  (k) => !OFF_BY_DEFAULT.has(k as ColumnKey),
+);
 
 const NUMERIC = new Set<ColumnKey>(["quantity", "price"]);
 
@@ -279,10 +286,7 @@ export function RecordsTable({
     setVisible,
     reset: resetColumns,
     chosen: columnsChosen,
-  } = useVisibleColumns(
-    "records",
-    () => new Set(COLUMNS.map((c) => c.key).filter((k) => !OFF_BY_DEFAULT.has(k))),
-  );
+  } = useVisibleColumns("records", DEFAULT_VISIBLE);
   const [sort, setSort] = useState<{ key: ColumnKey; dir: 1 | -1 } | null>(null);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<string | null>(null);

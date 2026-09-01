@@ -71,6 +71,16 @@ export const lookupList = pgTable(
     status: text("status").notNull().default("active"),
 
     /**
+     * The values are a scale rather than a set of names.
+     *
+     * Dropdowns read alphabetically, which is how twenty-seven motifs and a
+     * hundred and forty-seven colours are found. Border Height is four
+     * measurements, and alphabetical shuffles the ladder — so a list can say
+     * it keeps the order its values already carry.
+     */
+    isOrdered: boolean("is_ordered").notNull().default(false),
+
+    /**
      * The order the directory reads in. Alphabetical puts Audience above
      * Product Type, which is not how anyone thinks about the catalogue.
      */

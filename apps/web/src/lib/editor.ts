@@ -51,10 +51,24 @@ export async function loadOptions(): Promise<Options> {
     // Master Lists is how a question stops being asked altogether,
     // as against retiring its values one at a time.
     .where(and(eq(lookupValue.status, "active"), eq(lookupList.isEnabled, true)))
-    // Alphabetical, not the workbook order. Twenty-seven motifs and a
-    // hundred and forty-seven colours are found by scanning for a word, and
-    // a reader cannot scan an order only the spreadsheet knew.
-    .orderBy(asc(lookupList.code), asc(lookupValue.label));
+    /*
+      Alphabetical, unless the list says otherwise.
+
+      Twenty-seven motifs and a hundred and forty-seven colours are found by
+      scanning for a word, and nobody can scan an order only the spreadsheet
+      knew. Border Height is the exception and says so on the list: four
+      measurements whose ladder alphabetical order shuffles.
+
+      One text key rather than two orderings, because a sort cannot switch
+      column mid-list. The number is padded so it sorts as a number.
+    */
+    .orderBy(
+      asc(lookupList.code),
+      sql`case when ${lookupList.isOrdered}
+            then lpad(${lookupValue.sortOrder}::text, 6, '0')
+            else lower(${lookupValue.label})
+          end`,
+    );
 
   const options: Options = {};
 

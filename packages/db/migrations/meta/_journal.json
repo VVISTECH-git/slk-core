@@ -183,6 +183,13 @@
       "when": 1788262100000,
       "tag": "0025_product_type_belongs_to_clothing",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1788262200000,
+      "tag": "0026_lists_that_keep_their_own_order",
+      "breakpoints": true
     }
   ]
 }

@@ -66,7 +66,7 @@ const COLUMNS = [
   { key: "borderHeight", label: "Border Height", width: 124 },
   { key: "palluDesign", label: "Pallu Design", width: 126 },
   { key: "blouseAvailable", label: "Blouse Availability", width: 148 },
-  { key: "descriptor", label: "Descriptor", width: 112 },
+  { key: "descriptor", label: "Descriptor", width: 168 },
 
   { key: "quantity", label: "Quantity", width: 88 },
   { key: "price", label: "Price per Qty", width: 128 },
@@ -135,7 +135,6 @@ const INLINE_COLUMNS: Partial<
   borderHeight: { field: "borderHeight", list: "border_height" },
   palluDesign: { field: "palluDesign", list: "pallu_design" },
   blouseAvailable: { field: "blouseAvailable", list: "blouse_available" },
-  descriptor: { field: "descriptor", list: "descriptor" },
 
   // Sub Family is deliberately absent. It reads from two columns — Silk Sub
   // Family and Cotton Sub Family — so which one a change should write to

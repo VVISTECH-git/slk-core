@@ -146,6 +146,16 @@ export function RecordEditor({
   const [imageSlots, setImageSlots] = useState<string[]>(
     () => record?.images.map((i) => i.slotId ?? "").filter(Boolean) ?? [],
   );
+  /**
+   * The adjectives, several of them.
+   *
+   * Held apart from `attributes` because that map is one id per key and this
+   * is the one question with more than one answer. It is written to its own
+   * table, not to a column on the design.
+   */
+  const [descriptors, setDescriptors] = useState<string[]>(
+    () => record?.descriptors ?? [],
+  );
   const [notes, setNotes] = useState(record?.notes ?? "");
   const [name, setName] = useState(record?.name ?? "");
   const [nameIsCustom, setNameIsCustom] = useState(record?.nameIsCustom ?? false);
@@ -229,10 +239,7 @@ export function RecordEditor({
     // that it is the ledger, which is a screen of its own.
     if (!isNew) list.push({ key: "stock", label: "Stock" });
     return list;
-    // Not isNew: Images and Stock are offered whether or not the record
-    // exists yet, which is what the note above says. It stayed in the list
-    // after the gate it belonged to came out.
-  }, [isSaree, isGarment]);
+  }, [isSaree, isGarment, isNew]);
 
   const errorTabs = useMemo(() => {
     const set = new Set<TabKey>();
@@ -342,7 +349,7 @@ export function RecordEditor({
           so choosing Cotton lands on it and choosing Silk lands on nothing —
           the default is only applied when the fibre actually offers it.
           Which value that is stays data: mark a different one default on
-          Operational Standard and this follows, with no change here.
+          Master Lists and this follows, with no change here.
         */
         if (next.textileMaterial == null) {
           const fallback = materials.find(
@@ -388,7 +395,7 @@ export function RecordEditor({
           // Coming back to Clothing lands on Saree again, the same value a
           // new record starts on. Nearly everything SLK makes is one, and
           // which value that is stays data: it is whichever Product Type is
-          // marked default on Operational Standard.
+          // marked default on Master Lists.
           const fallback = options["product_type"]?.find((o) => o.isDefault);
           next.productType ??= fallback?.id ?? null;
           next.uom = options["product_type"]?.find(
@@ -429,6 +436,7 @@ export function RecordEditor({
     const draft: RecordDraft = {
       colourwayId: record?.id,
       attributes,
+      descriptors,
       colourId,
       prices,
       quantity,
@@ -571,9 +579,9 @@ export function RecordEditor({
                 <Combo label="Audience" list="audience_type"
                   options={options} value={attributes.audienceType ?? null}
                   onPick={(v) => set("audienceType", v)} />
-                <Combo label="Descriptor" list="descriptor"
-                  options={options} value={attributes.descriptor ?? null}
-                  onPick={(v) => set("descriptor", v)} />
+                <MultiCombo label="Descriptor" list="descriptor"
+                  options={options} values={descriptors}
+                  onChange={setDescriptors} />
                 <Combo label="Colour" list="colour" required
                   options={options} value={colourId} error={errors["colour"]}
                   onPick={(v) => {
@@ -742,7 +750,7 @@ export function RecordEditor({
             <Note>
               The Garments sheet defines eleven more columns — Size, Colors, Sleeve
               Length and the rest — but every one of them arrived empty in the
-              workbook. Give them values on Operational Standard and they appear
+              workbook. Give them values on Master Lists and they appear
               here as dropdowns, with no change to this screen.
             </Note>
           )}
@@ -949,6 +957,77 @@ function Note({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * The one question with more than one answer.
+ *
+ * Chips rather than a `<select multiple>`, which needs ctrl-click to add a
+ * second value and shows three rows of a twelve-item list. These are all
+ * visible, all one tap, and read back as the phrase they will become in the
+ * product name.
+ */
+function MultiCombo({
+  label,
+  list,
+  options,
+  values,
+  onChange,
+}: {
+  label: string;
+  list: string;
+  options: Options;
+  values: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const all = options[list] ?? [];
+  if (all.length === 0) return null;
+
+  const chosen = new Set(values);
+
+  return (
+    <div className="block sm:col-span-2">
+      <span className="mb-1 block text-[12.5px] text-ink-2">
+        {label}
+        {values.length > 0 && (
+          <span className="font-normal text-muted">
+            {" "}
+            — {all.filter((o) => chosen.has(o.id)).map((o) => o.label).join(" ")}
+          </span>
+        )}
+      </span>
+
+      <div className="flex flex-wrap gap-1.5">
+        {all.map((option) => {
+          const on = chosen.has(option.id);
+
+          return (
+            <button
+              key={option.id}
+              type="button"
+              aria-pressed={on}
+              onClick={() =>
+                // Kept in the list's own order rather than tick order, so the
+                // composed name reads the same however it was filled in.
+                onChange(
+                  all
+                    .filter((o) => (o.id === option.id ? !on : chosen.has(o.id)))
+                    .map((o) => o.id),
+                )
+              }
+              className={`rounded-full border px-2.5 py-1 text-[12.5px] transition-colors ${
+                on
+                  ? "border-brick bg-brick-soft font-medium text-brick"
+                  : "border-rule-2 text-muted hover:bg-surface-2"
+              }`}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function Combo({
   label,
   list,
@@ -999,7 +1078,7 @@ function Combo({
     values = values.filter((o) => o.parentId === null);
   }
 
-  // A classification switched off in Operational Standard sends no values, so
+  // A classification switched off in Master Lists sends no values, so
   // the question is not asked at all rather than asked with an empty list.
   // A record that already answered it keeps its field, so the answer stays
   // visible instead of vanishing from the form that holds it.
@@ -1025,7 +1104,7 @@ function Combo({
             {/*
               Shown exactly as stored. Title-casing here is what turned
               "Up to 3 Inch" into "Up To 3 Inch" and "3D Print" into "3d
-              Print" — the label is already correct, because Operational Standard
+              Print" — the label is already correct, because Master Lists
               applies the casing rule when it is written.
             */}
             {o.label}
@@ -1787,7 +1866,7 @@ function Consignments({
  * Choosing the slots and taking the pictures are different acts, usually days
  * apart and often different people — so this records the intention, and the
  * photograph arrives against it later. A saree is judged on its Body, Pallu,
- * Border and Blouse; SLK can add a fifth on Operational Standard and it appears here
+ * Border and Blouse; SLK can add a fifth on Master Lists and it appears here
  * with nothing to change.
  *
  * The file goes straight from the browser to R2 with a signed URL — it never
@@ -1843,7 +1922,7 @@ function ImageSlots({
   if (slots.length === 0) {
     return (
       <Note>
-        No image slots are set up. Add them on Operational Standard → Image Slot, and
+        No image slots are set up. Add them on Master Lists → Image Slot, and
         they will be offered here.
       </Note>
     );
@@ -1855,7 +1934,7 @@ function ImageSlots({
         Photographs This Product Needs
       </h3>
       <p className="mb-3 text-[12px] leading-relaxed text-muted">
-        Tick what should be shot. The list comes from Operational Standard, so adding a
+        Tick what should be shot. The list comes from Master Lists, so adding a
         new kind of photograph there offers it on every record.
       </p>
 

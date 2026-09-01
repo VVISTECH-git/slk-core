@@ -5,6 +5,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -139,6 +140,38 @@ export const design = pgTable(
     index("design_product_type_idx").on(t.productTypeId),
     index("design_craft_technique_idx").on(t.craftTechniqueId),
     index("design_regional_style_idx").on(t.regionalStyleId),
+  ],
+);
+
+/**
+ * The adjectives a design carries — Soft, Pure, Traditional.
+ *
+ * The one attribute that is genuinely a set. Every other question the
+ * catalogue asks has exactly one answer, so it lives in a column on `design`;
+ * this one had a column too, and a saree could be Soft or Pure but never
+ * both, which made whoever filed it choose half the truth.
+ *
+ * Cascades from the design and restricts from the value: deleting a design
+ * takes its descriptors with it, and deleting a descriptor that designs still
+ * carry is refused — the same protection the columns get from their own
+ * foreign keys.
+ */
+export const designDescriptor = pgTable(
+  "design_descriptor",
+  {
+    designId: uuid("design_id")
+      .notNull()
+      .references(() => design.id, { onDelete: "cascade" }),
+    descriptorId: uuid("descriptor_id")
+      .notNull()
+      .references(() => lookupValue.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.designId, t.descriptorId] }),
+    index("design_descriptor_value_idx").on(t.descriptorId),
   ],
 );
 

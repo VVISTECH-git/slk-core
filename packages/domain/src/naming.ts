@@ -120,7 +120,14 @@ export function pieceCode(
 }
 
 export interface DesignNameParts {
-  descriptor?: string | null;
+  /**
+   * The adjectives, in the order the list holds them.
+   *
+   * Several rather than one: a saree can be both Soft and Pure, and the name
+   * should say so. They lead the name because that is how the phrase reads —
+   * "Soft Pure Kalamkari Kanchipuram Silk Saree".
+   */
+  descriptors?: (string | null | undefined)[] | null;
   craftTechnique?: string | null;
   regionalStyle?: string | null;
   silkSubFamily?: string | null;
@@ -145,8 +152,10 @@ export function designName(parts: DesignNameParts): string {
     if (value) words.push(value);
   };
 
-  if (parts.descriptor) {
-    words.push(parts.descriptor.charAt(0).toUpperCase() + parts.descriptor.slice(1));
+  for (const descriptor of parts.descriptors ?? []) {
+    if (descriptor) {
+      words.push(descriptor.charAt(0).toUpperCase() + descriptor.slice(1));
+    }
   }
 
   push(parts.craftTechnique);

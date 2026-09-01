@@ -90,7 +90,12 @@ export async function loadRecords(): Promise<RecordRow[]> {
       border.label                                      as "borderHeight",
       pallu.label                                       as "palluDesign",
       blouse.label                                      as "blouseAvailable",
-      descriptor.label                                  as descriptor,
+      (
+        select string_agg(dv.label, ', ' order by dv.sort_order, dv.label)
+        from design_descriptor dd
+        join lookup_value dv on dv.id = dd.descriptor_id
+        where dd.design_id = d.id
+      )                                                 as descriptor,
       uom.label                                         as uom,
       d.is_serialised                                   as "isSerialised",
       coalesce(oh.qty, 0)::int                          as quantity,
@@ -123,7 +128,6 @@ export async function loadRecords(): Promise<RecordRow[]> {
     left join lookup_value border             on border.id = d.border_height_id
     left join lookup_value pallu              on pallu.id = d.pallu_design_id
     left join lookup_value blouse             on blouse.id = d.blouse_available_id
-    left join lookup_value descriptor         on descriptor.id = d.descriptor_id
     -- The most recent consignment of this colourway. A colourway can have
     -- many; the grid shows one row per colourway, so it shows the newest.
     left join lateral (

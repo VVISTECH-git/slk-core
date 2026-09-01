@@ -5,10 +5,10 @@ import { db } from "@/lib/db";
 /**
  * Where stock sits.
  *
- * Reference data with a screen of its own. It sat under Master Lists while
- * that screen existed, on the grounds that it is a controlled list; it is
- * not one underneath, and Operational Standard is about the vocabulary a
- * product is described in, which a warehouse is not part of.
+ * Reference data with a screen of its own. It used to sit under Master Lists,
+ * on the grounds that it is a controlled list; it is not one underneath, and
+ * Master Lists is about the vocabulary a product is described in, which a
+ * warehouse is not part of.
  *
  * It is not a lookup list underneath, and should not become one. The movement
  * ledger points at `location` by foreign key; "how much do we have" is

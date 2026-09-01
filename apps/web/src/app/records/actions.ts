@@ -1,6 +1,6 @@
 "use server";
 
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, type SQL } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { colourway, design, location, movement } from "@slk/db";
@@ -28,6 +28,15 @@ export interface ActionResult {
 export interface RecordDraft {
   colourwayId?: string;
   attributes: Partial<Record<AttributeKey, string | null>>;
+
+  /**
+   * The adjectives. A set rather than one id, and the only attribute that is.
+   *
+   * Stored in design_descriptor rather than on the design, so this is applied
+   * separately from the column writes and replaced wholesale — the form sends
+   * what the design should carry, not a diff.
+   */
+  descriptors: string[];
   colourId: string | null;
   prices: {
     cost: string;
@@ -177,6 +186,7 @@ export async function saveRecord(draft: RecordDraft): Promise<ActionResult> {
 
   const labels = await labelsFor([
     ...ATTRIBUTE_KEYS.map((k) => draft.attributes[k]),
+    ...draft.descriptors,
     draft.colourId,
   ]);
 
@@ -187,7 +197,7 @@ export async function saveRecord(draft: RecordDraft): Promise<ActionResult> {
 
   // The name is composed unless somebody has typed over it.
   const composed = designName({
-    descriptor: label("descriptor"),
+    descriptors: draft.descriptors.map((id) => labels.get(id) ?? null),
     craftTechnique: label("craftTechnique"),
     regionalStyle: label("regionalStyle"),
     silkSubFamily: label("silkSubFamily"),
@@ -226,6 +236,8 @@ export async function saveRecord(draft: RecordDraft): Promise<ActionResult> {
         updatedAt: new Date(),
       })
       .where(eq(colourway.id, cw.id));
+
+    await setDescriptors(tx, cw.designId, draft.descriptors);
   });
 
   await setImageSlots(cw.id, draft.imageSlots);
@@ -389,6 +401,7 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
 
   const labels = await labelsFor([
     ...ATTRIBUTE_KEYS.map((k) => draft.attributes[k]),
+    ...draft.descriptors,
     draft.colourId,
   ]);
 
@@ -413,7 +426,7 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
   });
 
   const name = designName({
-    descriptor: label("descriptor"),
+    descriptors: draft.descriptors.map((id) => labels.get(id) ?? null),
     craftTechnique: label("craftTechnique"),
     regionalStyle: label("regionalStyle"),
     silkSubFamily: label("silkSubFamily"),
@@ -441,6 +454,8 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
   `);
 
   if (created === undefined) return { ok: false, message: "Could not create the record." };
+
+  await setDescriptors(db, created.id, draft.descriptors);
 
   const [cw] = await db
     .insert(colourway)
@@ -772,12 +787,17 @@ async function recomposeName(
 
   const [d] = await db.execute<Record<string, string | null>>(sql`
     select
-      descriptor.label as descriptor, craft.label as craft, region.label as region,
+      (
+        select string_agg(dv.label, char(31) order by dv.sort_order, dv.label)
+        from design_descriptor dd
+        join lookup_value dv on dv.id = dd.descriptor_id
+        where dd.design_id = d.id
+      ) as descriptors,
+      craft.label as craft, region.label as region,
       silk.label as silk, cotton.label as cotton, fibre.label as fibre,
       garment.label as garment,
       coalesce(pt.label, hpt.label) as "productType"
     from design d
-    left join lookup_value descriptor on descriptor.id = d.descriptor_id
     left join lookup_value craft      on craft.id      = d.craft_technique_id
     left join lookup_value region     on region.id     = d.regional_style_id
     left join lookup_value silk       on silk.id       = d.silk_sub_family_id
@@ -792,7 +812,9 @@ async function recomposeName(
   if (d === undefined) return;
 
   const name = designName({
-    descriptor: d["descriptor"] ?? null,
+    // Aggregated in the query with a separator no label can contain,
+    // because a design can carry several and they compose in list order.
+    descriptors: (d["descriptors"] ?? "").split("").filter(Boolean),
     craftTechnique: d["craft"] ?? null,
     regionalStyle: d["region"] ?? null,
     silkSubFamily: d["silk"] ?? null,
@@ -1029,6 +1051,47 @@ async function openConsignment(
   return { id: batch.id, code: batch.code, items: items.map((i) => i.code) };
 }
 
+
+/**
+ * Replaces the adjectives on a design with exactly what was sent.
+ *
+ * Wholesale rather than a diff: the form knows the whole answer, and working
+ * out what changed only to apply it in two statements would be the same two
+ * statements with a chance of disagreeing with the screen.
+ *
+ * Ids are checked against the Descriptor list before anything is written. A
+ * Server Action is reachable by POST, and without this any lookup value at
+ * all — a colour, a motif — could be filed as an adjective.
+ */
+async function setDescriptors(
+  // Structural, so the same function works inside a transaction and outside
+  // one: a PgTransaction is not a PostgresJsDatabase, and both can execute.
+  tx: { execute: (query: SQL) => Promise<unknown> },
+  designId: string,
+  ids: string[],
+): Promise<void> {
+  const wanted = [...new Set(ids)];
+
+  await tx.execute(
+    sql`delete from design_descriptor where design_id = ${designId}`,
+  );
+
+  if (wanted.length === 0) return;
+
+  await tx.execute(sql`
+    insert into design_descriptor (design_id, descriptor_id)
+    select ${designId}, v.id
+    from lookup_value v
+    join lookup_list l on l.id = v.list_id
+    where l.code = 'descriptor'
+      and v.status = 'active'
+      and v.id in (${sql.join(
+        wanted.map((id) => sql`${id}`),
+        sql`, `,
+      )})
+    on conflict do nothing
+  `);
+}
 
 /**
  * Records which photographs a product should have.

@@ -81,7 +81,7 @@ export function OperationalStandard({
   return (
     <div className="flex min-h-screen flex-col">
       <Header
-        title="Operational Standard"
+        title="Master Lists"
         lede={`How the catalogue is classified. ${classifications.length} classifications holding ${categories.length} categories between them.`}
       />
 

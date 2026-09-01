@@ -46,9 +46,9 @@ export async function loadOptions(): Promise<Options> {
     // Only Active values are offered. Draft is still being worked out,
     // Proposed is awaiting confirmation, and Retired has been withdrawn —
     // none of the three should be selectable on a new record. Moving a value
-    // to Active on Operational Standard is what puts it in every dropdown here.
+    // to Active on Master Lists is what puts it in every dropdown here.
     // …and only from classifications that are switched on. Disabling one in
-    // Operational Standard is how a question stops being asked altogether,
+    // Master Lists is how a question stops being asked altogether,
     // as against retiring its values one at a time.
     .where(and(eq(lookupValue.status, "active"), eq(lookupList.isEnabled, true)))
     .orderBy(asc(lookupList.code), asc(lookupValue.sortOrder));
@@ -104,6 +104,7 @@ export async function loadRecord(
     movements,
     consignments,
     images,
+    descriptors,
   ] = await Promise.all([
     db.execute<Record<string, unknown>>(sql`
       select
@@ -134,6 +135,7 @@ export async function loadRecord(
     loadMovements(colourwayId),
     loadConsignments(colourwayId),
     loadImages(colourwayId),
+    loadDescriptors(colourwayId),
   ]);
 
   const row = rows[0];
@@ -165,6 +167,7 @@ export async function loadRecord(
     stock: { ...totals!, byLocation },
     consignments,
     images,
+    descriptors: descriptors.map((d) => d.id),
     movements,
   };
 }
@@ -243,6 +246,25 @@ function loadConsignments(colourwayId: string) {
     where b.colourway_id = ${colourwayId}
     group by b.id, l.name
     order by b.received_at desc, b.code desc
+  `);
+}
+
+/**
+ * The adjectives on this design, in the order the list holds them.
+ *
+ * Ordered by the value's own sort order rather than by when it was ticked, so
+ * the composed name reads the same however it was filled in — "Soft Pure",
+ * never "Pure Soft" because somebody happened to tick that one first.
+ */
+function loadDescriptors(colourwayId: string) {
+  return db.execute<{ id: string }>(sql`
+    select dd.descriptor_id as id
+    from design_descriptor dd
+    join lookup_value v on v.id = dd.descriptor_id
+    where dd.design_id = (
+      select design_id from colourway where id = ${colourwayId}
+    )
+    order by v.sort_order, v.label
   `);
 }
 

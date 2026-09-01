@@ -24,7 +24,7 @@ const NAV = [
   },
   {
     href: "/operational-standard",
-    label: "Operational Standard",
+    label: "Master Lists",
     icon: "M4 4h5v5H4z M11 4h5v5h-5z M4 11h5v5H4z M11 11h5v5h-5z",
   },
   {

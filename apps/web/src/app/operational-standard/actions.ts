@@ -13,7 +13,7 @@ export interface Result {
 }
 
 /**
- * Add, change and remove, for both halves of Operational Standard.
+ * Add, change and remove, for both halves of Master Lists.
  *
  * Every one re-reads what it is about to touch. A Server Action is reachable
  * by POST whether or not the screen offered the control, so the rules live

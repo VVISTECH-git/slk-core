@@ -141,6 +141,13 @@
       "when": 1788261500000,
       "tag": "0019_cotton_defaults_to_mul_mul",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788261600000,
+      "tag": "0020_descriptors_are_many",
+      "breakpoints": true
     }
   ]
 }

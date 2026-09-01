@@ -127,6 +127,8 @@ export interface RecordDetail {
    * photographed yet — which is the shot list, and worth having.
    */
   images: { slotId: string | null; url: string | null }[];
+  /** The adjectives on the design. A set, unlike every other attribute. */
+  descriptors: string[];
 
   movements: {
     id: number;

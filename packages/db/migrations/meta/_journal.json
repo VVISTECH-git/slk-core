@@ -190,6 +190,13 @@
       "when": 1788262200000,
       "tag": "0026_lists_that_keep_their_own_order",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1788262300000,
+      "tag": "0027_saree_style_values",
+      "breakpoints": true
     }
   ]
 }

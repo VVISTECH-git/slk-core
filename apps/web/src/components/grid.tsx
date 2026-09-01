@@ -629,7 +629,17 @@ export function Toast({
   return (
     <div
       role="status"
-      className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-lg border border-rule bg-surface px-4 py-2.5 text-[13.5px] text-ink shadow-lg"
+      /*
+        Above the dialogs, not below them.
+
+        At z-40 this sat under the record editor and the piece panel, both of
+        which are z-50 and both of which cover the viewport with a scrim — so a
+        toast raised from inside one came out dimmed by 25% black. Copying a
+        code from the piece panel produced its only feedback behind a grey
+        wash. A toast is the newest and shortest-lived thing on the screen; it
+        should never be the thing that loses.
+      */
+      className="fixed bottom-6 left-1/2 z-60 -translate-x-1/2 rounded-lg border border-rule bg-surface px-4 py-2.5 text-[13.5px] text-ink shadow-lg"
     >
       {message}
       <button

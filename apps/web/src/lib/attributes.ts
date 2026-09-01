@@ -61,8 +61,10 @@ export const ATTRIBUTE_KEYS = Object.keys(ATTRIBUTES) as AttributeKey[];
 export interface Option {
   id: string;
   label: string;
-  /** For motifs, the category they belong to — the list filters on it. */
+  /** The value this one sits under — the list filters on it. */
   parentId: string | null;
+  /** How a product type is measured. Only product types have one. */
+  soldById: string | null;
   hex: string | null;
   /** Pre-selected on a new record. At most one per list. */
   isDefault: boolean;

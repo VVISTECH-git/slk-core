@@ -65,8 +65,41 @@ async function seedList(
     throw new Error(`could not create or find lookup list "${spec.code}"`);
   }
 
-  // Parent labels resolve against a different list, which the ordering in
-  // MASTER_LISTING guarantees has already been seeded.
+  // The list-level dependency, recorded now that there is a column for it.
+  // Ordering in MASTER_LISTING guarantees the parent list is already seeded.
+  if (spec.parentList !== undefined) {
+    const [parentList] = await db
+      .select({ id: lookupList.id })
+      .from(lookupList)
+      .where(eq(lookupList.code, spec.parentList));
+
+    if (parentList !== undefined) {
+      await db
+        .update(lookupList)
+        .set({ parentListId: parentList.id })
+        .where(eq(lookupList.id, list.id));
+    }
+  }
+
+  // How each value is measured, resolved against the UOM list.
+  const soldBy = new Map<string, string>();
+
+  if (spec.values.some((v) => v.soldBy !== undefined)) {
+    const uom = (
+      await db.select().from(lookupList).where(eq(lookupList.code, "uom"))
+    )[0];
+
+    if (uom !== undefined) {
+      for (const value of await db
+        .select()
+        .from(lookupValue)
+        .where(eq(lookupValue.listId, uom.id))) {
+        soldBy.set(value.label, value.id);
+      }
+    }
+  }
+
+  // Parent labels resolve against a different list.
   const parents = new Map<string, string>();
 
   if (spec.parentList !== undefined) {
@@ -130,6 +163,7 @@ async function seedList(
       label: value.label,
       sortOrder: index,
       parentValueId,
+      soldById: value.soldBy === undefined ? null : (soldBy.get(value.soldBy) ?? null),
       status: (value.retired ?? false)
         ? "retired"
         : (value.proposed ?? false)

@@ -37,6 +37,7 @@ export async function loadOptions(): Promise<Options> {
       id: lookupValue.id,
       label: lookupValue.label,
       parentId: lookupValue.parentValueId,
+      soldById: lookupValue.soldById,
       meta: lookupValue.meta,
       isDefault: lookupValue.isDefault,
     })
@@ -56,6 +57,7 @@ export async function loadOptions(): Promise<Options> {
       id: row.id,
       label: row.label,
       parentId: row.parentId,
+      soldById: row.soldById,
       isDefault: row.isDefault,
       hex:
         typeof row.meta === "object" &&

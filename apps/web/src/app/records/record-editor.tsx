@@ -327,7 +327,7 @@ export function RecordEditor({
       if (key === "productType" || key === "homeProductType") {
         const list = key === "productType" ? "product_type" : "home_product_type";
         const chosen = options[list]?.find((o) => o.id === value);
-        next.uom = chosen?.parentId ?? null;
+        next.uom = chosen?.soldById ?? null;
       }
 
       // Changing industry changes which columns apply. Clearing the other

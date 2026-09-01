@@ -22,8 +22,15 @@
 
 export interface SeedValue {
   label: string;
-  /** Label of the companion value in `parentList`. */
+  /** Label of the value this one sits under, from `parentList`. */
   parent?: string;
+  /**
+   * How this product type is measured — a label from the UOM list.
+   *
+   * Separate from `parent` because "is measured in" and "is a kind of" are
+   * different relationships, and one column cannot hold both.
+   */
+  soldBy?: string;
   /**
    * Pre-selected on a new record. Applied only when the list has no default
    * at all, so a choice made on the Values screen is never overwritten by a
@@ -117,14 +124,13 @@ export const MASTER_LISTING: SeedList[] = [
     code: "product_type",
     label: "Product Type",
     description: "Clothing product types. Each states its own unit of measure.",
-    parentList: "uom",
     values: [
-      { label: "Saree", parent: "Piece" },
-      { label: "Dupatta", parent: "Piece" },
-      { label: "Fabric", parent: "Metre" },
-      { label: "Bedsheets", parent: "Piece" },
-      { label: "Scarves", parent: "Piece" },
-      { label: "Stolls", parent: "Piece" },
+      { label: "Saree", soldBy: "Piece" },
+      { label: "Dupatta", soldBy: "Piece" },
+      { label: "Fabric", soldBy: "Metre" },
+      { label: "Bedsheets", soldBy: "Piece" },
+      { label: "Scarves", soldBy: "Piece" },
+      { label: "Stolls", soldBy: "Piece" },
     ],
   },
   {
@@ -422,34 +428,36 @@ export const MASTER_LISTING: SeedList[] = [
     code: "garment_type",
     label: "Product Sub Type",
     description:
-      "Garments sheet. All sold by the piece; some are multi-piece sets, carried in meta.pieces.",
-    parentList: "uom",
+      "Garments sheet. Offered only on product types that have sub types — give a value a parent and it appears there.",
+    // Depends on Product Type, though no value names one yet: no product type
+    // in the list is a garment. The dependency is what hides the field on a
+    // saree.
+    parentList: "product_type",
     values: [
-      { label: "Shirts", parent: "Piece" },
-      { label: "Tops", parent: "Piece" },
-      { label: "Frocks", parent: "Piece" },
-      { label: "Kurthi", parent: "Piece" },
-      { label: "Suit Sets", parent: "Piece", meta: { pieces: "2 or 3" } },
-      { label: "Coord Sets", parent: "Piece", meta: { pieces: "2" } },
-      { label: "Lehanga Sets", parent: "Piece", meta: { pieces: "2 or 3" } },
-      { label: "Crop Tops Sets", parent: "Piece", meta: { pieces: "2" } },
-      { label: "Skirts", parent: "Piece" },
-      { label: "Palazoos", parent: "Piece" },
-      { label: "Patiala Sets", parent: "Piece", meta: { pieces: "2" } },
-      { label: "Kurtha", parent: "Piece" },
+      { label: "Shirts", soldBy: "Piece" },
+      { label: "Tops", soldBy: "Piece" },
+      { label: "Frocks", soldBy: "Piece" },
+      { label: "Kurthi", soldBy: "Piece" },
+      { label: "Suit Sets", soldBy: "Piece", meta: { pieces: "2 or 3" } },
+      { label: "Coord Sets", soldBy: "Piece", meta: { pieces: "2" } },
+      { label: "Lehanga Sets", soldBy: "Piece", meta: { pieces: "2 or 3" } },
+      { label: "Crop Tops Sets", soldBy: "Piece", meta: { pieces: "2" } },
+      { label: "Skirts", soldBy: "Piece" },
+      { label: "Palazoos", soldBy: "Piece" },
+      { label: "Patiala Sets", soldBy: "Piece", meta: { pieces: "2" } },
+      { label: "Kurtha", soldBy: "Piece" },
     ],
   },
   {
     code: "home_product_type",
     label: "Home Product Type",
     description: "Home and Life Style sheet. All sold by the piece.",
-    parentList: "uom",
     values: [
-      { label: "Table Mats", parent: "Piece" },
-      { label: "Runners", parent: "Piece" },
-      { label: "Naphkin", parent: "Piece" },
-      { label: "Chair Covers", parent: "Piece" },
-      { label: "Deewan Sets", parent: "Piece" },
+      { label: "Table Mats", soldBy: "Piece" },
+      { label: "Runners", soldBy: "Piece" },
+      { label: "Naphkin", soldBy: "Piece" },
+      { label: "Chair Covers", soldBy: "Piece" },
+      { label: "Deewan Sets", soldBy: "Piece" },
     ],
   },
   {

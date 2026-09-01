@@ -45,6 +45,32 @@ export const lookupList = pgTable(
     isSystem: boolean("is_system").notNull().default(false),
 
     /**
+     * The classification this one only means something under — Silk Sub
+     * Family under Fibre Type, Product Sub Type under Product Type.
+     *
+     * The values already said which parent they sat beneath; this is the
+     * list-level fact, which lived only in the seed file until Operational
+     * Standard needed to show and change it.
+     */
+    parentListId: uuid("parent_list_id").references(
+      (): AnyPgColumn => lookupList.id,
+      { onDelete: "restrict" },
+    ),
+
+    /**
+     * Whether the question is asked at all.
+     *
+     * Distinct from a value being retired. A value goes one at a time; a
+     * classification is switched off wholesale — Border Style is not wanted,
+     * so stop asking rather than retiring every value and leaving an empty
+     * dropdown behind.
+     */
+    isEnabled: boolean("is_enabled").notNull().default(true),
+
+    /** draft, active or retired. Constrained in the database. */
+    status: text("status").notNull().default("active"),
+
+    /**
      * The order the directory reads in. Alphabetical puts Audience above
      * Product Type, which is not how anyone thinks about the catalogue.
      */
@@ -95,17 +121,31 @@ export const lookupValue = pgTable(
     status: text("status").$type<LookupStatus>().notNull().default("active"),
 
     /**
-     * The workbook's row-aligned companion column, in both its forms:
-     *   Motif        → Motif Belongs To  (a genuine category)
-     *   Product Type → UOM               (Fabric is sold by the Metre)
+     * The value this one sits under — Deer belongs to Fauna.
      *
-     * Both are "the value on the same row of the next column", which is how
-     * the source expresses them, so both use this.
+     * Taxonomy only. It used to carry unit of measure as well, on the
+     * grounds that both are "the value on the same row of the next column"
+     * in the workbook. They are not the same relationship, and sharing one
+     * column meant a value could express one or the other but never both.
+     * See `soldById`.
      */
     parentValueId: uuid("parent_value_id").references(
       (): AnyPgColumn => lookupValue.id,
       { onDelete: "restrict" },
     ),
+
+    /**
+     * How a product type is measured — Piece, Metre.
+     *
+     * Its own column rather than sharing `parentValueId`, because "is
+     * measured in" and "is a kind of" are different relationships and a
+     * value has only one parent slot. Sharing it meant a Product Sub Type
+     * could say it is sold by the Piece or say which Product Type it belongs
+     * under, but not both.
+     */
+    soldById: uuid("sold_by_id").references((): AnyPgColumn => lookupValue.id, {
+      onDelete: "restrict",
+    }),
 
     /**
      * Pre-selected when a new record is created.

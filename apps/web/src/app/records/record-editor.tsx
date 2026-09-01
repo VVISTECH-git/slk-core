@@ -65,11 +65,17 @@ const FIELD_TAB: Record<string, TabKey> = {
   wholesale: "prices",
   retail: "prices",
   mrp: "prices",
-  quantity: "stock",
+  // Opening stock is asked on Basic while creating, so an error about it has
+  // to point there rather than at a tab a new record does not have.
+  quantity: "basic",
 };
 
 const PRICE_KINDS = [
-  { key: "cost", label: "Cost Price", note: "What the piece cost you" },
+  {
+    key: "cost",
+    label: "Cost / Manufacturing Cost",
+    note: "What the piece cost you",
+  },
   { key: "making", label: "Making Price", note: "Labour and finishing on top of cost" },
   { key: "wholesale", label: "Wholesale Price", note: "Trade or bulk buyers" },
   { key: "retail", label: "Retail Price", note: "The counter price — used for stock value" },
@@ -210,13 +216,18 @@ export function RecordEditor({
       { key: "basic", label: "Basic" },
       { key: "craft", label: "Craft & Design" },
     ];
-    if (isSaree) list.push({ key: "blouse", label: "Blouse" });
+    if (isSaree) {
+      list.push({ key: "blouse", label: "Additional Product Details" });
+    }
     if (isGarment) list.push({ key: "garment", label: "Garment" });
     list.push({ key: "prices", label: "Prices" });
     // Which photographs the product needs can be decided while creating it —
     // the rows are written once the colourway exists.
     list.push({ key: "images", label: "Images" });
-    list.push({ key: "stock", label: "Stock" });
+    // Opening stock is asked on Basic while the record is being created, so
+    // there is nothing for a Stock tab to hold until the record exists. After
+    // that it is the ledger, which is a screen of its own.
+    if (!isNew) list.push({ key: "stock", label: "Stock" });
     return list;
     // Not isNew: Images and Stock are offered whether or not the record
     // exists yet, which is what the note above says. It stayed in the list
@@ -318,11 +329,26 @@ export function RecordEditor({
 
         // A material that named the old fibre no longer applies. One that
         // named no fibre — Georgette, Tissue — still does, so it stays.
-        const chosen = options["textile_material"]?.find(
-          (o) => o.id === next.textileMaterial,
-        );
+        const materials = options["textile_material"] ?? [];
+        const chosen = materials.find((o) => o.id === next.textileMaterial);
         if (chosen?.parentId != null && chosen.parentId !== value) {
           next.textileMaterial = null;
+        }
+
+        /*
+          Then the default, if this fibre offers it.
+
+          Mul Mul is marked default on Textile Material and belongs to Cotton,
+          so choosing Cotton lands on it and choosing Silk lands on nothing —
+          the default is only applied when the fibre actually offers it.
+          Which value that is stays data: mark a different one default on
+          Operational Standard and this follows, with no change here.
+        */
+        if (next.textileMaterial == null) {
+          const fallback = materials.find(
+            (o) => o.isDefault && o.parentId === value,
+          );
+          next.textileMaterial = fallback?.id ?? null;
         }
       }
       if (key === "craftTechnique" && labelOf("craft_technique", value) !== "Kalamkari") {
@@ -580,6 +606,25 @@ export function RecordEditor({
                   onPick={(v) => set("textileMaterial", v)} />
               </Grid>
 
+              {/*
+                Where the stock is, asked while the record is being created.
+
+                It was a step of its own at the end of the wizard, which put
+                the most concrete question — how many, and where are they —
+                furthest from the person holding the pieces. On an existing
+                record this is the ledger's business and lives on the Stock
+                tab; here it is one movement, written when Finish is pressed.
+              */}
+              {isNew && (
+                <div className="mt-6">
+                  <OpeningStock
+                    locations={locations}
+                    lines={openingStock}
+                    setLines={setOpeningStock}
+                  />
+                </div>
+              )}
+
               {!isNew && record.siblings.length > 1 && (
                 <Note>
                   These attributes belong to the <strong>design</strong>, which has{" "}
@@ -654,30 +699,31 @@ export function RecordEditor({
                 disabled={!attributes.motifCategory}
                 placeholder={attributes.motifCategory ? "Choose…" : "Pick a category first"}
                 onPick={(v) => set("motif", v)} />
-              {/*
-                Border Style is retired — it overlapped Border Height and only
-                one was wanted. The field is gone rather than showing an empty
-                dropdown; `border_style_id` stays on the design so the records
-                that carry a value still read.
-              */}
-              <Combo label="Border Height" list="border_height"
-                options={options} value={attributes.borderHeight ?? null}
-                onPick={(v) => set("borderHeight", v)} />
               {isSaree && (
-                <>
-                  <Combo label="Saree Layout" list="saree_layout"
-                    options={options} value={attributes.sareeLayout ?? null}
-                    onPick={(v) => set("sareeLayout", v)} />
-                  <Combo label="Pallu Design" list="pallu_design"
-                    options={options} value={attributes.palluDesign ?? null}
-                    onPick={(v) => set("palluDesign", v)} />
-                </>
+                <Combo label="Pallu Design" list="pallu_design"
+                  options={options} value={attributes.palluDesign ?? null}
+                  onPick={(v) => set("palluDesign", v)} />
               )}
             </Grid>
           )}
 
+          {/*
+            Additional Product Details.
+
+            The tab was Blouse and held three blouse questions. Border Height
+            and Saree Layout have joined them, which is the shape the tab was
+            growing into anyway: everything here describes a part of the
+            finished saree rather than the cloth it is made from or the craft
+            that decorated it.
+          */}
           {activeTab === "blouse" && (
             <Grid>
+              <Combo label="Saree Layout" list="saree_layout"
+                options={options} value={attributes.sareeLayout ?? null}
+                onPick={(v) => set("sareeLayout", v)} />
+              <Combo label="Border Height" list="border_height"
+                options={options} value={attributes.borderHeight ?? null}
+                onPick={(v) => set("borderHeight", v)} />
               <Combo label="Blouse Availability" list="blouse_available"
                 options={options} value={attributes.blouseAvailable ?? null}
                 onPick={(v) => set("blouseAvailable", v)} />
@@ -719,22 +765,41 @@ export function RecordEditor({
                       )}
                       {p.key === "retail" && <Required />}
                     </span>
-                    <input
-                      type="number"
-                      min="0"
-                      value={prices[p.key]}
-                      onChange={(e) => {
-                        setPrices((prev) => ({ ...prev, [p.key]: e.target.value }));
-                        setErrors((prev) => {
-                          const { [p.key]: _d, ...rest } = prev;
-                          return rest;
-                        });
-                      }}
-                      placeholder="—"
-                      className={`w-full rounded-md border bg-surface px-3 py-2 text-right text-[14px] tabular-nums text-ink ${
+
+                    {/*
+                      The currency sits in the field rather than in the label.
+                      Every amount here is rupees and always will be, but a
+                      number in a box says nothing on its own — and these
+                      values end up on a tag, an invoice and a storefront.
+                    */}
+                    <span
+                      className={`flex items-center rounded-md border bg-surface ${
                         errors[p.key] ? "border-brick" : "border-rule-2"
                       }`}
-                    />
+                    >
+                      <span className="flex-none border-r border-rule px-2.5 py-2 text-[11.5px] font-medium text-muted">
+                        INR
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        // Paise matter on a wholesale price even where they
+                        // do not on a tag. Without a step the browser calls
+                        // 1249.50 invalid and refuses to submit it.
+                        step="0.01"
+                        inputMode="decimal"
+                        value={prices[p.key]}
+                        onChange={(e) => {
+                          setPrices((prev) => ({ ...prev, [p.key]: e.target.value }));
+                          setErrors((prev) => {
+                            const { [p.key]: _d, ...rest } = prev;
+                            return rest;
+                          });
+                        }}
+                        placeholder="—"
+                        className="w-full bg-transparent px-3 py-2 text-right text-[14px] tabular-nums text-ink focus:outline-none"
+                      />
+                    </span>
                     <span className="mt-1 block text-[11.5px] text-faint">
                       {errors[p.key] ?? p.note}
                     </span>

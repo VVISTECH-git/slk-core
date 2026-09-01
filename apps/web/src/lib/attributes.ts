@@ -154,7 +154,19 @@ export function defaultAttributes(
 
   for (const key of ATTRIBUTE_KEYS) {
     const chosen = options[ATTRIBUTES[key].list]?.find((o) => o.isDefault);
-    if (chosen !== undefined) defaults[key] = chosen.id;
+    if (chosen === undefined) continue;
+
+    /*
+      A default that belongs to a parent waits for that parent.
+
+      Mul Mul is the default Textile Material and belongs to Cotton. Applied
+      here it would put Mul Mul on a record whose fibre has not been chosen —
+      and leave it there if the fibre turned out to be Silk, which does not
+      offer it. Those are applied when the parent is answered instead.
+    */
+    if (chosen.parentId !== null) continue;
+
+    defaults[key] = chosen.id;
   }
 
   return defaults;

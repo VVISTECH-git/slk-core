@@ -69,7 +69,8 @@ const COLUMNS = [
   { key: "descriptor", label: "Descriptor", width: 112 },
 
   { key: "quantity", label: "Quantity", width: 88 },
-  { key: "price", label: "Unit Price", width: 110 },
+  { key: "price", label: "Price per Qty", width: 128 },
+  { key: "uom", label: "UOM", width: 84 },
 ] as const;
 
 type ColumnKey = (typeof COLUMNS)[number]["key"];
@@ -166,9 +167,17 @@ function sortValue(row: RecordRow, key: ColumnKey): string | number {
   return (row[key] ?? "").toLowerCase();
 }
 
+/**
+ * Rupees, with the paise only when there are any.
+ *
+ * Prices are entered to two decimals now, so a flat maximumFractionDigits
+ * of 0 was rounding 1249.50 to 1,250 on the one screen most likely to be
+ * read as authoritative.
+ */
 export function money(minor: number): string {
   return `₹${(minor / 100).toLocaleString("en-IN", {
-    maximumFractionDigits: 0,
+    minimumFractionDigits: minor % 100 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
   })}`;
 }
 

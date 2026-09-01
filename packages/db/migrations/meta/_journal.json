@@ -204,6 +204,13 @@
       "when": 1788262400000,
       "tag": "0028_border_motif_secondary_colour_image_type",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1788262500000,
+      "tag": "0029_blouse_material_back_on",
+      "breakpoints": true
     }
   ]
 }

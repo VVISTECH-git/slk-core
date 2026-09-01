@@ -1133,8 +1133,20 @@ function Section({
   );
 }
 
+/**
+ * The field grid.
+ *
+ * Three across where there is room. Two left half the dialog empty and made
+ * six fields scroll — the tabs are wide and the fields are not, so the third
+ * column costs nothing and saves a tab from needing a scrollbar. Two on a
+ * narrow window, one on a phone.
+ */
 function Grid({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{children}</div>;
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {children}
+    </div>
+  );
 }
 
 function Required() {
@@ -1176,7 +1188,7 @@ function MultiCombo({
   const chosen = new Set(values);
 
   return (
-    <div className="block sm:col-span-2">
+    <div className="block sm:col-span-2 lg:col-span-3">
       <span className="mb-1 block text-[12.5px] text-ink-2">
         {label}
         {values.length > 0 && (

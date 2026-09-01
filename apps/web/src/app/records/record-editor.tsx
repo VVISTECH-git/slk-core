@@ -415,11 +415,40 @@ export function RecordEditor({
           )?.soldById ?? null;
         }
       }
-      if (key === "blouseAvailable" && labelOf("blouse_available", value) === "No") {
-        const na = (list: string) =>
-          options[list]?.find((o) => o.label === "Not Applicable")?.id ?? null;
-        next.blouseStatus = na("blouse_status");
-        next.blouseMaterial = na("blouse_material");
+      /*
+        Blouse Availability is no longer asked; Product Sub Type answers it.
+        With Blouse and Without Blouse say the same thing, and a form that
+        asks twice invites the two to disagree.
+
+        Still recorded, because the grid has a column for it and a storefront
+        will want to know — derived here from the sub type rather than left
+        holding whatever it happened to say before.
+      */
+      if (key === "garmentType") {
+        const sub = labelOf("garment_type", value);
+        const yesNo = sub === "With Blouse" ? "Yes" : sub === "Without Blouse" ? "No" : null;
+
+        next.blouseAvailable =
+          yesNo === null
+            ? null
+            : (options["blouse_available"]?.find((o) => o.label === yesNo)?.id ?? null);
+
+        const named = (list: string, label: string) =>
+          options[list]?.find((o) => o.label === label)?.id ?? null;
+
+        if (yesNo === "Yes") {
+          // A blouse piece arrives uncut unless somebody says otherwise, so
+          // that is where the question starts rather than at nothing.
+          next.blouseStatus ??= named("blouse_status", "UnStitched");
+        } else {
+          // Not Applicable rather than empty: a blouse question on a saree
+          // that comes without one has an answer, and it is not "unknown".
+          next.blouseStatus = named("blouse_status", "Not Applicable");
+          next.blouseMaterial = named("blouse_material", "Not Applicable");
+          next.blouseStyle = null;
+          next.blouseBorder = null;
+          next.blouseMotif = null;
+        }
       }
 
       return next;
@@ -823,9 +852,6 @@ export function RecordEditor({
               */}
               {withBlouse && (
                 <>
-                <Combo label="Blouse Availability" list="blouse_available"
-                  options={options} value={attributes.blouseAvailable ?? null}
-                  onPick={(v) => set("blouseAvailable", v)} />
                 <Combo label="Blouse Status" list="blouse_status"
                   options={options} value={attributes.blouseStatus ?? null}
                   onPick={(v) => set("blouseStatus", v)} />

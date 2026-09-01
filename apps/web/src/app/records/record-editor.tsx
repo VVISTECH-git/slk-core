@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
-import { titleCase } from "@slk/domain";
+import { colourSwatch, isPaleSwatch, titleCase } from "@slk/domain";
 
 import {
   defaultAttributes,
@@ -719,13 +719,13 @@ export function RecordEditor({
                 that does not match. It is a description, not part of the
                 identity, so two records cannot differ by it alone.
               */}
-              <Combo label="Primary Colour" list="colour" required
+              <ColourCombo label="Primary Colour" required
                 options={options} value={colourId} error={errors["colour"]}
                 onPick={(v) => {
                   setColourId(v);
                   setErrors((p) => { const { colour: _d, ...r } = p; return r; });
                 }} />
-              <Combo label="Secondary Colour" list="colour"
+              <ColourCombo label="Secondary Colour"
                 options={options} value={secondaryColourId}
                 placeholder="None"
                 onPick={setSecondaryColourId} />
@@ -1133,6 +1133,164 @@ function MultiCombo({
         })}
       </div>
     </div>
+  );
+}
+
+/**
+ * Colour, shown as colour.
+ *
+ * A native `<select>` cannot draw anything, so picking from a hundred and
+ * forty-seven names meant reading words and remembering what Dark Sea Green
+ * looks like. This is a button that wears the chosen colour and a list where
+ * every row carries its own swatch, with a search box because at that length
+ * scrolling is not finding.
+ */
+function ColourCombo({
+  label,
+  options,
+  value,
+  onPick,
+  required,
+  error,
+  placeholder,
+}: {
+  label: string;
+  options: Options;
+  value: string | null;
+  onPick: (value: string | null) => void;
+  required?: boolean;
+  error?: string;
+  placeholder?: string;
+}) {
+  const all = options["colour"] ?? [];
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const box = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function away(event: MouseEvent) {
+      if (!box.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function escape(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("mousedown", away);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+
+  if (all.length === 0 && value === null) return null;
+
+  const chosen = all.find((o) => o.id === value) ?? null;
+  const q = query.trim().toLowerCase();
+  const shown = q === "" ? all : all.filter((o) => o.label.toLowerCase().includes(q));
+
+  return (
+    <div className="block" ref={box}>
+      <span className="mb-1 block text-[12.5px] text-ink-2">
+        {label}
+        {required && <Required />}
+      </span>
+
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => {
+            setOpen((v) => !v);
+            setQuery("");
+          }}
+          aria-expanded={open}
+          className={`flex w-full items-center gap-2 rounded-md border bg-surface px-3 py-2 text-left text-[14px] text-ink ${
+            error ? "border-brick" : "border-rule-2"
+          }`}
+        >
+          <Dot hex={chosen?.hex ?? null} label={chosen?.label ?? null} />
+          <span className={chosen === null ? "text-faint" : ""}>
+            {chosen?.label ?? placeholder ?? "Choose…"}
+          </span>
+          <span aria-hidden className="ml-auto text-[11px] text-faint">
+            ▾
+          </span>
+        </button>
+
+        {open && (
+          <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-lg border border-rule bg-surface shadow-lg">
+            <input
+              autoFocus
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`Search ${all.length} colours`}
+              className="w-full border-b border-rule bg-surface px-3 py-2 text-[13px] text-ink placeholder:text-faint focus:outline-none"
+            />
+
+            <div className="max-h-64 overflow-y-auto">
+              {value !== null && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onPick(null);
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-muted hover:bg-surface-2"
+                >
+                  Clear
+                </button>
+              )}
+
+              {shown.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => {
+                    onPick(option.id);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-surface-2 ${
+                    option.id === value ? "bg-brick-soft font-medium text-brick" : "text-ink"
+                  }`}
+                >
+                  <Dot hex={option.hex} label={option.label} />
+                  {option.label}
+                </button>
+              ))}
+
+              {shown.length === 0 && (
+                <p className="px-3 py-3 text-[12.5px] text-muted">
+                  No colour matches “{query}”.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <span className="mt-1 block text-[11.5px] text-brick">{error}</span>
+    </div>
+  );
+}
+
+/** The swatch itself. Ringed, or a pale colour is an invisible circle. */
+function Dot({ hex, label }: { hex: string | null; label: string | null }) {
+  const colour = colourSwatch(label, hex);
+
+  return (
+    <span
+      aria-hidden
+      className="size-4 flex-none rounded-full"
+      style={{
+        background: colour,
+        boxShadow: isPaleSwatch(colour)
+          ? "inset 0 0 0 1px var(--rule-2)"
+          : "inset 0 0 0 1px rgba(0,0,0,0.12)",
+      }}
+    />
   );
 }
 

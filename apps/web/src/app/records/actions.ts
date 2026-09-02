@@ -10,7 +10,7 @@ import { db } from "@/lib/db";
 import {
   ATTRIBUTES,
   ATTRIBUTE_KEYS,
-  HOME_INDUSTRY,
+  isHomeIndustry,
   type AttributeKey,
 } from "@/lib/attributes";
 import { MOVEMENT_KINDS, type MovementDraft } from "@/lib/movements";
@@ -120,7 +120,7 @@ async function validate(draft: RecordDraft): Promise<Record<string, string>> {
       ? null
       : ((await labelsFor([industryId])).get(industryId) ?? null);
 
-  const isHome = industry === HOME_INDUSTRY;
+  const isHome = isHomeIndustry(industry);
   const key = isHome ? "homeProductType" : "productType";
 
   if (!draft.attributes[key]) {
@@ -655,7 +655,7 @@ export async function setRecordField(
 
   // Industry decides which product type list applies, so the wrong one is
   // refused rather than silently written into a column nothing reads.
-  const isHome = row.industry === HOME_INDUSTRY;
+  const isHome = isHomeIndustry(row.industry);
 
   if (field === "productType" && isHome) {
     return {

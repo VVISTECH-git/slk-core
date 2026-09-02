@@ -167,7 +167,19 @@ export function designName(parts: DesignNameParts): string {
   push(parts.silkSubFamily);
   push(parts.cottonSubFamily);
   push(parts.fibreType?.replace(/\s*\(.*\)/, ""));
-  push(parts.garmentType ?? parts.productType);
+  /*
+    The product type is the noun, and the sub type is not.
+
+    It used to be the other way round, because a Product Sub Type was a
+    garment kind — Kurthi, Shirts — and naming a piece "Cotton Kurthi" is
+    right where naming it "Cotton Clothing" is not. A saree's sub type is now
+    With Blouse or Without Blouse, so the old preference renamed a saree
+    "Contrast Kalamkari Cotton Without Blouse" the first time it was saved.
+
+    The sub type is still used where there is no product type at all, which
+    is the only case the old rule was actually for.
+  */
+  push(parts.productType ?? parts.garmentType);
 
   return words.join(" ");
 }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { colourSwatch, isPaleSwatch } from "@slk/domain";
+import { colourSwatch, isPaleSwatch } from "@slk/domain/colour";
 
 
 /* -------------------------------------------------------------------- chrome */

@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { colourSwatch, isPaleSwatch } from "@slk/domain";
+import { colourSwatch, isPaleSwatch } from "@slk/domain/colour";
 
 import {
   Cell,
@@ -18,7 +18,7 @@ import {
   type Filters,
 } from "@/components/grid";
 import {
-  HOME_INDUSTRY,
+  isHomeIndustry,
   type Options,
   type RecordDetail,
 } from "@/lib/attributes";
@@ -603,7 +603,7 @@ export function RecordsTable({
                         // which one applies is decided by the record's
                         // industry — the same rule the editor follows.
                         const field =
-                          c.key === "productType" && row.industry === HOME_INDUSTRY
+                          c.key === "productType" && isHomeIndustry(row.industry)
                             ? "homeProductType"
                             : inline.field;
 

@@ -225,4 +225,17 @@ export function defaultAttributes(
  * file may only export async functions, and both the form and the action need
  * this string to agree on.
  */
-export const HOME_INDUSTRY = "Home & Lifestyle";
+export const HOME_INDUSTRY_LABELS = ["Home", "Home & Lifestyle"];
+
+/**
+ * Whether this industry is the home one, whatever it is called today.
+ *
+ * It was one string, compared exactly, and the live database had already
+ * been renamed from Home & Lifestyle to Home — so the whole home branch of
+ * the form was unreachable there and nobody could see why. Matching a label
+ * is the wrong shape for this; it should be the value's code. Until the
+ * industry list carries one the form can read, both spellings count.
+ */
+export function isHomeIndustry(label: string | null | undefined): boolean {
+  return label != null && HOME_INDUSTRY_LABELS.includes(label);
+}

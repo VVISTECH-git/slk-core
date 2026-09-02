@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { findDuplicates } from "@slk/domain";
+import { findDuplicates } from "@slk/domain/vocabulary";
 
 import type { Category, Classification } from "@/lib/operational";
 

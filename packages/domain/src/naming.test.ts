@@ -4,7 +4,7 @@ import { test } from "node:test";
 // Explicit extension: Node's type-stripping test runner resolves ESM
 // specifiers literally, unlike the bundler that compiles the rest of this
 // package. Test files are never bundled, so the two can differ.
-import { titleCase } from "./naming.ts";
+import { designName, titleCase } from "./naming.ts";
 
 /**
  * The casing rule is applied when a value is written, not when it is read, so
@@ -63,4 +63,69 @@ test("titleCase handles absent input", () => {
   assert.equal(titleCase(null), "");
   assert.equal(titleCase(undefined), "");
   assert.equal(titleCase(""), "");
+});
+
+
+/**
+ * The composed name, which is what the catalogue is read by.
+ *
+ * These cases are here because the last word went wrong once already: Product
+ * Sub Type used to be a garment kind and was preferred over the product type,
+ * so when a saree's sub type became With Blouse / Without Blouse the name
+ * became "Contrast Kalamkari Cotton Without Blouse" the first time anybody
+ * pressed Save.
+ */
+test("designName ends on the product type, not the sub type", () => {
+  assert.equal(
+    designName({
+      descriptors: ["Contrast"],
+      craftTechnique: "Kalamkari",
+      fibreType: "Cotton",
+      garmentType: "Without Blouse",
+      productType: "Saree",
+    }),
+    "Contrast Kalamkari Cotton Saree",
+  );
+});
+
+test("designName falls back to the sub type when there is no product type", () => {
+  assert.equal(
+    designName({ fibreType: "Cotton", garmentType: "Kurthi" }),
+    "Cotton Kurthi",
+  );
+});
+
+test("designName takes every descriptor, in the order given", () => {
+  assert.equal(
+    designName({
+      descriptors: ["Pure", "Soft"],
+      craftTechnique: "Kalamkari",
+      productType: "Saree",
+    }),
+    "Pure Soft Kalamkari Saree",
+  );
+});
+
+test("designName drops a region that only repeats the craft", () => {
+  assert.equal(
+    designName({
+      craftTechnique: "Srikalahasti",
+      regionalStyle: "Srikalahasti",
+      productType: "Saree",
+    }),
+    "Srikalahasti Saree",
+  );
+});
+
+test("designName leaves the parenthesised half of a fibre out", () => {
+  assert.equal(
+    designName({ fibreType: "Sico (Silk-Cotton Blend)", productType: "Saree" }),
+    "Sico Saree",
+  );
+});
+
+test("designName survives a record that has answered almost nothing", () => {
+  assert.equal(designName({ productType: "Saree" }), "Saree");
+  assert.equal(designName({}), "");
+  assert.equal(designName({ descriptors: [null, undefined] }), "");
 });

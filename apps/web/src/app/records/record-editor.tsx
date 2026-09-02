@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
-import { colourSwatch, isPaleSwatch, titleCase } from "@slk/domain";
+import { colourSwatch, isPaleSwatch } from "@slk/domain/colour";
+import { titleCase } from "@slk/domain/naming";
 
 import {
   defaultAttributes,
-  HOME_INDUSTRY,
+  isHomeIndustry,
   type AttributeKey,
   type Option,
   type Options,
@@ -183,7 +184,7 @@ export function RecordEditor({
    * things; only the form disagreed.
    */
   const industry = labelOf("industry", attributes.industry);
-  const isHome = industry === HOME_INDUSTRY;
+  const isHome = isHomeIndustry(industry);
 
   const productType = isHome
     ? labelOf("home_product_type", attributes.homeProductType)
@@ -412,7 +413,7 @@ export function RecordEditor({
       // that combination anyway, so leaving it would only produce an error
       // about a field the form is no longer showing.
       if (key === "industry") {
-        if (labelOf("industry", value) === HOME_INDUSTRY) {
+        if (isHomeIndustry(labelOf("industry", value))) {
           next.productType = null;
           next.garmentType = null;
         } else {

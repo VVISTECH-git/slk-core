@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { stockAt, titleCase } from "@slk/domain";
+import { titleCase } from "@slk/domain/naming";
+import { stockAt } from "@slk/domain/stock";
 
 // Type-only, so the module that imports `db` is erased at build time rather
 // than following this client component into the browser bundle.

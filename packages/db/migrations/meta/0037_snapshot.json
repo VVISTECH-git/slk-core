@@ -1,0 +1,2414 @@
+{
+  "id": "624ccf74-fdb4-45a4-815a-45c2f87ad13b",
+  "prevId": "00bb7887-5222-476a-8f6e-628a42c257a6",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.lookup_list": {
+      "name": "lookup_list",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_system": {
+          "name": "is_system",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "parent_list_id": {
+          "name": "parent_list_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_enabled": {
+          "name": "is_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "is_ordered": {
+          "name": "is_ordered",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "lookup_list_code_key": {
+          "name": "lookup_list_code_key",
+          "columns": [
+            {
+              "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "lookup_list_parent_list_id_lookup_list_id_fk": {
+          "name": "lookup_list_parent_list_id_lookup_list_id_fk",
+          "tableFrom": "lookup_list",
+          "tableTo": "lookup_list",
+          "columnsFrom": [
+            "parent_list_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.lookup_value": {
+      "name": "lookup_value",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "list_id": {
+          "name": "list_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "parent_value_id": {
+          "name": "parent_value_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sold_by_id": {
+          "name": "sold_by_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_default": {
+          "name": "is_default",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "needs_review": {
+          "name": "needs_review",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "meta": {
+          "name": "meta",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "lookup_value_list_code_key": {
+          "name": "lookup_value_list_code_key",
+          "columns": [
+            {
+              "expression": "list_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "lookup_value_list_label_key": {
+          "name": "lookup_value_list_label_key",
+          "columns": [
+            {
+              "expression": "list_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "label",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "lookup_value_list_sort_idx": {
+          "name": "lookup_value_list_sort_idx",
+          "columns": [
+            {
+              "expression": "list_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sort_order",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "lookup_value_list_status_idx": {
+          "name": "lookup_value_list_status_idx",
+          "columns": [
+            {
+              "expression": "list_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "lookup_value_parent_idx": {
+          "name": "lookup_value_parent_idx",
+          "columns": [
+            {
+              "expression": "parent_value_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "lookup_value_one_default_per_list": {
+          "name": "lookup_value_one_default_per_list",
+          "columns": [
+            {
+              "expression": "list_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"lookup_value\".\"is_default\"",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "lookup_value_list_id_lookup_list_id_fk": {
+          "name": "lookup_value_list_id_lookup_list_id_fk",
+          "tableFrom": "lookup_value",
+          "tableTo": "lookup_list",
+          "columnsFrom": [
+            "list_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "lookup_value_parent_value_id_lookup_value_id_fk": {
+          "name": "lookup_value_parent_value_id_lookup_value_id_fk",
+          "tableFrom": "lookup_value",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "parent_value_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "lookup_value_sold_by_id_lookup_value_id_fk": {
+          "name": "lookup_value_sold_by_id_lookup_value_id_fk",
+          "tableFrom": "lookup_value",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "sold_by_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.batch": {
+      "name": "batch",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "colourway_id": {
+          "name": "colourway_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "qty": {
+          "name": "qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "location_id": {
+          "name": "location_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "received_at": {
+          "name": "received_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "reference": {
+          "name": "reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "batch_code_key": {
+          "name": "batch_code_key",
+          "columns": [
+            {
+              "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "batch_colourway_idx": {
+          "name": "batch_colourway_idx",
+          "columns": [
+            {
+              "expression": "colourway_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "received_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "batch_colourway_id_colourway_id_fk": {
+          "name": "batch_colourway_id_colourway_id_fk",
+          "tableFrom": "batch",
+          "tableTo": "colourway",
+          "columnsFrom": [
+            "colourway_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "batch_location_id_location_id_fk": {
+          "name": "batch_location_id_location_id_fk",
+          "tableFrom": "batch",
+          "tableTo": "location",
+          "columnsFrom": [
+            "location_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.colourway": {
+      "name": "colourway",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "design_id": {
+          "name": "design_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "colour_id": {
+          "name": "colour_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "secondary_colour_id": {
+          "name": "secondary_colour_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cost_minor": {
+          "name": "cost_minor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "making_minor": {
+          "name": "making_minor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "wholesale_minor": {
+          "name": "wholesale_minor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "retail_minor": {
+          "name": "retail_minor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mrp_minor": {
+          "name": "mrp_minor",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'INR'"
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "colourway_design_colour_key": {
+          "name": "colourway_design_colour_key",
+          "columns": [
+            {
+              "expression": "design_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "colour_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "colourway_design_idx": {
+          "name": "colourway_design_idx",
+          "columns": [
+            {
+              "expression": "design_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "colourway_design_id_design_id_fk": {
+          "name": "colourway_design_id_design_id_fk",
+          "tableFrom": "colourway",
+          "tableTo": "design",
+          "columnsFrom": [
+            "design_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "colourway_colour_id_lookup_value_id_fk": {
+          "name": "colourway_colour_id_lookup_value_id_fk",
+          "tableFrom": "colourway",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "colour_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "colourway_secondary_colour_id_lookup_value_id_fk": {
+          "name": "colourway_secondary_colour_id_lookup_value_id_fk",
+          "tableFrom": "colourway",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "secondary_colour_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.design": {
+      "name": "design",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name_is_custom": {
+          "name": "name_is_custom",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "industry_id": {
+          "name": "industry_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "product_type_id": {
+          "name": "product_type_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "garment_type_id": {
+          "name": "garment_type_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "home_product_type_id": {
+          "name": "home_product_type_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "home_weaving_category_id": {
+          "name": "home_weaving_category_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "production_method_id": {
+          "name": "production_method_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "weave_structure_id": {
+          "name": "weave_structure_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fibre_type_id": {
+          "name": "fibre_type_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "textile_material_id": {
+          "name": "textile_material_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "silk_sub_family_id": {
+          "name": "silk_sub_family_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cotton_sub_family_id": {
+          "name": "cotton_sub_family_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fabric_type_id": {
+          "name": "fabric_type_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "audience_type_id": {
+          "name": "audience_type_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "craft_technique_id": {
+          "name": "craft_technique_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "craft_sub_type_id": {
+          "name": "craft_sub_type_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "regional_style_id": {
+          "name": "regional_style_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "motif_category_id": {
+          "name": "motif_category_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "motif_id": {
+          "name": "motif_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "border_style_id": {
+          "name": "border_style_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "border_height_id": {
+          "name": "border_height_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "saree_layout_id": {
+          "name": "saree_layout_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "saree_style_id": {
+          "name": "saree_style_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "blouse_style_id": {
+          "name": "blouse_style_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pallu_motif_id": {
+          "name": "pallu_motif_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "border_motif_id": {
+          "name": "border_motif_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "saree_body_motif_id": {
+          "name": "saree_body_motif_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "blouse_motif_id": {
+          "name": "blouse_motif_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "blouse_border_id": {
+          "name": "blouse_border_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pallu_design_id": {
+          "name": "pallu_design_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "blouse_available_id": {
+          "name": "blouse_available_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "blouse_status_id": {
+          "name": "blouse_status_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "blouse_material_id": {
+          "name": "blouse_material_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "descriptor_id": {
+          "name": "descriptor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "uom_id": {
+          "name": "uom_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_serialised": {
+          "name": "is_serialised",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "extra": {
+          "name": "extra",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "design_code_key": {
+          "name": "design_code_key",
+          "columns": [
+            {
+              "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "design_product_type_idx": {
+          "name": "design_product_type_idx",
+          "columns": [
+            {
+              "expression": "product_type_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "design_craft_technique_idx": {
+          "name": "design_craft_technique_idx",
+          "columns": [
+            {
+              "expression": "craft_technique_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "design_regional_style_idx": {
+          "name": "design_regional_style_idx",
+          "columns": [
+            {
+              "expression": "regional_style_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "design_industry_id_lookup_value_id_fk": {
+          "name": "design_industry_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "industry_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_product_type_id_lookup_value_id_fk": {
+          "name": "design_product_type_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "product_type_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_garment_type_id_lookup_value_id_fk": {
+          "name": "design_garment_type_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "garment_type_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_home_product_type_id_lookup_value_id_fk": {
+          "name": "design_home_product_type_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "home_product_type_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_home_weaving_category_id_lookup_value_id_fk": {
+          "name": "design_home_weaving_category_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "home_weaving_category_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_production_method_id_lookup_value_id_fk": {
+          "name": "design_production_method_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "production_method_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_weave_structure_id_lookup_value_id_fk": {
+          "name": "design_weave_structure_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "weave_structure_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_fibre_type_id_lookup_value_id_fk": {
+          "name": "design_fibre_type_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "fibre_type_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_textile_material_id_lookup_value_id_fk": {
+          "name": "design_textile_material_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "textile_material_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_silk_sub_family_id_lookup_value_id_fk": {
+          "name": "design_silk_sub_family_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "silk_sub_family_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_cotton_sub_family_id_lookup_value_id_fk": {
+          "name": "design_cotton_sub_family_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "cotton_sub_family_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_fabric_type_id_lookup_value_id_fk": {
+          "name": "design_fabric_type_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "fabric_type_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_audience_type_id_lookup_value_id_fk": {
+          "name": "design_audience_type_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "audience_type_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_craft_technique_id_lookup_value_id_fk": {
+          "name": "design_craft_technique_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "craft_technique_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_craft_sub_type_id_lookup_value_id_fk": {
+          "name": "design_craft_sub_type_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "craft_sub_type_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_regional_style_id_lookup_value_id_fk": {
+          "name": "design_regional_style_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "regional_style_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_motif_category_id_lookup_value_id_fk": {
+          "name": "design_motif_category_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "motif_category_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_motif_id_lookup_value_id_fk": {
+          "name": "design_motif_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "motif_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_border_style_id_lookup_value_id_fk": {
+          "name": "design_border_style_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "border_style_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_border_height_id_lookup_value_id_fk": {
+          "name": "design_border_height_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "border_height_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_saree_layout_id_lookup_value_id_fk": {
+          "name": "design_saree_layout_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "saree_layout_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_saree_style_id_lookup_value_id_fk": {
+          "name": "design_saree_style_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "saree_style_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_blouse_style_id_lookup_value_id_fk": {
+          "name": "design_blouse_style_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "blouse_style_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_pallu_motif_id_lookup_value_id_fk": {
+          "name": "design_pallu_motif_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "pallu_motif_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_border_motif_id_lookup_value_id_fk": {
+          "name": "design_border_motif_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "border_motif_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_saree_body_motif_id_lookup_value_id_fk": {
+          "name": "design_saree_body_motif_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "saree_body_motif_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_blouse_motif_id_lookup_value_id_fk": {
+          "name": "design_blouse_motif_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "blouse_motif_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_blouse_border_id_lookup_value_id_fk": {
+          "name": "design_blouse_border_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "blouse_border_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_pallu_design_id_lookup_value_id_fk": {
+          "name": "design_pallu_design_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "pallu_design_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_blouse_available_id_lookup_value_id_fk": {
+          "name": "design_blouse_available_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "blouse_available_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_blouse_status_id_lookup_value_id_fk": {
+          "name": "design_blouse_status_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "blouse_status_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_blouse_material_id_lookup_value_id_fk": {
+          "name": "design_blouse_material_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "blouse_material_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_descriptor_id_lookup_value_id_fk": {
+          "name": "design_descriptor_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "descriptor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "design_uom_id_lookup_value_id_fk": {
+          "name": "design_uom_id_lookup_value_id_fk",
+          "tableFrom": "design",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "uom_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.design_descriptor": {
+      "name": "design_descriptor",
+      "schema": "",
+      "columns": {
+        "design_id": {
+          "name": "design_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "descriptor_id": {
+          "name": "descriptor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "design_descriptor_value_idx": {
+          "name": "design_descriptor_value_idx",
+          "columns": [
+            {
+              "expression": "descriptor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "design_descriptor_design_id_design_id_fk": {
+          "name": "design_descriptor_design_id_design_id_fk",
+          "tableFrom": "design_descriptor",
+          "tableTo": "design",
+          "columnsFrom": [
+            "design_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "design_descriptor_descriptor_id_lookup_value_id_fk": {
+          "name": "design_descriptor_descriptor_id_lookup_value_id_fk",
+          "tableFrom": "design_descriptor",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "descriptor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "design_descriptor_design_id_descriptor_id_pk": {
+          "name": "design_descriptor_design_id_descriptor_id_pk",
+          "columns": [
+            "design_id",
+            "descriptor_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.image": {
+      "name": "image",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "colourway_id": {
+          "name": "colourway_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slot_id": {
+          "name": "slot_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "storage_key": {
+          "name": "storage_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "width": {
+          "name": "width",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "height": {
+          "name": "height",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "image_colourway_slot_key": {
+          "name": "image_colourway_slot_key",
+          "columns": [
+            {
+              "expression": "colourway_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "slot_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "image_colourway_idx": {
+          "name": "image_colourway_idx",
+          "columns": [
+            {
+              "expression": "colourway_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "image_colourway_id_colourway_id_fk": {
+          "name": "image_colourway_id_colourway_id_fk",
+          "tableFrom": "image",
+          "tableTo": "colourway",
+          "columnsFrom": [
+            "colourway_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "image_slot_id_lookup_value_id_fk": {
+          "name": "image_slot_id_lookup_value_id_fk",
+          "tableFrom": "image",
+          "tableTo": "lookup_value",
+          "columnsFrom": [
+            "slot_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.location": {
+      "name": "location",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_internal": {
+          "name": "is_internal",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "location_code_key": {
+          "name": "location_code_key",
+          "columns": [
+            {
+              "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.movement": {
+      "name": "movement",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "bigint",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "movement_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "9223372036854775807",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "colourway_id": {
+          "name": "colourway_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "piece_id": {
+          "name": "piece_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "qty": {
+          "name": "qty",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "from_location_id": {
+          "name": "from_location_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "to_location_id": {
+          "name": "to_location_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recorded_at": {
+          "name": "recorded_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reference": {
+          "name": "reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "movement_idempotency_key": {
+          "name": "movement_idempotency_key",
+          "columns": [
+            {
+              "expression": "idempotency_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "movement_colourway_idx": {
+          "name": "movement_colourway_idx",
+          "columns": [
+            {
+              "expression": "colourway_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "occurred_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "movement_piece_idx": {
+          "name": "movement_piece_idx",
+          "columns": [
+            {
+              "expression": "piece_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "movement_colourway_id_colourway_id_fk": {
+          "name": "movement_colourway_id_colourway_id_fk",
+          "tableFrom": "movement",
+          "tableTo": "colourway",
+          "columnsFrom": [
+            "colourway_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "movement_piece_id_piece_id_fk": {
+          "name": "movement_piece_id_piece_id_fk",
+          "tableFrom": "movement",
+          "tableTo": "piece",
+          "columnsFrom": [
+            "piece_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "movement_batch_id_batch_id_fk": {
+          "name": "movement_batch_id_batch_id_fk",
+          "tableFrom": "movement",
+          "tableTo": "batch",
+          "columnsFrom": [
+            "batch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "movement_from_location_id_location_id_fk": {
+          "name": "movement_from_location_id_location_id_fk",
+          "tableFrom": "movement",
+          "tableTo": "location",
+          "columnsFrom": [
+            "from_location_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "movement_to_location_id_location_id_fk": {
+          "name": "movement_to_location_id_location_id_fk",
+          "tableFrom": "movement",
+          "tableTo": "location",
+          "columnsFrom": [
+            "to_location_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.piece": {
+      "name": "piece",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "colourway_id": {
+          "name": "colourway_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "batch_id": {
+          "name": "batch_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "serial": {
+          "name": "serial",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "piece_code_key": {
+          "name": "piece_code_key",
+          "columns": [
+            {
+              "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "piece_colourway_idx": {
+          "name": "piece_colourway_idx",
+          "columns": [
+            {
+              "expression": "colourway_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "piece_colourway_id_colourway_id_fk": {
+          "name": "piece_colourway_id_colourway_id_fk",
+          "tableFrom": "piece",
+          "tableTo": "colourway",
+          "columnsFrom": [
+            "colourway_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "piece_batch_id_batch_id_fk": {
+          "name": "piece_batch_id_batch_id_fk",
+          "tableFrom": "piece",
+          "tableTo": "batch",
+          "columnsFrom": [
+            "batch_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.actor": {
+      "name": "actor",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "role": {
+          "name": "role",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'floor'"
+        },
+        "secret_hash": {
+          "name": "secret_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "actor_code_key": {
+          "name": "actor_code_key",
+          "columns": [
+            {
+              "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.actor_token": {
+      "name": "actor_token",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "device": {
+          "name": "device",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "issued_at": {
+          "name": "issued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_used_at": {
+          "name": "last_used_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "actor_token_hash_key": {
+          "name": "actor_token_hash_key",
+          "columns": [
+            {
+              "expression": "token_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "actor_token_actor_idx": {
+          "name": "actor_token_actor_idx",
+          "columns": [
+            {
+              "expression": "actor_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "actor_token_actor_id_actor_id_fk": {
+          "name": "actor_token_actor_id_actor_id_fk",
+          "tableFrom": "actor_token",
+          "tableTo": "actor",
+          "columnsFrom": [
+            "actor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.idempotency": {
+      "name": "idempotency",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "result_id": {
+          "name": "result_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "idempotency_actor_id_actor_id_fk": {
+          "name": "idempotency_actor_id_actor_id_fk",
+          "tableFrom": "idempotency",
+          "tableTo": "actor",
+          "columnsFrom": [
+            "actor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.login_attempt": {
+      "name": "login_attempt",
+      "schema": "",
+      "columns": {
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "failures": {
+          "name": "failures",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "last_failure_at": {
+          "name": "last_failure_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "locked_until": {
+          "name": "locked_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

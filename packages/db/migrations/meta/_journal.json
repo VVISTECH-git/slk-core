@@ -260,6 +260,13 @@
       "when": 1788430000000,
       "tag": "0036_pieces_follow_the_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1788434000000,
+      "tag": "0037_image_type_retires_for_real",
+      "breakpoints": true
     }
   ]
 }

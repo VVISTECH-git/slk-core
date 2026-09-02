@@ -1,5 +1,6 @@
 "use server";
 
+import { guard, requireActor } from "@/lib/session";
 import { sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -55,6 +56,8 @@ export async function presignImage(
   contentType: string,
   bytes: number,
 ): Promise<UploadTicket> {
+  await requireActor("floor");
+
   if (!storageConfigured()) {
     return {
       ok: false,
@@ -116,6 +119,9 @@ export async function confirmImage(
   width: number | null,
   height: number | null,
 ): Promise<ActionResult> {
+  const denied = await guard("floor");
+  if (denied !== null) return denied;
+
   // A key this server did not mint has no business being written here.
   if (!key.startsWith(`products/${colourwayId}/${slotId}-`)) {
     return { ok: false, message: "That file does not belong to this slot." };
@@ -152,6 +158,9 @@ export async function removeImage(
   colourwayId: string,
   slotId: string,
 ): Promise<ActionResult> {
+  const denied = await guard("floor");
+  if (denied !== null) return denied;
+
   const [row] = await db.execute<{ storageKey: string | null }>(sql`
     select storage_key as "storageKey" from image
     where colourway_id = ${colourwayId} and slot_id = ${slotId}
@@ -178,10 +187,14 @@ export async function storageStatus(): Promise<{
   ready: boolean;
   missing: string[];
 }> {
+  await requireActor("floor");
+
   return { ready: storageConfigured(), missing: storageMissing() };
 }
 
 /** The address a stored key is served from. */
 export async function urlFor(key: string): Promise<string> {
+  await requireActor("floor");
+
   return publicUrl(key);
 }

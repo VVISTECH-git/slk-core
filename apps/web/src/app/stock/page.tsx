@@ -1,3 +1,4 @@
+import { requirePage } from "@/lib/session";
 import { loadPieces } from "@/lib/pieces";
 
 import { StockRecords } from "./stock-records";
@@ -5,6 +6,8 @@ import { StockRecords } from "./stock-records";
 export const dynamic = "force-dynamic";
 
 export default async function StockPage() {
+  await requirePage();
+
   const pieces = await loadPieces();
 
   // The locations stock is actually in, rather than every location on file.

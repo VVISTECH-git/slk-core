@@ -13,6 +13,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
+import { actor } from "./access";
 import { lookupValue } from "./lookup";
 
 /**
@@ -373,6 +374,19 @@ export const movement = pgTable(
     }),
 
     /**
+     * Who recorded it.
+     *
+     * The question asked when a floor count and the system disagree is not
+     * "when did this go wrong" but "who was counting", and until this column
+     * the ledger could not answer it. Null for everything written before the
+     * portal had a sign-in: a blank is honest, and a default would attribute
+     * last month's deliveries to whoever signs in next.
+     */
+    actorId: uuid("actor_id").references(() => actor.id, {
+      onDelete: "restrict",
+    }),
+
+    /**
      * Always positive. Direction lives in from/to rather than in a sign,
      * so a transfer is one row and there is no convention to get backwards.
      */
@@ -416,6 +430,9 @@ export const movement = pgTable(
     uniqueIndex("movement_idempotency_key").on(t.idempotencyKey),
     index("movement_colourway_idx").on(t.colourwayId, t.occurredAt),
     index("movement_piece_idx").on(t.pieceId),
+    // Asked as "what has this person been doing", never as a filter on a
+    // scan, so it reads by actor and then by time.
+    index("movement_actor_idx").on(t.actorId, t.occurredAt),
   ],
 );
 

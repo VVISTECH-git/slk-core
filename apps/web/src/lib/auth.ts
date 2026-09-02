@@ -96,7 +96,19 @@ export async function revokeToken(token: string): Promise<void> {
  * `if`.
  */
 export async function actorFor(request: Request): Promise<Actor | null> {
-  const header = request.headers.get("authorization");
+  const token = bearerFrom(request.headers.get("authorization"));
+
+  return token === null ? null : actorForToken(token);
+}
+
+/**
+ * The token out of an Authorization header, or null.
+ *
+ * Separate because the portal reads the same header through `next/headers`
+ * rather than off a Request object, and two parsers for one format is how one
+ * of them ends up accepting something the other refuses.
+ */
+export function bearerFrom(header: string | null): string | null {
   if (header === null) return null;
 
   const [scheme, token] = header.split(" ");
@@ -104,6 +116,18 @@ export async function actorFor(request: Request): Promise<Actor | null> {
     return null;
   }
 
+  return token;
+}
+
+/**
+ * The actor a token belongs to, whatever carried it.
+ *
+ * The phone sends it in a header and the browser in an httpOnly cookie, but it
+ * is the same 32 bytes out of the same table: one sign-in, one row, one place
+ * to revoke it. A second kind of session for the web would mean two expiries
+ * to keep in step and two lists to revoke a lost device from.
+ */
+export async function actorForToken(token: string): Promise<Actor | null> {
   const hash = fingerprint(token);
 
   const rows = await db

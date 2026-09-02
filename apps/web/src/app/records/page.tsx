@@ -1,3 +1,4 @@
+import { requirePage } from "@/lib/session";
 import { loadOptions } from "@/lib/editor";
 import { loadPickableLocations } from "@/lib/locations";
 import { loadRecords } from "@/lib/records";
@@ -7,6 +8,8 @@ import { RecordsTable } from "./records-table";
 export const dynamic = "force-dynamic";
 
 export default async function RecordsPage() {
+  await requirePage();
+
   const [rows, options, locations] = await Promise.all([
     // Archived included, hidden by the grid until asked for. Stock against an
     // archived record has to be reachable from somewhere, and this is the

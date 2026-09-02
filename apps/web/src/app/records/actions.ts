@@ -1,5 +1,6 @@
 "use server";
 
+import { actingId, guard } from "@/lib/session";
 import { eq, sql, type SQL } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -169,6 +170,9 @@ async function labelsFor(
 }
 
 export async function saveRecord(draft: RecordDraft): Promise<ActionResult> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   const errors = await validate(draft);
 
   if (Object.keys(errors).length > 0) {
@@ -246,7 +250,7 @@ export async function saveRecord(draft: RecordDraft): Promise<ActionResult> {
 
   await setImageSlots(cw.id, draft.imageSlots);
 
-  const adjustment = await correctCount(cw.id, draft.quantity);
+  const adjustment = await correctCount(cw.id, draft.quantity, await actingId());
 
   revalidatePath("/records");
 
@@ -266,6 +270,8 @@ export async function saveRecord(draft: RecordDraft): Promise<ActionResult> {
 async function correctCount(
   colourwayId: string,
   wanted: string,
+  /** Who is correcting it — passed in, never re-resolved. See the note above. */
+  actorId: string | null,
 ): Promise<string | null> {
   if (wanted.trim() === "") return null;
 
@@ -303,6 +309,7 @@ async function correctCount(
     toLocationId: difference > 0 ? warehouse.id : shrinkage.id,
     occurredAt: new Date(),
     reason: "Corrected on the record editor",
+    actorId,
   });
 
   return `Stock adjusted by ${difference > 0 ? "+" : ""}${difference}.`;
@@ -317,6 +324,9 @@ async function correctCount(
  * answer what happened.
  */
 export async function archiveRecord(colourwayId: string): Promise<ActionResult> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   const rows = await db
     .select({ designId: colourway.designId })
     .from(colourway)
@@ -358,6 +368,9 @@ export async function archiveRecord(colourwayId: string): Promise<ActionResult> 
 
 /** A new colour under an existing design — the common way stock arrives. */
 export async function copyRecord(colourwayId: string): Promise<ActionResult> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   const rows = await db
     .select()
     .from(colourway)
@@ -397,6 +410,9 @@ export async function copyRecord(colourwayId: string): Promise<ActionResult> {
 
 /** A brand-new design, minted with the next sequence number. */
 export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
+  const denied = await guard("floor");
+  if (denied !== null) return denied;
+
   const errors = await validate(draft);
 
   if (Object.keys(errors).length > 0) {
@@ -548,6 +564,10 @@ async function recordOpeningStock(
   // identifies.
   const codes: string[] = [];
 
+  // Resolved once. A record opening with stock in three locations would
+  // otherwise resolve the same session three times to write the same id.
+  const opening = await actingId();
+
   for (const line of usable) {
     const consignment = await openConsignment(
       db,
@@ -569,6 +589,7 @@ async function recordOpeningStock(
       toLocationId: line.locationId,
       occurredAt: new Date(),
       reason: "Opening stock",
+      actorId: opening,
     });
   }
 
@@ -635,6 +656,9 @@ export async function setRecordField(
   field: InlineField,
   valueId: string | null,
 ): Promise<ActionResult> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   const [row] = await db.execute<{
     designId: string;
     nameIsCustom: boolean;
@@ -858,6 +882,9 @@ export async function recordMovement(
   colourwayId: string,
   draft: MovementDraft,
 ): Promise<ActionResult> {
+  const denied = await guard("floor");
+  if (denied !== null) return denied;
+
   const spec = MOVEMENT_KINDS[draft.kind];
   if (spec === undefined) return { ok: false, message: "Unknown kind of movement." };
 
@@ -973,6 +1000,7 @@ export async function recordMovement(
     occurredAt: new Date(),
     reference,
     note,
+    actorId: await actingId(),
   });
 
   revalidatePath("/records");

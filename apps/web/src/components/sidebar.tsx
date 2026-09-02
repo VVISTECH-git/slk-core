@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore, useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+
+import { signOut } from "@/app/logout/actions";
 
 /**
  * Hidden, not deleted — the prototype's pattern. Every screen below still
@@ -33,6 +35,14 @@ const NAV = [
     href: "/locations",
     label: "Locations",
     icon: "M10 17s5.5-4.6 5.5-9a5.5 5.5 0 1 0-11 0c0 4.4 5.5 9 5.5 9z M10 8.5v.01",
+  },
+  {
+    // Who can sign in, and from which handsets. Owners only — everyone else is
+    // shown a sidebar without it, and the screen refuses them again anyway.
+    href: "/staff",
+    label: "Staff",
+    icon: "M7 9a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z M2.5 16c0-2.5 2-4.2 4.5-4.2s4.5 1.7 4.5 4.2 M13 5.2a2.2 2.2 0 0 1 0 4.3 M14 11.6c1.9.4 3.2 1.8 3.2 3.9",
+    owner: true,
   },
 ] as const;
 
@@ -116,8 +126,15 @@ const narrowStore = {
   },
 };
 
-export function Sidebar() {
+export interface SidebarActor {
+  name: string;
+  code: string;
+  role: string;
+}
+
+export function Sidebar({ actor }: { actor: SidebarActor }) {
   const pathname = usePathname();
+  const [signingOut, startSignOut] = useTransition();
 
   const chosen = useSyncExternalStore(
     railStore.subscribe,
@@ -142,7 +159,13 @@ export function Sidebar() {
     railStore.set(!railStore.get());
   }, []);
 
-  const visible = NAV.filter((item) => !HIDDEN.has(item.href));
+  const visible = NAV.filter(
+    (item) =>
+      !HIDDEN.has(item.href) &&
+      // Hidden rather than shown-and-refused: a link that always says no is
+      // a worse way of saying "not for you" than not being there.
+      (!("owner" in item && item.owner) || actor.role === "owner"),
+  );
 
   return (
     <nav
@@ -256,11 +279,93 @@ export function Sidebar() {
         })}
       </ul>
 
-      {!railed && (
-        <div className="mt-auto border-t border-rule px-5 py-4 font-mono text-[10.5px] leading-relaxed text-faint">
-          slk-core
-        </div>
-      )}
+      {/*
+        Who is signed in, at the bottom where a footer already was.
+
+        Worth the room: the phone and the portal now share one set of codes,
+        and a screen that does not say which of them you are is a screen where
+        somebody prices a saree as somebody else.
+      */}
+      <div className="mt-auto border-t border-rule">
+        {railed ? (
+          <div className="flex flex-col items-center gap-1 p-2">
+            <span
+              title={`${actor.name} · ${actor.code}`}
+              className="flex size-8 items-center justify-center rounded-full bg-surface-3 text-[11px] font-semibold text-ink-2"
+            >
+              {initials(actor.name)}
+            </span>
+            <SignOut pending={signingOut} onSignOut={startSignOut} railed />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2 px-4 py-3.5">
+            <div className="min-w-0">
+              <p className="truncate text-[12.5px] font-medium text-ink">
+                {actor.name}
+              </p>
+              <p className="truncate font-mono text-[10.5px] text-faint">
+                {actor.code} · {actor.role}
+              </p>
+            </div>
+            <SignOut pending={signingOut} onSignOut={startSignOut} />
+          </div>
+        )}
+      </div>
     </nav>
+  );
+}
+
+/** Two letters, so a rail can still say who it belongs to. */
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const first = words[0]?.[0] ?? "?";
+  const last = words.length > 1 ? (words.at(-1)?.[0] ?? "") : "";
+
+  return (first + last).toUpperCase();
+}
+
+function SignOut({
+  pending,
+  onSignOut,
+  railed = false,
+}: {
+  pending: boolean;
+  onSignOut: (run: () => void) => void;
+  railed?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      // Wrapped in the transition the caller owns, so the button can say it is
+      // working. Signing out revokes a row as well as dropping the cookie, so
+      // it is a round trip rather than an instant.
+      onClick={() => onSignOut(() => void signOut())}
+      aria-label="Sign out"
+      title="Sign out"
+      className={`rounded-md text-[12px] text-muted transition-colors hover:bg-surface-3 hover:text-ink disabled:opacity-50 ${
+        railed ? "p-1.5" : "px-2 py-1 text-left"
+      }`}
+    >
+      {railed ? (
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 20 20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M8 17H4.5A1.5 1.5 0 0 1 3 15.5v-11A1.5 1.5 0 0 1 4.5 3H8 M13 13.5 16.5 10 13 6.5 M16.5 10H7.5" />
+        </svg>
+      ) : pending ? (
+        "Signing out…"
+      ) : (
+        "Sign out"
+      )}
+    </button>
   );
 }

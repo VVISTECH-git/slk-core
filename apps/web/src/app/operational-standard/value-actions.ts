@@ -1,5 +1,6 @@
 "use server";
 
+import { guard, requireActor } from "@/lib/session";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -45,6 +46,9 @@ export async function setDefaultValue(
   valueId: string,
   makeDefault: boolean,
 ): Promise<Result> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   const [value] = await db
     .select({
       id: lookupValue.id,
@@ -97,6 +101,9 @@ export async function setDefaultValue(
 
 /* ------------------------------------------------------------ the review */
 export async function clearReview(valueIds: string[]): Promise<Result> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   if (valueIds.length === 0) return { ok: false, message: "Nothing selected." };
 
   const updated = await db
@@ -148,6 +155,8 @@ function idList(ids: string[]) {
 export async function countUsage(
   valueIds: string[],
 ): Promise<Record<string, number>> {
+  await requireActor("office");
+
   const counts: Record<string, number> = {};
   for (const id of valueIds) counts[id] = 0;
 
@@ -188,6 +197,9 @@ export async function mergeValues(
   survivorId: string,
   mergedIds: string[],
 ): Promise<Result> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   if (mergedIds.length === 0) return { ok: false, message: "Nothing to merge." };
   if (mergedIds.includes(survivorId)) {
     return { ok: false, message: "A value cannot be merged into itself." };
@@ -274,6 +286,9 @@ export async function previewPaste(
   listCode: string,
   text: string,
 ): Promise<PastePreview | Result> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   const [list] = await db
     .select()
     .from(lookupList)
@@ -316,6 +331,9 @@ export async function commitPaste(
   listCode: string,
   labels: string[],
 ): Promise<Result> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   if (labels.length === 0) return { ok: false, message: "Nothing to add." };
 
   const [list] = await db

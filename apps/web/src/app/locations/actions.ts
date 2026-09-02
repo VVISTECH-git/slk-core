@@ -1,5 +1,6 @@
 "use server";
 
+import { guard } from "@/lib/session";
 import { eq, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -44,6 +45,9 @@ export async function saveLocation(
   locationId: string,
   patch: LocationPatch,
 ): Promise<ActionResult> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   const [current] = await db
     .select()
     .from(location)
@@ -112,6 +116,9 @@ export async function createLocation(
   name: string,
   isInternal: boolean,
 ): Promise<ActionResult> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   const clean = titleCase(name.trim());
   if (clean === "" || slugify(clean) === "") {
     return { ok: false, message: "That is not a usable name." };
@@ -157,6 +164,9 @@ export async function createLocation(
  * deleted — the same reason a used vocabulary value is retired.
  */
 export async function deleteLocation(locationId: string): Promise<ActionResult> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   const [current] = await db
     .select()
     .from(location)

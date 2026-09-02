@@ -1,5 +1,6 @@
 "use server";
 
+import { guard } from "@/lib/session";
 import { sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -48,6 +49,9 @@ export async function saveClassification(
   id: string,
   patch: ClassificationPatch,
 ): Promise<Result> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   const [current] = await db.execute<{ label: string; code: string }>(sql`
     select label, code from lookup_list where id = ${id}
   `);
@@ -140,6 +144,9 @@ export async function addClassification(
   name: string,
   dependsOnId: string | null,
 ): Promise<Result> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   const clean = titleCase(name.trim());
   if (clean === "" || slugify(clean) === "") {
     return { ok: false, message: "That is not a usable name." };
@@ -175,6 +182,9 @@ export async function addClassification(
  * mean something.
  */
 export async function deleteClassifications(ids: string[]): Promise<Result> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   if (ids.length === 0) return { ok: false, message: "Nothing selected." };
 
   const list = sql.join(ids.map((id) => sql`${id}`), sql`, `);
@@ -236,6 +246,9 @@ export async function saveCategory(
   id: string,
   patch: CategoryPatch,
 ): Promise<Result> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   const [current] = await db.execute<{ label: string; listId: string }>(sql`
     select label, list_id as "listId" from lookup_value where id = ${id}
   `);
@@ -312,6 +325,9 @@ export async function addCategory(
   name: string,
   belongsToId: string | null,
 ): Promise<Result> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   const clean = titleCase(name.trim());
   if (clean === "" || slugify(clean) === "") {
     return { ok: false, message: "That is not a usable name." };
@@ -358,6 +374,9 @@ export async function addCategory(
  * distinction between retiring and deleting.
  */
 export async function deleteCategories(ids: string[]): Promise<Result> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   if (ids.length === 0) return { ok: false, message: "Nothing selected." };
 
   const list = sql.join(ids.map((id) => sql`${id}`), sql`, `);
@@ -400,6 +419,9 @@ export async function setCategoryStatus(
   ids: string[],
   status: string,
 ): Promise<Result> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   if (ids.length === 0) return { ok: false, message: "Nothing selected." };
   if (!["draft", "proposed", "active", "retired"].includes(status)) {
     return { ok: false, message: "Unknown status." };
@@ -425,6 +447,9 @@ export async function setClassificationEnabled(
   ids: string[],
   isEnabled: boolean,
 ): Promise<Result> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
   if (ids.length === 0) return { ok: false, message: "Nothing selected." };
 
   const updated = await db.execute(sql`

@@ -8,7 +8,8 @@
     "./colour": "./src/colour.ts",
     "./naming": "./src/naming.ts",
     "./stock": "./src/stock.ts",
-    "./vocabulary": "./src/vocabulary.ts"
+    "./vocabulary": "./src/vocabulary.ts",
+    "./money": "./src/money.ts"
   },
   "scripts": {
     "test": "node --experimental-strip-types --test \"src/**/*.test.ts\"",

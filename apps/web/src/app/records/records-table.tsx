@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { colourSwatch, isPaleSwatch } from "@slk/domain/colour";
+import { rupees } from "@slk/domain/money";
 
 import {
   Cell,
@@ -166,19 +167,8 @@ function sortValue(row: RecordRow, key: ColumnKey): string | number {
   return (row[key] ?? "").toLowerCase();
 }
 
-/**
- * Rupees, with the paise only when there are any.
- *
- * Prices are entered to two decimals now, so a flat maximumFractionDigits
- * of 0 was rounding 1249.50 to 1,250 on the one screen most likely to be
- * read as authoritative.
- */
-export function money(minor: number): string {
-  return `₹${(minor / 100).toLocaleString("en-IN", {
-    minimumFractionDigits: minor % 100 === 0 ? 0 : 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
+/** Re-exported so the modules that already import it from here still can. */
+export const money = rupees;
 
 /** The tabs the editor can be opened straight onto from a row action. */
 type EditorTab = "basic" | "prices" | "images" | "stock";

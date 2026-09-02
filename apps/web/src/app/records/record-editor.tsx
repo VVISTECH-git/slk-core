@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { colourSwatch, isPaleSwatch } from "@slk/domain/colour";
+import { rupees } from "@slk/domain/money";
 import { titleCase } from "@slk/domain/naming";
 
 import {
@@ -86,10 +87,11 @@ const PRICE_KINDS = [
 ] as const;
 
 function money(minor: number): string {
-  return `₹${(minor / 100).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+  return rupees(minor);
 }
 
-function rupees(minor: number | null): string {
+/** Paise to the plain number a price input holds — not display text. */
+function asInput(minor: number | null): string {
   return minor === null ? "" : String(minor / 100);
 }
 
@@ -128,11 +130,11 @@ export function RecordEditor({
     record?.secondaryColourId ?? null,
   );
   const [prices, setPrices] = useState({
-    cost: rupees(record?.costMinor ?? null),
-    making: rupees(record?.makingMinor ?? null),
-    wholesale: rupees(record?.wholesaleMinor ?? null),
-    retail: rupees(record?.retailMinor ?? null),
-    mrp: rupees(record?.mrpMinor ?? null),
+    cost: asInput(record?.costMinor ?? null),
+    making: asInput(record?.makingMinor ?? null),
+    wholesale: asInput(record?.wholesaleMinor ?? null),
+    retail: asInput(record?.retailMinor ?? null),
+    mrp: asInput(record?.mrpMinor ?? null),
   });
   const [quantity, setQuantity] = useState(
     isNew ? "1" : String(record.stock.onHand),

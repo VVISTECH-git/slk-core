@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 
+import { rupees } from "@slk/domain/money";
+
 import {
   Cell,
   ColumnsControl,
@@ -98,7 +100,7 @@ const PER_PAGE = 25;
 function money(minor: number | null): string {
   return minor === null
     ? ""
-    : `₹${(minor / 100).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+    : rupees(minor);
 }
 
 function cell(row: PieceRow, key: ColumnKey): string {

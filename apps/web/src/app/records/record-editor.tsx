@@ -1183,7 +1183,16 @@ function MultiCombo({
   list: string;
   options: Options;
   values: string[];
-  onChange: (next: string[]) => void;
+  /**
+   * Given the set as it is now, return what it should become.
+   *
+   * A reducer rather than a plain value, because two chips tapped inside one
+   * frame both read `values` from the same render and the second overwrote
+   * the first — the earlier chip came back off, silently. Passing the change
+   * rather than the result lets the parent apply both to whatever the set
+   * actually is by then.
+   */
+  onChange: (next: (previous: string[]) => string[]) => void;
 }) {
   const all = options[list] ?? [];
   if (all.length === 0) return null;
@@ -1214,9 +1223,13 @@ function MultiCombo({
               onClick={() =>
                 // Kept in the list's own order rather than tick order, so the
                 // composed name reads the same however it was filled in.
-                onChange(
+                onChange((previous) =>
                   all
-                    .filter((o) => (o.id === option.id ? !on : chosen.has(o.id)))
+                    .filter((o) =>
+                      o.id === option.id
+                        ? !previous.includes(o.id)
+                        : previous.includes(o.id),
+                    )
                     .map((o) => o.id),
                 )
               }

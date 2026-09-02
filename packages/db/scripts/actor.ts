@@ -5,7 +5,7 @@ import { Writable } from "node:stream";
 import { config } from "dotenv";
 import postgres from "postgres";
 
-import { hashSecret } from "@slk/domain";
+import { hashSecret, MIN_PIN_LENGTH, pinProblem } from "@slk/domain";
 
 config({ path: resolve(process.cwd(), "../../.env") });
 
@@ -68,6 +68,28 @@ if (!["floor", "office", "owner"].includes(role)) {
   process.exit(1);
 }
 
+/*
+  A PIN can only be typed at a real terminal.
+
+  Said plainly, and early, because the alternative is what actually happened:
+  run through `pnpm --filter`, which detaches stdin on a recursive run, and
+  readline died on EOF with a stack trace and `Exit status 13`. Nothing in that
+  says "no terminal", so it read as noise and the actor was silently never
+  created — twice, on two different databases.
+*/
+if (!process.stdin.isTTY) {
+  console.error(
+    "\n  This needs an interactive terminal to ask for the PIN, and does not\n" +
+      "  have one. `pnpm --filter` detaches stdin on a recursive run — run it\n" +
+      "  from inside the package instead:\n\n" +
+      "    cd packages/db\n" +
+      "    pnpm db:actor <code> \"<name>\" [floor|office|owner]\n\n" +
+      "  The PIN is never taken as an argument, so there is no flag for this.\n",
+  );
+  await sql.end();
+  process.exit(1);
+}
+
 /** Ask without echoing — a PIN typed on a shared screen is a PIN shared. */
 function askHidden(question: string): Promise<string> {
   let muted = false;
@@ -91,31 +113,21 @@ function askHidden(question: string): Promise<string> {
   });
 }
 
-/**
- * Six, not four.
- *
- * Four digits is ten thousand possibilities — about eight minutes of guessing
- * against this hashing cost, or twenty-five seconds with a few requests in
- * flight. Six is a million, for one more keypress. The login's lockout is the
- * other half of the same fix; neither is enough alone.
- *
- * Kept in step with MIN_PIN_LENGTH in apps/web/src/lib/auth.ts by hand — this
- * script may not import from the app.
- */
-const MIN_PIN_LENGTH = 6;
+const pin = await askHidden(
+  `PIN for ${name} (${code}), ${MIN_PIN_LENGTH}+ characters: `,
+);
 
-const pin = await askHidden(`PIN for ${name} (${code}), ${MIN_PIN_LENGTH}+ digits: `);
+/*
+  One set of rules, in @slk/domain.
 
-if (pin.length < MIN_PIN_LENGTH) {
-  console.error(`\n  A PIN needs at least ${MIN_PIN_LENGTH} characters.\n`);
-  await sql.end();
-  process.exit(1);
-}
+  Length, repeats and sequences are all decided by pinProblem, which the API
+  and any staff-management screen call too. They used to be stated here and
+  half-stated in the app, which is how the app came to check nothing at all.
+*/
+const problem = pinProblem(pin);
 
-if (/^(\d)\1*$/.test(pin) || "0123456789".includes(pin) || "9876543210".includes(pin)) {
-  // 111111, 123456 and 654321 are the first things anybody tries, and a
-  // six-digit space does not help if the PIN is one of the ten obvious ones.
-  console.error("\n  That PIN is too easy to guess. Pick another.\n");
+if (problem !== null) {
+  console.error(`\n  ${problem}\n`);
   await sql.end();
   process.exit(1);
 }

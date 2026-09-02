@@ -6,16 +6,16 @@ import { actor, actorToken, loginAttempt, type Actor } from "@slk/db";
 
 import { db } from "@/lib/db";
 
-export { hashSecret, verifySecret } from "@slk/domain";
-
 /**
- * The shortest PIN that may be set.
+ * Re-exported so callers in this app have one import for the whole of it.
  *
- * Six, not four. Four digits is ten thousand possibilities, which a script
- * works through in well under an hour even against deliberately slow hashing;
- * six is a million, for one more keypress on the floor.
+ * `pinProblem` and `MIN_PIN_LENGTH` live in @slk/domain rather than here
+ * because the `db:actor` script has to agree with them and cannot import from
+ * the app. Anything that *sets* a PIN — this app, that script, a staff screen
+ * — must call `pinProblem`; a second copy of the rules is how one caller ends
+ * up accepting 123456 while another refuses it.
  */
-export const MIN_PIN_LENGTH = 6;
+export { hashSecret, verifySecret, pinProblem, MIN_PIN_LENGTH } from "@slk/domain";
 
 /**
  * Signing in, and staying signed in.

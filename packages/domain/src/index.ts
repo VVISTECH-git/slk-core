@@ -33,4 +33,9 @@ export { colourSwatch, isPaleSwatch } from "./colour";
 
 export { stockAt, type LocationPosition } from "./stock";
 
-export { hashSecret, verifySecret } from "./secret";
+export {
+  hashSecret,
+  verifySecret,
+  pinProblem,
+  MIN_PIN_LENGTH,
+} from "./secret";

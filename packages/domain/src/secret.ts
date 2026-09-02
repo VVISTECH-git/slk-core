@@ -25,6 +25,62 @@ const scrypt = promisify(scryptCallback) as (
   keylen: number,
 ) => Promise<Buffer>;
 
+/**
+ * The shortest PIN that may be set.
+ *
+ * Six, not four. Four digits is ten thousand possibilities — measured against
+ * this hashing cost, about eight minutes of guessing, or twenty-five seconds
+ * with a few requests in flight. Six is a million, for one more keypress.
+ */
+export const MIN_PIN_LENGTH = 6;
+
+/**
+ * What is wrong with a PIN, or null if nothing is.
+ *
+ * Here, beside the hashing, because every place that *sets* a PIN has to agree
+ * about this and they are in different packages: the `db:actor` script, the
+ * API, and whatever screen manages staff next. The rules had already drifted
+ * once — the script rejected `123456` and the web app's copy of the length
+ * did not check anything at all — and with three callers the weakest one wins.
+ *
+ * Returns a sentence to show whoever is choosing, not a code: the person
+ * reading it is the person who has to pick a better one.
+ */
+export function pinProblem(pin: string): string | null {
+  if (pin.length < MIN_PIN_LENGTH) {
+    return `A PIN needs at least ${MIN_PIN_LENGTH} characters.`;
+  }
+
+  // 111111. A million possibilities does not help if it is one of ten.
+  if (new Set(pin).size === 1) {
+    return "That PIN is the same character repeated. Pick another.";
+  }
+
+  /*
+    123456 and 654321, and every run like them.
+
+    Checked as consecutive character codes rather than by looking for the PIN
+    inside "0123456789" — that only catches runs of digits starting where the
+    haystack does, and says nothing about `abcdef`.
+  */
+  const step = pin.codePointAt(1)! - pin.codePointAt(0)!;
+
+  if (step === 1 || step === -1) {
+    let run = true;
+
+    for (let i = 1; i < pin.length; i++) {
+      if (pin.codePointAt(i)! - pin.codePointAt(i - 1)! !== step) {
+        run = false;
+        break;
+      }
+    }
+
+    if (run) return "That PIN is a sequence. Pick another.";
+  }
+
+  return null;
+}
+
 /** 2^15 — a few hundred milliseconds, which a login can afford and a guesser cannot. */
 const COST = 32768;
 const KEY_LENGTH = 32;

@@ -171,7 +171,7 @@ function sortValue(row: RecordRow, key: ColumnKey): string | number {
 export const money = rupees;
 
 /** The tabs the editor can be opened straight onto from a row action. */
-type EditorTab = "basic" | "prices" | "images" | "stock";
+type EditorTab = "basic" | "craft" | "prices" | "images" | "stock";
 
 export function RecordsTable({
   rows,
@@ -187,7 +187,7 @@ export function RecordsTable({
   const router = useRouter();
   const [editing, setEditing] = useState<{
     record: RecordDetail | null;
-    tab: "basic" | "prices" | "images" | "stock";
+    tab: EditorTab;
   } | null>(null);
   const [archiving, setArchiving] = useState<RecordRow | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -670,10 +670,16 @@ export function RecordsTable({
                                 // exists. Landing back on the table with a
                                 // blank swatch and no way to see where the
                                 // colour is set is not finishing the job.
+                                //
+                                // Craft & Design, because that is where the
+                                // colour is. It opened on Basic, which was
+                                // right until the field moved and then said
+                                // "choose its colour" over a tab that no
+                                // longer has one.
                                 if (result.ok && result.colourwayId) {
                                   setToast(result.message);
                                   router.refresh();
-                                  open(result.colourwayId, "basic", "basic");
+                                  open(result.colourwayId, "basic", "craft");
                                   return;
                                 }
 

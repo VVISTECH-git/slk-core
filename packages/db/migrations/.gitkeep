@@ -8,3 +8,43 @@
 # This folder, not the TypeScript, is the real source of truth for the
 # database. Never run db:push against anything holding real stock — it
 # resolves constraint drift by offering to truncate.
+#
+# ── meta/ and the baseline snapshot ─────────────────────────────────────────
+#
+# drizzle-kit does not read the .sql files to work out what the database
+# looks like. It reads meta/, takes the last snapshot by filename, and diffs
+# src/schema against that. So the snapshot — not the migration count — is what
+# makes db:generate correct.
+#
+# Snapshots 0000–0003 are the ones drizzle-kit wrote when those migrations
+# were generated. 0004–0031 were hand-written, so no snapshot was ever
+# recorded for them, and the baseline sat at 0003 while the database moved on
+# by twenty-eight migrations. db:generate then offered to re-create `batch`,
+# `design_descriptor` and every column added since — and, having no snapshot
+# to work from, asked which of them were renames, which is what made it
+# demand a TTY.
+#
+# 0032_snapshot.json closes that gap. It is the serialisation of src/schema
+# itself, checked against a drizzle-kit pull of the real database first: all
+# 147 columns across the 12 tables agreed, and nothing declared in TypeScript
+# was missing from the database.
+#
+# It is deliberately built from the TypeScript rather than from the pull. The
+# database also carries eight CHECK constraints, two indexes, the
+# colourway_on_hand view and the movement trigger, none of which Drizzle's
+# schema DSL can express. A snapshot introspected from the database would
+# record them, then diff them against a TypeScript schema that cannot mention
+# them, and the next db:generate would offer to drop the lot.
+#
+# The pull also found nineteen constraints created by hand-written SQL and so
+# named by Postgres (design_blouse_border_id_fkey) rather than by Drizzle
+# (design_blouse_border_id_lookup_value_id_fk) — same columns, same behaviour,
+# a name the snapshot did not use. 0033 renames them to match. What the
+# database still holds that no snapshot can is the part Drizzle's schema DSL
+# cannot express: eight CHECK constraints, two indexes, the colourway_on_hand
+# view and the movement trigger. Those live in hand-written SQL and nowhere
+# else, which is the other half of why this folder is the source of truth.
+#
+# So the invariant to check, if db:generate ever starts offering strange
+# things again: the highest-numbered snapshot should match the
+# highest-numbered migration. 0003 against 0032 was what broke it.

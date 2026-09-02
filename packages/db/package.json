@@ -14,6 +14,7 @@
     "db:seed": "tsx scripts/seed.ts",
     "db:demo": "tsx scripts/demo.ts",
     "db:clean": "tsx scripts/clean.ts",
+    "db:actor": "tsx scripts/actor.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

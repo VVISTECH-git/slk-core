@@ -225,6 +225,34 @@
       "when": 1788262700000,
       "tag": "0031_reconcile_with_production",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1788262800000,
+      "tag": "0032_actors_and_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1788262900000,
+      "tag": "0033_constraint_names_match_the_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1788324181935,
+      "tag": "0034_login_attempts_are_counted",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1788338900872,
+      "tag": "0035_writes_happen_once",
+      "breakpoints": true
     }
   ]
 }

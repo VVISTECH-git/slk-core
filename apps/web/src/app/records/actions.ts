@@ -485,6 +485,15 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
   return {
     ok: true,
     message: `Created ${code}.${opening === null ? "" : ` ${opening}`}`,
+    /*
+      What was just made.
+
+      The web table does not use it — it refreshes and the new row appears —
+      but a client that is not looking at a table has no other way to find out
+      what it created, short of listing the catalogue and guessing which row
+      is new. The API returns this as the created record's id.
+    */
+    colourwayId: cw?.id,
   };
 }
 

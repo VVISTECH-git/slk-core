@@ -55,13 +55,28 @@ export function Locations({ locations }: { locations: LocationRow[] }) {
   const external = locations.filter((l) => !l.isInternal);
   const held = internal.reduce((sum, l) => sum + stockAt(l), 0);
 
+  /**
+   * How much of that total sits against records Product Management hides.
+   *
+   * Said in the lede rather than left to be discovered. This number was the
+   * whole of the difference between "119 units held" here and nineteen on
+   * Product Management, and a total nobody can reconcile is a total nobody
+   * trusts.
+   */
+  const archived = internal.reduce((sum, l) => sum + Math.max(0, l.archived), 0);
+
   const current = editing === null ? null : locations.find((l) => l.id === editing);
 
   return (
     <div className="flex min-h-screen flex-col">
       <Header
         title="Locations"
-        lede={`Where stock sits, and where it goes when it leaves. ${held} unit${held === 1 ? "" : "s"} held across ${internal.length} internal location${internal.length === 1 ? "" : "s"}.`}
+        lede={
+          `Where stock sits, and where it goes when it leaves. ${held} unit${held === 1 ? "" : "s"} held across ${internal.length} internal location${internal.length === 1 ? "" : "s"}` +
+          (archived > 0
+            ? `, ${archived} of them against archived records — Product Management lists those only when asked.`
+            : ".")
+        }
         actions={
           <Button tone="primary" onClick={() => setAdding(true)}>
             Add location

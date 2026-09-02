@@ -41,6 +41,23 @@ const LIST_STATUSES = ["draft", "active", "retired"];
 const VALUE_STATUSES = ["draft", "proposed", "active", "retired"];
 
 /**
+ * What a pending delete is waiting to be told.
+ *
+ * Deleting used to happen on the click. The guards were good — a
+ * classification with categories refuses, a category in use refuses — but
+ * they only ever protected the rows that were being used, and the bin icon
+ * sits a few pixels from the disable icon in a table forty-six rows long.
+ * There is no undo behind it, so there is a question in front of it.
+ */
+interface PendingDelete {
+  /** "Delete Zari" — the heading, and what the button repeats. */
+  title: string;
+  /** What is about to happen, in a sentence. */
+  detail: string;
+  run: () => Promise<Result>;
+}
+
+/**
  * The whole vocabulary, in two halves.
  *
  * Above: which classifications exist, which depend on which, and which are
@@ -210,6 +227,7 @@ function Classifications({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [confirming, setConfirming] = useState<PendingDelete | null>(null);
 
   const { shown, sort, toggle, filters, setFilter, clear, active } =
     useSortFilter(rows, CLASSIFICATION_COLUMNS, sinkDisabled);
@@ -268,7 +286,14 @@ function Classifications({
                 tone="danger"
                 disabled={pending}
                 onClick={() =>
-                  onRun(() => deleteClassifications(chosen), () => setPicked(new Set()))
+                  setConfirming({
+                    title: `Delete ${chosen.length} classification${chosen.length === 1 ? "" : "s"}`,
+                    detail: `${chosen
+                      .map((id) => rows.find((r) => r.id === id)?.name ?? "")
+                      .filter(Boolean)
+                      .join(", ")} will stop being questions the catalogue can ask.`,
+                    run: () => deleteClassifications(chosen),
+                  })
                 }
               >
                 Delete
@@ -373,11 +398,29 @@ function Classifications({
               onToggle={() =>
                 onRun(() => setClassificationEnabled([row.id], !row.isEnabled))
               }
-              onDelete={() => onRun(() => deleteClassifications([row.id]))}
+              onDelete={() =>
+                setConfirming({
+                  title: `Delete ${row.name}`,
+                  detail: `${row.name} will stop being a question the catalogue can ask.`,
+                  run: () => deleteClassifications([row.id]),
+                })
+              }
             />
           </tr>
         ))}
       </Table>
+
+      <ConfirmDelete
+        pending={confirming}
+        busy={pending}
+        onCancel={() => setConfirming(null)}
+        onConfirm={(request) =>
+          onRun(request.run, () => {
+            setConfirming(null);
+            setPicked(new Set());
+          })
+        }
+      />
 
       {current !== null && (
         <ClassificationDrawer
@@ -447,6 +490,7 @@ function Categories({
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [merging, setMerging] = useState(false);
+  const [confirming, setConfirming] = useState<PendingDelete | null>(null);
 
   // Nothing until a classification is chosen. All 227 values at once is a
   // list of everything, which is a list of nothing in particular — the work
@@ -622,7 +666,16 @@ function Categories({
                 tone="danger"
                 disabled={pending}
                 onClick={() =>
-                  onRun(() => deleteCategories(chosen), () => setPicked(new Set()))
+                  setConfirming({
+                    title: `Delete ${chosen.length} categor${chosen.length === 1 ? "y" : "ies"}`,
+                    detail: `${chosen
+                      .map((id) => rows.find((r) => r.id === id)?.name ?? "")
+                      .filter(Boolean)
+                      .join(", ")} will stop being offered${
+                      chosenList === null ? "" : ` under ${chosenList.name}`
+                    }.`,
+                    run: () => deleteCategories(chosen),
+                  })
                 }
               >
                 Delete
@@ -771,11 +824,31 @@ function Categories({
                   ),
                 )
               }
-              onDelete={() => onRun(() => deleteCategories([row.id]))}
+              onDelete={() =>
+                setConfirming({
+                  title: `Delete ${row.name}`,
+                  detail: `${row.name} will stop being offered${
+                    chosenList === null ? "" : ` under ${chosenList.name}`
+                  }.`,
+                  run: () => deleteCategories([row.id]),
+                })
+              }
             />
           </tr>
         ))}
       </Table>
+
+      <ConfirmDelete
+        pending={confirming}
+        busy={pending}
+        onCancel={() => setConfirming(null)}
+        onConfirm={(request) =>
+          onRun(request.run, () => {
+            setConfirming(null);
+            setPicked(new Set());
+          })
+        }
+      />
 
       {current !== null && (
         <CategoryDrawer
@@ -1604,6 +1677,51 @@ function RowActions({
         </IconButton>
       </div>
     </td>
+  );
+}
+
+/**
+ * The question in front of a delete.
+ *
+ * Deliberately not a browser `confirm()`: that steals focus, cannot say what
+ * is about to go, and looks like something the page did not mean. This says
+ * the name of the thing and what removing it means, and the confirming button
+ * repeats the name rather than saying "OK" — so a reflex click on a dialog
+ * that was not read still has to be aimed at the right words.
+ */
+function ConfirmDelete({
+  pending: request,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  pending: PendingDelete | null;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: (request: PendingDelete) => void;
+}) {
+  if (request === null) return null;
+
+  return (
+    <Drawer
+      open
+      title={request.title}
+      onClose={onCancel}
+      footer={
+        <>
+          <Button onClick={onCancel}>Cancel</Button>
+          <Button tone="danger" disabled={busy} onClick={() => onConfirm(request)}>
+            {request.title}
+          </Button>
+        </>
+      }
+    >
+      <p className="text-[13.5px] leading-relaxed text-ink-2">{request.detail}</p>
+      <p className="mt-3 text-[13px] leading-relaxed text-muted">
+        This cannot be undone. Anything still using it keeps what it has —
+        deleting removes the option, not the answers already given.
+      </p>
+    </Drawer>
   );
 }
 

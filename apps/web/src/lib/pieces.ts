@@ -24,7 +24,18 @@ export interface PieceRow {
   productType: string | null;
   motifCategory: string | null;
   motif: string | null;
+  /**
+   * Where it is now, from the ledger — null once it has left us.
+   *
+   * Not where it arrived. That is what this used to be, and it meant a saree
+   * that had been sold six weeks ago still read as sitting in the warehouse,
+   * on a screen whose whole job is answering "is this one here".
+   */
   location: string | null;
+  /** False once the ledger says it has been sold, written off or sent on. */
+  isHeld: boolean;
+  /** The consignment's location — where it came in, which never changes. */
+  receivedInto: string | null;
   /** "01 Sep 2026" — what the table shows. */
   receivedAt: string | null;
   /**
@@ -77,7 +88,9 @@ export async function loadPieces(): Promise<PieceRow[]> {
       product_type.label                        as "productType",
       motif_cat.label                           as "motifCategory",
       motif.label                               as motif,
-      l.name                                    as location,
+      here.name                                 as location,
+      coalesce(pos.is_held, false)              as "isHeld",
+      arrived.name                              as "receivedInto",
       to_char(b.received_at, 'DD Mon YYYY')     as "receivedAt",
       to_char(b.received_at, 'YYYY-MM-DD')      as "receivedOn",
       b.reference,
@@ -86,7 +99,11 @@ export async function loadPieces(): Promise<PieceRow[]> {
     join colourway cw on cw.id = p.colourway_id
     join design d     on d.id  = cw.design_id
     left join batch b            on b.id = p.batch_id
-    left join location l         on l.id = b.location_id
+    -- Where it is now, and where it came in. The first is the ledger's
+    -- answer and moves; the second is the consignment's and does not.
+    left join piece_position pos on pos.piece_id = p.id
+    left join location here      on here.id = pos.location_id
+    left join location arrived   on arrived.id = b.location_id
     left join lookup_value colour       on colour.id = cw.colour_id
     left join lookup_value product_type on product_type.id = d.product_type_id
     left join lookup_value motif_cat    on motif_cat.id = d.motif_category_id

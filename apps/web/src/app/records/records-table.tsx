@@ -271,6 +271,16 @@ export function RecordsTable({
 
   const [query, setQuery] = useState("");
   const [industry, setIndustry] = useState("");
+
+  /**
+   * Whether archived records are in the table.
+   *
+   * Off by default — an archived record is one somebody decided to stop
+   * selling. But it can still have stock against it, and while this screen
+   * could not show it at all, that stock was counted on Locations and visible
+   * nowhere, which is a hundred sarees nobody can account for.
+   */
+  const [showArchived, setShowArchived] = useState(false);
   /**
    * Chosen values per column, rather than one value per column.
    *
@@ -316,6 +326,7 @@ export function RecordsTable({
     const q = query.trim().toLowerCase();
 
     let out = rows.filter((row) => {
+      if (!showArchived && row.isArchived) return false;
       if (industry !== "" && row.industry !== industry) return false;
 
       for (const [key, want] of Object.entries(filters)) {
@@ -342,7 +353,22 @@ export function RecordsTable({
     }
 
     return out;
-  }, [rows, query, industry, filters, sort]);
+  }, [rows, query, industry, filters, sort, showArchived]);
+
+  /**
+   * Archived records still holding stock.
+   *
+   * The number that made Locations and this screen disagree. Worth saying out
+   * loud: stock against an archived record is stock nobody is looking at.
+   */
+  const archived = useMemo(() => {
+    const all = rows.filter((r) => r.isArchived);
+
+    return {
+      count: all.length,
+      quantity: all.reduce((sum, r) => sum + r.quantity, 0),
+    };
+  }, [rows]);
 
   const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const current = Math.min(page, pages);
@@ -468,7 +494,42 @@ export function RecordsTable({
             {filtered.length.toLocaleString("en-IN")} record
             {filtered.length === 1 ? "" : "s"}
             {industry && ` in ${industry}`}
+            {showArchived && ", archived included"}
           </span>
+
+          {/*
+            The reconciliation, on the screen it reconciles. Without it the
+            only place this stock appeared was the Locations total, where it
+            looked like an error in the arithmetic rather than a hundred
+            sarees against records nobody sells any more.
+          */}
+          {!showArchived && archived.count > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowArchived(true);
+                setPage(1);
+              }}
+              className="text-[12.5px] text-muted underline decoration-dotted underline-offset-2 hover:text-ink"
+            >
+              {archived.count.toLocaleString("en-IN")} archived
+              {archived.quantity > 0 &&
+                ` holding ${archived.quantity.toLocaleString("en-IN")} in stock`}
+            </button>
+          )}
+
+          {showArchived && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowArchived(false);
+                setPage(1);
+              }}
+              className="text-[12.5px] text-muted underline decoration-dotted underline-offset-2 hover:text-ink"
+            >
+              Hide archived
+            </button>
+          )}
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto">
@@ -553,7 +614,15 @@ export function RecordsTable({
                     }}
                     // A single fixed height for every row. Nothing inside a
                     // cell is allowed to change it.
+                    //
+                    // An archived row is dimmed rather than badged: it only
+                    // appears when it has been asked for, and a column of
+                    // labels saying so would be the loudest thing on a screen
+                    // where they are the exception.
+                    title={row.isArchived ? "Archived — not on sale" : undefined}
                     className={`h-11 cursor-pointer border-b border-rule last:border-b-0 ${
+                      row.isArchived ? "opacity-55" : ""
+                    } ${
                       selected === row.id ? "bg-brick-soft" : "hover:bg-surface-2"
                     }`}
                   >

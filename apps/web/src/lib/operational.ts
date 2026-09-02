@@ -76,7 +76,12 @@ export async function loadClassifications(): Promise<Classification[]> {
     left join lookup_list p on p.id = l.parent_list_id
     left join lookup_value v on v.list_id = l.id
     group by l.id, p.label
-    order by l.sort_order, l.label
+    -- By name alone. There is no meaningful order among classifications, and
+    -- while sort_order decided it, the seeded lists all shared one and read
+    -- alphabetically while anything added on this screen took max + 1 and
+    -- landed at the bottom — which is why Image Type sat after Weaving
+    -- Category and looked like a bug in the sort.
+    order by l.label
   `);
 
   return rows.map((r) => ({
@@ -130,7 +135,9 @@ export async function loadCategories(): Promise<Category[]> {
     from lookup_value v
     join lookup_list l on l.id = v.list_id
     left join lookup_value p on p.id = v.parent_value_id
-    order by l.sort_order, l.label, v.sort_order, v.label
+    -- The list by name; the values inside it by their own order, which for a
+    -- ladder like Border Height is the whole point of having one.
+    order by l.label, v.sort_order, v.label
   `);
 
   // How many records point at each value, counted once for the whole table

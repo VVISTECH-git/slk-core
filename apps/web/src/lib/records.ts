@@ -57,9 +57,31 @@ export type RecordRow = {
   wholesaleMinor: number | null;
   mrpMinor: number | null;
   pieces: number;
+
+  /**
+   * Whether the design has been archived, or this colour of it retired.
+   *
+   * Loaded rather than filtered out in SQL. Archived records were invisible
+   * here while their stock went on counting towards the Locations total, so
+   * the two screens could differ by a hundred units with nothing on either
+   * one to explain it. The grid hides them by default and can be asked to
+   * show them, which is the difference between a tidy list and a missing one.
+   */
+  isArchived: boolean;
 };
 
-export async function loadRecords(): Promise<RecordRow[]> {
+/**
+ * @param includeArchived
+ *   Archived designs and retired colourways as well as the live ones, flagged
+ *   rather than dropped. Off by default, because every caller but the grid
+ *   wants the catalogue as it is sold — the mobile API included. The grid asks
+ *   for them so that stock still sitting against an archived record can be
+ *   found: it was counted in the Locations total and shown on no screen at
+ *   all, which made the two disagree with nothing to explain the gap.
+ */
+export async function loadRecords(
+  { includeArchived = false }: { includeArchived?: boolean } = {},
+): Promise<RecordRow[]> {
   return db.execute<RecordRow>(sql`
     select
       cw.id                                             as id,
@@ -103,7 +125,8 @@ export async function loadRecords(): Promise<RecordRow[]> {
       cw.cost_minor                                     as "costMinor",
       cw.wholesale_minor                                as "wholesaleMinor",
       cw.mrp_minor                                      as "mrpMinor",
-      coalesce(pc.n, 0)::int                            as pieces
+      coalesce(pc.n, 0)::int                            as pieces,
+      (d.status = 'archived' or not cw.is_active)       as "isArchived"
     from colourway cw
     join design d                     on d.id = cw.design_id
     left join lookup_value industry           on industry.id = d.industry_id
@@ -141,7 +164,7 @@ export async function loadRecords(): Promise<RecordRow[]> {
     ) pc                                      on pc.colourway_id = cw.id
     -- Both, not just the design: archiving one colour of a design that still
     -- has others leaves the design active, and only the colourway retired.
-    where d.status <> 'archived' and cw.is_active
+    where ${includeArchived} or (d.status <> 'archived' and cw.is_active)
     order by d.seq, colour.sort_order
   `);
 }

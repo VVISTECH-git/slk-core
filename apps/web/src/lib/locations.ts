@@ -30,6 +30,15 @@ export interface LocationRow {
   inbound: number;
   /** Units that have left here. */
   outbound: number;
+  /**
+   * How much of what is here belongs to a record that has been archived.
+   *
+   * Product Management hides archived records, so this stock was counted in
+   * the total on this page and appeared on no other screen — the two numbers
+   * differed by a hundred units with nothing anywhere to explain the gap.
+   * Naming it is the difference between an unexplained total and a to-do.
+   */
+  archived: number;
 }
 
 // What those two numbers mean — `stockAt` — is in @slk/domain, not here.
@@ -47,6 +56,7 @@ export async function loadLocations(): Promise<LocationRow[]> {
     movements: number;
     inbound: number;
     outbound: number;
+    archived: number;
   }>(sql`
     select
       l.id, l.code, l.name, l.is_internal, l.is_active, l.sort_order,
@@ -58,7 +68,16 @@ export async function loadLocations(): Promise<LocationRow[]> {
       -- means differs by kind of location. The ledger is append-only and
       -- every qty is positive, so summing each direction is the whole of it.
       coalesce((select sum(m.qty)::int from movement m where m.to_location_id   = l.id), 0) as inbound,
-      coalesce((select sum(m.qty)::int from movement m where m.from_location_id = l.id), 0) as outbound
+      coalesce((select sum(m.qty)::int from movement m where m.from_location_id = l.id), 0) as outbound,
+      -- Net, because for this one only the position matters, not the traffic.
+      coalesce((
+        select sum(case when m.to_location_id = l.id then m.qty else -m.qty end)::int
+        from movement m
+        join colourway cw on cw.id = m.colourway_id
+        join design d     on d.id  = cw.design_id
+        where (m.to_location_id = l.id or m.from_location_id = l.id)
+          and (d.status = 'archived' or not cw.is_active)
+      ), 0) as archived
     from location l
     order by l.sort_order, l.name
   `);
@@ -73,6 +92,7 @@ export async function loadLocations(): Promise<LocationRow[]> {
     movements: r.movements,
     inbound: r.inbound,
     outbound: r.outbound,
+    archived: r.archived,
   }));
 }
 

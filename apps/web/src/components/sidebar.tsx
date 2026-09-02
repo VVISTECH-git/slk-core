@@ -83,16 +83,60 @@ const railStore = {
   },
 };
 
+/**
+ * Below this the sidebar is a rail whatever the stored preference says.
+ *
+ * 240px of navigation out of a 390px phone leaves 150px of content — the
+ * table squeezed to a sliver, the heading clipped mid-word, the toolbar in a
+ * single stacked column. Collapsing it by hand fixed all of that, which is
+ * the tell: the width was never a preference at this size, it was a default
+ * nobody could have wanted.
+ */
+const NARROW = "(max-width: 640px)";
+
+const narrowStore = {
+  subscribe(listener: () => void) {
+    const query = window.matchMedia(NARROW);
+    query.addEventListener("change", listener);
+
+    // And the plain resize, because a media-query change event is not
+    // guaranteed to arrive when the viewport is being emulated rather than
+    // dragged — which left the rail stuck across the breakpoint. `get` is a
+    // matchMedia read either way, so an extra listener costs a comparison.
+    window.addEventListener("resize", listener);
+
+    return () => {
+      query.removeEventListener("change", listener);
+      window.removeEventListener("resize", listener);
+    };
+  },
+
+  get(): boolean {
+    return window.matchMedia(NARROW).matches;
+  },
+};
+
 export function Sidebar() {
   const pathname = usePathname();
 
-  const railed = useSyncExternalStore(
+  const chosen = useSyncExternalStore(
     railStore.subscribe,
     railStore.get,
     // The server renders it expanded; a collapsed preference applies as soon
     // as the client takes over.
     () => false,
   );
+
+  // The server has no viewport either, and guessing narrow would flash a rail
+  // at every desktop reader. Guessing wide flashes labels on a phone for one
+  // frame, which is the cheaper mistake.
+  const narrow = useSyncExternalStore(
+    narrowStore.subscribe,
+    narrowStore.get,
+    () => false,
+  );
+
+  const railed = chosen || narrow;
 
   const toggle = useCallback(() => {
     railStore.set(!railStore.get());
@@ -118,15 +162,34 @@ export function Sidebar() {
           railed ? "justify-center px-2" : "px-4"
         }`}
       >
-        {!railed && (
+        {railed ? (
+          // On a phone the toggle is gone, so without this the header is an
+          // empty ruled strip. The initials keep the rail identifiable and
+          // give the border something to sit under.
+          narrow && (
+            <span
+              title="Sree Lakshmi Kalamkari"
+              className="text-[13px] font-semibold tracking-tight text-ink"
+            >
+              SLK
+            </span>
+          )
+        ) : (
           <span className="min-w-0 flex-1 text-[15px] leading-tight font-semibold tracking-tight text-ink">
             Sree Lakshmi Kalamkari
           </span>
         )}
 
+        {/*
+          Hidden on a phone rather than disabled. There is nothing it could
+          do there — expanding would leave 150px of content — and a control
+          that is present but refuses is worse than one that knows when it
+          does not apply.
+        */}
         <button
           type="button"
           onClick={toggle}
+          hidden={narrow}
           aria-expanded={!railed}
           aria-label={railed ? "Expand sidebar" : "Collapse sidebar"}
           title={railed ? "Expand sidebar" : "Collapse sidebar"}
@@ -159,6 +222,10 @@ export function Sidebar() {
               <Link
                 href={item.href}
                 aria-current={active ? "page" : undefined}
+                // The label is the accessible name whether or not it is
+                // drawn. A railed link used to carry only a `title`, which a
+                // screen reader may skip and a touch screen never shows.
+                aria-label={item.label}
                 title={railed ? item.label : undefined}
                 className={`flex items-center gap-2.5 rounded-md text-[13.5px] transition-colors ${
                   railed ? "justify-center px-2 py-2.5" : "px-3 py-2"

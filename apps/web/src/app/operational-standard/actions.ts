@@ -154,13 +154,12 @@ export async function addClassification(
     return { ok: false, message: `"${clash.label}" already exists.` };
   }
 
-  const [next] = await db.execute<{ max: number }>(sql`
-    select coalesce(max(sort_order), -1)::int as max from lookup_list
-  `);
-
+  // No sort_order. Classifications read by name, so a new one files itself in
+  // the right place; taking max + 1 put every one added here at the bottom of
+  // an otherwise alphabetical list and made the order look broken.
   await db.execute(sql`
-    insert into lookup_list (code, label, sort_order, parent_list_id)
-    values (${slugify(clean)}, ${clean}, ${(next?.max ?? -1) + 1}, ${dependsOnId})
+    insert into lookup_list (code, label, parent_list_id)
+    values (${slugify(clean)}, ${clean}, ${dependsOnId})
   `);
 
   done();

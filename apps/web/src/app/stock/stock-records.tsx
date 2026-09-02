@@ -45,6 +45,7 @@ const COLUMNS = [
   { key: "colour", label: "Colour", width: 140 },
   { key: "motif", label: "Motif", width: 130 },
   { key: "location", label: "Location", width: 150 },
+  { key: "status", label: "Status", width: 120 },
   { key: "receivedAt", label: "Received", width: 124 },
 
   // Everything else a piece carries. Available in the Columns menu rather
@@ -55,6 +56,7 @@ const COLUMNS = [
   { key: "motifCategory", label: "Motif Category", width: 148 },
   { key: "reference", label: "Reference", width: 150 },
   { key: "serial", label: "Serial", width: 88 },
+  { key: "receivedInto", label: "Received Into", width: 150 },
 
   { key: "price", label: "Price", width: 110 },
 ] as const;
@@ -72,6 +74,7 @@ const OFF_BY_DEFAULT = new Set<ColumnKey>([
   "motifCategory",
   "reference",
   "serial",
+  "receivedInto",
 ]);
 
 const DEFAULT_VISIBLE: readonly string[] = COLUMN_KEYS.filter(
@@ -90,7 +93,14 @@ const NUMERIC = new Set<ColumnKey>(["serial", "price"]);
  * reason: it has its own dropdown in the header, and offering it twice is how
  * you end up with two controls disagreeing about the same thing.
  */
-const NOT_FILTERABLE = new Set<ColumnKey>(["itemCode", "designCode", "location"]);
+const NOT_FILTERABLE = new Set<ColumnKey>([
+  "itemCode",
+  "designCode",
+  "location",
+  // Status has its own dropdown in the header for the same reason Location
+  // does, and it starts narrowed rather than open — see `kept`.
+  "status",
+]);
 
 /** Three icon buttons at ~28px plus gaps and cell padding. */
 const ACTIONS_WIDTH = 116;
@@ -103,12 +113,24 @@ function money(minor: number | null): string {
     : rupees(minor);
 }
 
+/**
+ * What a piece's status says.
+ *
+ * "Left stock" rather than "Sold", because the ledger records how many went
+ * out and not which saree went with them — a sale is typed as a quantity, not
+ * scanned. Naming a reason we cannot know would be worse than naming none.
+ */
+const IN_STOCK = "In stock";
+const LEFT_STOCK = "Left stock";
+
 function cell(row: PieceRow, key: ColumnKey): string {
   switch (key) {
     case "price":
       return money(row.priceMinor);
     case "serial":
       return String(row.serial);
+    case "status":
+      return row.isHeld ? IN_STOCK : LEFT_STOCK;
     default:
       return row[key] ?? "";
   }
@@ -131,6 +153,9 @@ function sortValue(row: PieceRow, key: ColumnKey): string | number {
     // The ISO date comes down the wire beside it for exactly this.
     case "receivedAt":
       return row.receivedOn ?? "";
+    // In stock first, so the rows that matter are the ones at the top.
+    case "status":
+      return row.isHeld ? 0 : 1;
     default:
       return (row[key] ?? "").toLowerCase();
   }
@@ -145,6 +170,17 @@ export function StockRecords({
 }) {
   const [query, setQuery] = useState("");
   const [location, setLocation] = useState("");
+
+  /**
+   * Which pieces the table is about, defaulting to the ones we still have.
+   *
+   * The page used to show every piece ever minted with no way to tell the
+   * sold ones apart, so its count and Product Management's never agreed. The
+   * default is the answer to the question the screen is for — what is on the
+   * shelf — and the other two settings are there because the history is worth
+   * being able to reach, not worth being counted.
+   */
+  const [kept, setKept] = useState<"held" | "gone" | "all">("held");
   const [filters, setFilters] = useState<Filters<ColumnKey>>({});
   const [sort, setSort] = useState<{ key: ColumnKey; dir: 1 | -1 } | null>(null);
   const [page, setPage] = useState(1);
@@ -194,6 +230,8 @@ export function StockRecords({
     const q = query.trim().toLowerCase();
 
     let out = pieces.filter((p) => {
+      if (kept === "held" && !p.isHeld) return false;
+      if (kept === "gone" && p.isHeld) return false;
       if (location !== "" && p.location !== location) return false;
 
       for (const [key, want] of Object.entries(filters)) {
@@ -220,16 +258,30 @@ export function StockRecords({
     }
 
     return out;
-  }, [pieces, query, location, filters, sort]);
+  }, [pieces, query, location, filters, sort, kept]);
+
+  /** Pieces the ledger says are gone — the ones the default view leaves out. */
+  const departed = useMemo(() => pieces.filter((p) => !p.isHeld).length, [pieces]);
 
   const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const current = Math.min(page, pages);
   const from = (current - 1) * PER_PAGE;
   const pageRows = filtered.slice(from, from + PER_PAGE);
 
-  /** Distinct values actually present, so a filter can never return nothing. */
-  const valuesFor = (key: ColumnKey): string[] =>
-    [...new Set(pieces.map((p) => cell(p, key)).filter((v) => v !== ""))].sort();
+  /**
+   * Distinct values actually present, so a filter can never return nothing.
+   *
+   * Drawn from the pieces the status dropdown is letting through rather than
+   * from all of them — otherwise switching to In Stock leaves the panel
+   * offering colours that only sold sarees had.
+   */
+  const valuesFor = (key: ColumnKey): string[] => {
+    const pool = pieces.filter(
+      (p) => kept === "all" || (kept === "held") === p.isHeld,
+    );
+
+    return [...new Set(pool.map((p) => cell(p, key)).filter((v) => v !== ""))].sort();
+  };
 
   const copy = async (what: string, value: string | null) => {
     if (value === null) {
@@ -268,6 +320,20 @@ export function StockRecords({
         <h1 className="mr-auto text-[24px] font-semibold tracking-tight text-ink">
           Stock Records
         </h1>
+
+        <select
+          value={kept}
+          onChange={(e) => {
+            setKept(e.target.value as "held" | "gone" | "all");
+            setPage(1);
+          }}
+          aria-label="Filter by whether we still hold the piece"
+          className="rounded-lg border border-rule-2 bg-surface px-3 py-2 text-[13.5px] text-ink"
+        >
+          <option value="held">In Stock</option>
+          <option value="gone">Left Stock</option>
+          <option value="all">All Pieces</option>
+        </select>
 
         <select
           value={location}
@@ -363,8 +429,29 @@ export function StockRecords({
           <span className="text-[12.5px] text-muted">
             {filtered.length.toLocaleString("en-IN")} piece
             {filtered.length === 1 ? "" : "s"}
+            {kept === "held" && " in stock"}
+            {kept === "gone" && " that have left"}
             {location && ` at ${location}`}
             {query.trim() !== "" && ` matching “${query.trim()}”`}
+            {/*
+              Said here rather than left to be discovered, because a count
+              that quietly excludes things is the bug this screen had.
+            */}
+            {kept === "held" && departed > 0 && (
+              <>
+                {" — "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setKept("gone");
+                    setPage(1);
+                  }}
+                  className="underline decoration-dotted underline-offset-2 hover:text-ink"
+                >
+                  {departed.toLocaleString("en-IN")} more have left stock
+                </button>
+              </>
+            )}
           </span>
         </div>
 
@@ -641,7 +728,12 @@ function PiecePanel({
     ["Colour", piece.colour ?? "—"],
     ["Motif", piece.motif ?? "—"],
     ["Motif Category", piece.motifCategory ?? "—"],
+    // Where it is, then where it came in. A piece that has left has no first
+    // answer, and saying "—" beside a warehouse name it no longer sits in is
+    // the whole point of the distinction.
+    ["Status", piece.isHeld ? IN_STOCK : LEFT_STOCK],
     ["Location", piece.location ?? "—"],
+    ["Received Into", piece.receivedInto ?? "—"],
     ["Received", piece.receivedAt ?? "—"],
     ["Reference", piece.reference ?? "—"],
     ["Serial", String(piece.serial)],

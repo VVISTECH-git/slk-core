@@ -48,3 +48,31 @@
 # So the invariant to check, if db:generate ever starts offering strange
 # things again: the highest-numbered snapshot should match the
 # highest-numbered migration. 0003 against 0032 was what broke it.
+#
+# ── meta/_journal.json and the order things run in ──────────────────────────
+#
+# The second invariant, and the one that fails quietly: `when` must increase
+# with `idx`.
+#
+# drizzle decides what to apply by comparing timestamps, not by remembering
+# what it has run:
+#
+#     if (!lastDbMigration || Number(lastDbMigration.created_at) < migration.folderMillis)
+#
+# — drizzle-orm/pg-core/dialect.js. A migration runs only when its journal
+# `when` is greater than the highest already recorded. The hash is stored and
+# never compared. So one entry out of order and it is skipped: not applied,
+# not recorded, no error, and the next deploy does not retry it.
+#
+# That has happened twice. Both times a `when` was written by hand and put in
+# the future, and the next generated migration got the real clock, which was
+# smaller. 0038 added a column that then was not there.
+#
+# `pnpm db:check` refuses if the journal is out of order, names a file the
+# folder does not have, or has a file the journal does not name — the three
+# ways this folder has gone wrong so far. It runs ahead of `db:migrate`, so a
+# bad journal stops the deploy in the build log rather than in production a
+# day later. `pnpm db:check --fix` repairs the ordering, and `db:generate`
+# runs it automatically, so the trap is not laid in the first place.
+#
+# Do not hand-write a `when`. Let db:generate and --fix decide it.

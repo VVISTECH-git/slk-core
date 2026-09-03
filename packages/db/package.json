@@ -8,14 +8,16 @@
   },
   "scripts": {
     "dev:db": "tsx scripts/dev-db.ts",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:generate": "drizzle-kit generate && tsx scripts/migrations.ts --fix",
+    "db:migrate": "tsx scripts/migrations.ts && drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
     "db:demo": "tsx scripts/demo.ts",
     "db:clean": "tsx scripts/clean.ts",
     "db:actor": "tsx scripts/actor.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:testdata": "tsx scripts/testdata.ts",
+    "db:check": "tsx scripts/migrations.ts"
   },
   "dependencies": {
     "@slk/domain": "workspace:*",

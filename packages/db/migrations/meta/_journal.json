@@ -288,6 +288,13 @@
       "when": 1788435002000,
       "tag": "0040_serialisation_is_a_property_not_a_name",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1788435003000,
+      "tag": "0041_a_consignment_can_carry_its_own_price",
+      "breakpoints": true
     }
   ]
 }

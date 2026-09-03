@@ -272,6 +272,25 @@ export const batch = pgTable(
       onDelete: "restrict",
     }),
 
+    /**
+     * What this consignment sells for, where it differs from the line.
+     *
+     * Handloom does not repeat. The indigo in March is not the indigo in July,
+     * the cotton costs what it costs that month, and two runs of the same teal
+     * saree can be worth different money — which is also why each consignment
+     * is listed separately rather than as a variant.
+     *
+     * Null inherits the colourway's price, so a consignment carries one only
+     * when this cloth is genuinely worth something else. Read them through the
+     * `batch_price` view rather than coalescing at each call site; three copies
+     * of that rule is how one of them ends up disagreeing.
+     */
+    costMinor: bigint("cost_minor", { mode: "number" }),
+    makingMinor: bigint("making_minor", { mode: "number" }),
+    wholesaleMinor: bigint("wholesale_minor", { mode: "number" }),
+    retailMinor: bigint("retail_minor", { mode: "number" }),
+    mrpMinor: bigint("mrp_minor", { mode: "number" }),
+
     receivedAt: timestamp("received_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

@@ -768,10 +768,17 @@ export function RecordEditor({
                 </span>
               </label>
 
+              {/*
+                It said the design code is printed on QR labels. It is not —
+                the labels carry the item code and the product code, which are
+                what a scanner reads and what identifies a saree and the
+                delivery it came in. The design code names the recipe, and a
+                recipe is not a thing anybody picks off a shelf.
+              */}
               <p className="mt-4 text-[12.5px] leading-relaxed text-faint">
                 {isNew
-                  ? "The design code is built from product type, region and fibre when you save."
-                  : `Design code ${record.code} does not change when attributes do — it is printed on QR labels.`}
+                  ? "The design code is built from product type, region and fibre when you save. Labels carry the product and item codes, not this."
+                  : `Design code ${record.code} names the recipe and does not change when attributes do. Labels carry the product code and the item code.`}
               </p>
             </>
           )}

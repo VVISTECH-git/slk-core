@@ -8,6 +8,7 @@ import { colourway, design, location, movement } from "@slk/db";
 import { designCode, designName } from "@slk/domain";
 
 import { db } from "@/lib/db";
+import { remove } from "@/lib/storage";
 import {
   ATTRIBUTES,
   ATTRIBUTE_KEYS,
@@ -363,6 +364,117 @@ export async function archiveRecord(colourwayId: string): Promise<ActionResult> 
       (remaining?.n ?? 0) === 0
         ? "Record archived. Its stock history is kept."
         : "Colour archived. The design's other colours are unaffected.",
+  };
+}
+
+/**
+ * Removes a record and everything under it. Owner only.
+ *
+ * Archiving hides a record and keeps its history, which is right for a line
+ * that was real and has stopped selling. This is for one that should never
+ * have existed — test data, a delivery entered against the wrong design, a
+ * line created twice — and there was no way to say so: the app could only
+ * archive, and an archived record goes on counting towards the location
+ * totals while appearing on no other screen.
+ *
+ * Everything, in one transaction. A record whose movements were deleted but
+ * whose pieces survived would leave item codes pointing at nothing, and a
+ * half-deleted record is worse than either state.
+ *
+ * The order is the foreign keys read backwards: movements reference pieces,
+ * consignments and the colourway; pieces reference consignments; consignments
+ * reference the colourway. Images and pieces would cascade, but they are
+ * deleted explicitly so that the one statement that must come first — the
+ * movements — cannot be reordered by somebody trusting a cascade to sort it
+ * out.
+ */
+export async function deleteRecord(colourwayId: string): Promise<ActionResult> {
+  const denied = await guard("owner");
+  if (denied !== null) return denied;
+
+  const [found] = await db.execute<{
+    designId: string;
+    name: string;
+    code: string;
+    colour: string | null;
+    others: number;
+    movements: number;
+    pieces: number;
+  }>(sql`
+    select
+      d.id                                   as "designId",
+      d.name                                 as name,
+      d.code                                 as code,
+      v.label                                as colour,
+      (select count(*)::int from colourway c
+        where c.design_id = d.id and c.id <> cw.id)     as others,
+      (select count(*)::int from movement m
+        where m.colourway_id = cw.id)                   as movements,
+      (select count(*)::int from piece p
+        where p.colourway_id = cw.id)                   as pieces
+    from colourway cw
+    join design d on d.id = cw.design_id
+    left join lookup_value v on v.id = cw.colour_id
+    where cw.id = ${colourwayId}
+  `);
+
+  if (found === undefined) {
+    return { ok: false, message: "That record no longer exists." };
+  }
+
+  /*
+    The photographs are read before the rows go and deleted after.
+
+    R2 is not in the transaction and cannot be rolled back, so removing an
+    object first would leave a record pointing at nothing if the delete then
+    failed. A key whose row is gone is only wasted bytes.
+  */
+  const photographs = await db.execute<{ storageKey: string }>(sql`
+    select storage_key as "storageKey" from image
+    where colourway_id = ${colourwayId} and storage_key is not null
+  `);
+
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`delete from movement where colourway_id = ${colourwayId}`);
+    await tx.execute(sql`delete from piece    where colourway_id = ${colourwayId}`);
+    await tx.execute(sql`delete from batch    where colourway_id = ${colourwayId}`);
+    await tx.execute(sql`delete from image    where colourway_id = ${colourwayId}`);
+    await tx.execute(sql`delete from colourway where id = ${colourwayId}`);
+
+    // The last colour going takes the design with it. A design with no
+    // colourways is a name nothing can be sold under.
+    if (found.others === 0) {
+      await tx.execute(sql`delete from design where id = ${found.designId}`);
+    }
+  });
+
+  for (const image of photographs) {
+    // Best effort. A photograph left in the bucket costs storage; a delete
+    // that fails because the bucket was unreachable would cost the record.
+    await remove(image.storageKey).catch(() => undefined);
+  }
+
+  revalidatePath("/records");
+  revalidatePath("/stock");
+  revalidatePath("/locations");
+
+  const what = found.others === 0 ? found.code : `${found.colour ?? "the colour"} of ${found.code}`;
+  const also = [
+    found.pieces > 0 ? `${found.pieces} piece${found.pieces === 1 ? "" : "s"}` : null,
+    found.movements > 0
+      ? `${found.movements} movement${found.movements === 1 ? "" : "s"}`
+      : null,
+    photographs.length > 0
+      ? `${photographs.length} photograph${photographs.length === 1 ? "" : "s"}`
+      : null,
+  ].filter(Boolean);
+
+  return {
+    ok: true,
+    message:
+      also.length === 0
+        ? `Deleted ${what}.`
+        : `Deleted ${what}, with its ${also.join(", ")}.`,
   };
 }
 

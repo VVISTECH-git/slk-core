@@ -8,7 +8,7 @@ import { RecordsTable } from "./records-table";
 export const dynamic = "force-dynamic";
 
 export default async function RecordsPage() {
-  await requirePage();
+  const who = await requirePage();
 
   const [rows, options, locations] = await Promise.all([
     // Archived included, hidden by the grid until asked for. Stock against an
@@ -36,6 +36,7 @@ export default async function RecordsPage() {
       industries={industries}
       options={options}
       locations={locations}
+      role={who.role}
     />
   );
 }

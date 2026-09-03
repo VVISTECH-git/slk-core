@@ -178,11 +178,14 @@ export function RecordsTable({
   industries,
   options,
   locations,
+  role,
 }: {
   rows: RecordRow[];
   industries: string[];
   options: Options;
   locations: PickableLocation[];
+  /** Whose grid this is. Only an owner is offered a permanent delete. */
+  role: string;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState<{
@@ -828,6 +831,7 @@ export function RecordsTable({
       {archiving && (
         <ArchiveDialog
           record={{ id: archiving.id, name: archiving.name, code: archiving.code }}
+          canDelete={role === "owner"}
           onClose={() => setArchiving(null)}
           onDone={done}
         />

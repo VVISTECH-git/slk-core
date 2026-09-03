@@ -22,6 +22,7 @@ import {
 
 import {
   archiveRecord,
+  deleteRecord,
   createRecord,
   recordMovement,
   saveRecord,
@@ -1728,14 +1729,25 @@ function StockTab({
 /** Confirms taking a record out of the catalogue, and says what that means. */
 export function ArchiveDialog({
   record,
+  canDelete,
   onClose,
   onDone,
 }: {
   record: { id: string; name: string; code: string };
+  /**
+   * Whether this person may remove it outright. Owners only.
+   *
+   * The check is in the action as well — this only decides whether the button
+   * is drawn, and a dialog is not a permission.
+   */
+  canDelete: boolean;
   onClose: () => void;
   onDone: (message: string) => void;
 }) {
   const [pending, startTransition] = useTransition();
+
+  /** Deleting asks a second time. There is nothing behind it. */
+  const [confirming, setConfirming] = useState(false);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
@@ -1751,18 +1763,31 @@ export function ArchiveDialog({
         className="relative w-full max-w-md rounded-xl border border-rule bg-surface p-6 shadow-2xl"
       >
         <h2 className="mb-2 text-[18px] font-semibold text-ink">
-          Archive This Record?
+          {confirming ? "Delete This Record?" : "Archive This Record?"}
         </h2>
         <p className="mb-3 text-[14px] leading-relaxed text-ink-2">
           {record.name}{" "}
-          <span className="font-mono text-[12px] text-faint">{record.code}</span> stops
-          appearing in the catalogue.
+          <span className="font-mono text-[12px] text-faint">{record.code}</span>{" "}
+          {confirming
+            ? "and everything under it goes: its colours, pieces, consignments, movements and photographs."
+            : "stops appearing in the catalogue."}
         </p>
-        <p className="mb-5 text-[13px] leading-relaxed text-muted">
-          It is archived rather than deleted. The movements recording what was
-          received, sold and written off refer to this record, and removing it would
-          leave the stock history unable to answer what happened.
-        </p>
+
+        {confirming ? (
+          <p className="mb-5 text-[13px] leading-relaxed text-muted">
+            This cannot be undone, and the stock history goes with it — nothing
+            will be able to say what was received or sold against this record.
+            Archive it instead if it was ever real; delete it if it should never
+            have existed.
+          </p>
+        ) : (
+          <p className="mb-5 text-[13px] leading-relaxed text-muted">
+            Archiving keeps the history. The movements recording what was
+            received, sold and written off refer to this record, and they go on
+            counting towards the location totals whether or not the catalogue
+            shows it.
+          </p>
+        )}
         <div className="flex justify-end gap-2">
           <button
             type="button"
@@ -1771,18 +1796,37 @@ export function ArchiveDialog({
           >
             Cancel
           </button>
+          {canDelete && !confirming && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => setConfirming(true)}
+              className="rounded-md border border-brick px-3 py-2 text-[13.5px] font-medium text-brick hover:bg-brick-soft disabled:opacity-50"
+            >
+              Delete instead
+            </button>
+          )}
+
           <button
             type="button"
             disabled={pending}
             onClick={() => {
               startTransition(async () => {
-                const outcome = await archiveRecord(record.id);
+                const outcome = confirming
+                  ? await deleteRecord(record.id)
+                  : await archiveRecord(record.id);
                 onDone(outcome.message);
               });
             }}
             className="rounded-md bg-brick px-4 py-2 text-[13.5px] font-medium text-on-brick hover:bg-brick-2 disabled:opacity-50"
           >
-            {pending ? "Archiving…" : "Archive"}
+            {pending
+              ? confirming
+                ? "Deleting…"
+                : "Archiving…"
+              : confirming
+                ? "Delete permanently"
+                : "Archive"}
           </button>
         </div>
       </div>

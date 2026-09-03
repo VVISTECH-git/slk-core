@@ -24,6 +24,20 @@ export interface ActionResult {
   errors?: Record<string, string>;
   /** A record the caller should open next — see copyRecord. */
   colourwayId?: string;
+
+  /**
+   * The consignments this call minted — 300042 — newest first.
+   *
+   * Returned rather than left to be read back, and that is the whole point.
+   * A client that wanted the product code had to create, then GET the record,
+   * then take `consignments[0]`; on production that second request came back
+   * with an empty list and the phone fell back to the design code, which is
+   * the one number nobody on the floor is ever asked about. Handing it back
+   * from the write removes the round trip and the race with it.
+   *
+   * Empty when nothing arrived — a record can exist before any stock does.
+   */
+  productCodes?: string[];
 }
 
 /** Everything the editor can change, as it arrives from the form. */
@@ -645,13 +659,15 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
   if (cw !== undefined) await setImageSlots(cw.id, draft.imageSlots);
 
   const opening =
-    cw === undefined ? null : await recordOpeningStock(cw.id, draft.openingStock);
+    cw === undefined
+      ? { message: null, codes: [] }
+      : await recordOpeningStock(cw.id, draft.openingStock);
 
   revalidatePath("/records");
 
   return {
     ok: true,
-    message: `Created ${code}.${opening === null ? "" : ` ${opening}`}`,
+    message: `Created ${code}.${opening.message === null ? "" : ` ${opening.message}`}`,
     /*
       What was just made.
 
@@ -661,6 +677,7 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
       is new. The API returns this as the created record's id.
     */
     colourwayId: cw?.id,
+    productCodes: opening.codes,
   };
 }
 
@@ -672,13 +689,14 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
  * makes the opening count explicable a year later — the same reason the
  * ledger is append-only and every quantity is positive.
  *
- * Returns a sentence describing what it recorded, or null if there was
- * nothing to record.
+ * Returns a sentence describing what it recorded — null when there was
+ * nothing to record — and the product codes it minted, which the caller hands
+ * straight back to whoever asked for the write. See ActionResult.productCodes.
  */
 async function recordOpeningStock(
   colourwayId: string,
   lines: { locationId: string; qty: string }[],
-): Promise<string | null> {
+): Promise<{ message: string | null; codes: string[] }> {
   const wanted = lines
     .map((line) => ({ locationId: line.locationId, qty: Math.round(Number(line.qty)) }))
     .filter(
@@ -686,7 +704,7 @@ async function recordOpeningStock(
         line.locationId !== "" && Number.isFinite(line.qty) && line.qty > 0,
     );
 
-  if (wanted.length === 0) return null;
+  if (wanted.length === 0) return { message: null, codes: [] };
 
   const locations = await db.select().from(location);
   const byId = new Map(locations.map((l) => [l.id, l]));
@@ -698,7 +716,11 @@ async function recordOpeningStock(
     locations.find((l) => !l.isInternal);
 
   if (source === undefined) {
-    return "Opening stock not recorded — no external location is set up to receive it from.";
+    return {
+      message:
+        "Opening stock not recorded — no external location is set up to receive it from.",
+      codes: [],
+    };
   }
 
   const usable = wanted.filter((line) => {
@@ -708,7 +730,7 @@ async function recordOpeningStock(
     return target !== undefined && target.isActive && target.id !== source.id;
   });
 
-  if (usable.length === 0) return null;
+  if (usable.length === 0) return { message: null, codes: [] };
 
   // Each line is its own consignment, because each is a separate quantity
   // landing in a separate place — which is exactly what a product code
@@ -751,7 +773,7 @@ async function recordOpeningStock(
       ? `into ${byId.get(usable[0]!.locationId)?.name}`
       : `across ${usable.length} locations`;
 
-  return `${total} ${where} — product ${codes.join(", ")}.`;
+  return { message: `${total} ${where} — product ${codes.join(", ")}.`, codes };
 }
 
 /**

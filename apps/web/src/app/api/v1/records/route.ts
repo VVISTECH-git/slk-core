@@ -94,5 +94,18 @@ export const POST = guarded("floor", async (request, actor) => {
   // same id rather than making a second record.
   await complete(key, result.colourwayId);
 
-  return { id: result.colourwayId };
+  /*
+    The consignment codes come back with the id, and that is deliberate.
+
+    A client that wants the product code — which is what the floor is
+    actually holding — used to create, then GET the record, then read
+    `consignments[0]`. On production that second request came back with an
+    empty list and slk-mobile fell back to announcing the design code, the
+    one number nobody is ever asked about. Answering from the write is one
+    round trip instead of two and cannot race with itself.
+
+    Empty when no opening stock was entered: a record may exist before
+    anything has arrived against it.
+  */
+  return { id: result.colourwayId, productCodes: result.productCodes ?? [] };
 });

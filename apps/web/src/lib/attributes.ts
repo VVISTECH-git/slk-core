@@ -144,6 +144,18 @@ export interface RecordDetail {
     reference: string | null;
     note: string | null;
     items: string[];
+
+    /**
+     * What this consignment is listed as, if it differs from the rest of the
+     * line. Null on every one of these means "compose it" — see
+     * @slk/domain/listing — which is the answer for the batch that is the
+     * fourth run of the same saree and does not need anybody's afternoon.
+     */
+    title: string | null;
+    description: string | null;
+    /** Grams. Null until entered — there is no honest default for a weight. */
+    weightGrams: number | null;
+    hsnCode: string | null;
   }[];
 
   /**

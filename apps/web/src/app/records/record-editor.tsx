@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { colourSwatch, isPaleSwatch } from "@slk/domain/colour";
+import { listingDescription, listingTitle } from "@slk/domain/listing";
 import { rupees } from "@slk/domain/money";
 import { titleCase } from "@slk/domain/naming";
 
@@ -26,6 +27,7 @@ import {
   createRecord,
   recordMovement,
   saveRecord,
+  setBatchListing,
   type ActionResult,
   type RecordDraft,
 } from "./actions";
@@ -247,6 +249,37 @@ export function RecordEditor({
    * appear as a group rather than sitting greyed out waiting.
    */
   const withBlouse = labelOf("garment_type", attributes.garmentType) === "With Blouse";
+
+  /*
+    What every consignment of this colourway would be listed as, if none of
+    them said otherwise.
+
+    Title and description both compose from things that live on the design
+    and the colourway — the taxonomy, the colour — never on the consignment,
+    so this one composed pair is what any batch here starts from. Worked out
+    here rather than per consignment: recomputing the same thirteen lookups
+    once for every row a colourway has ever received would be work with
+    nothing to show for it.
+  */
+  const composedTitle = listingTitle({
+    designName: name,
+    colour: labelOf("colour", colourId),
+    secondaryColour: labelOf("colour", secondaryColourId),
+  });
+
+  const composedDescription = listingDescription({
+    craftTechnique: craft,
+    textileMaterial: labelOf("textile_material", attributes.textileMaterial),
+    fibreType: labelOf("fibre_type", attributes.fibreType),
+    motif: labelOf("motif", attributes.motif),
+    motifCategory: labelOf("motif_category", attributes.motifCategory),
+    borderHeight: labelOf("border_height", attributes.borderHeight),
+    borderStyle: labelOf("border_style", attributes.borderStyle),
+    palluDesign: labelOf("pallu_design", attributes.palluDesign),
+    blouseAvailable: labelOf("garment_type", attributes.garmentType),
+    blouseStyle: labelOf("blouse_style", attributes.blouseStyle),
+    blouseMaterial: labelOf("blouse_material", attributes.blouseMaterial),
+  });
 
   const tabs = useMemo(() => {
     const list: { key: TabKey; label: string }[] = [
@@ -1030,6 +1063,8 @@ export function RecordEditor({
               openingStock={openingStock}
               setOpeningStock={setOpeningStock}
               onMoved={onSaved}
+              composedTitle={composedTitle}
+              composedDescription={composedDescription}
             />
           )}
 
@@ -1570,6 +1605,8 @@ function StockTab({
   openingStock,
   setOpeningStock,
   onMoved,
+  composedTitle,
+  composedDescription,
 }: {
   record: RecordDetail | null;
   quantity: string;
@@ -1579,6 +1616,9 @@ function StockTab({
   openingStock: OpeningLine[];
   setOpeningStock: (lines: OpeningLine[]) => void;
   onMoved: (message: string) => void;
+  /** What a consignment reads as when it has not said otherwise. */
+  composedTitle: string;
+  composedDescription: string;
 }) {
   /*
     Nothing to show yet, and no pretending otherwise.
@@ -1667,7 +1707,12 @@ function StockTab({
         item codes. The counts above say what is here now; this says what came
         in and against which invoice.
       </p>
-      <Consignments consignments={record.consignments} unit={unit} />
+      <Consignments
+        consignments={record.consignments}
+        unit={unit}
+        composedTitle={composedTitle}
+        composedDescription={composedDescription}
+      />
 
       <h3 className="mt-6 mb-2 text-[15px] font-semibold text-ink">
         Record A Movement
@@ -2246,11 +2291,35 @@ function RecordMovement({
 function Consignments({
   consignments,
   unit,
+  composedTitle,
+  composedDescription,
 }: {
   consignments: RecordDetail["consignments"];
   unit: string;
+  composedTitle: string;
+  composedDescription: string;
 }) {
-  const [open, setOpen] = useState<string | null>(null);
+  // Which row is expanded, and to which of its two panels — items or
+  // listing. One row open at a time: the panel is wide, and two open
+  // consignments would mean scrolling past one to read the other.
+  const [open, setOpen] = useState<{ id: string; panel: "items" | "listing" } | null>(
+    null,
+  );
+
+  /*
+    What has been saved this session, layered over what the record loaded
+    with.
+
+    Saving a listing does not reload the record — closing the whole editor to
+    change a weight would undo whatever else was mid-edit on another tab — so
+    without this the indicator dot and the panel's own fields would read the
+    value from before the save until the dialog was closed and reopened.
+  */
+  const [saved, setSaved] = useState<
+    Record<string, Partial<RecordDetail["consignments"][number]>>
+  >({});
+
+  const merged = consignments.map((c) => ({ ...c, ...saved[c.id] }));
 
   if (consignments.length === 0) {
     return (
@@ -2264,6 +2333,9 @@ function Consignments({
 
   const total = consignments.reduce((sum, c) => sum + c.qty, 0);
 
+  const toggle = (id: string, panel: "items" | "listing") =>
+    setOpen((prev) => (prev?.id === id && prev.panel === panel ? null : { id, panel }));
+
   return (
     <div className="overflow-hidden rounded-lg border border-rule bg-surface">
       <div className="flex items-baseline gap-3 border-b border-rule bg-surface-2 px-4 py-1.5 text-[11.5px] font-medium text-muted">
@@ -2274,18 +2346,9 @@ function Consignments({
         <span>Reference</span>
       </div>
 
-      {consignments.map((c) => (
+      {merged.map((c) => (
         <div key={c.id} className="border-b border-rule last:border-b-0">
-          <button
-            type="button"
-            onClick={() => setOpen(open === c.id ? null : c.id)}
-            // Only worth opening when there is something inside. Unserialised
-            // cloth arrives as a quantity, not as pieces.
-            disabled={c.items.length === 0}
-            className={`flex w-full items-baseline gap-3 px-4 py-2.5 text-left text-[13px] ${
-              c.items.length > 0 ? "hover:bg-surface-2" : "cursor-default"
-            }`}
-          >
+          <div className="flex items-baseline gap-3 px-4 py-2.5 text-[13px]">
             <span className="w-24 font-mono text-[13px] font-medium text-ink">
               {c.code}
             </span>
@@ -2298,14 +2361,35 @@ function Consignments({
               {c.reference ?? c.note ?? "—"}
             </span>
 
-            {c.items.length > 0 && (
-              <span className="flex-none text-[12px] text-faint">
-                {open === c.id ? "Hide" : `${c.items.length} items`}
-              </span>
-            )}
-          </button>
+            <div className="flex flex-none items-center gap-3">
+              {c.items.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => toggle(c.id, "items")}
+                  className="text-[12px] text-faint hover:text-ink-2"
+                >
+                  {open?.id === c.id && open.panel === "items"
+                    ? "Hide"
+                    : `${c.items.length} items`}
+                </button>
+              )}
 
-          {open === c.id && (
+              <button
+                type="button"
+                onClick={() => toggle(c.id, "listing")}
+                title="What this consignment is listed as, wherever it is sold"
+                className={`text-[12px] hover:text-ink-2 ${
+                  c.title || c.description || c.weightGrams || c.hsnCode
+                    ? "font-medium text-brick"
+                    : "text-faint"
+                }`}
+              >
+                {open?.id === c.id && open.panel === "listing" ? "Hide" : "Listing"}
+              </button>
+            </div>
+          </div>
+
+          {open?.id === c.id && open.panel === "items" && (
             <div className="border-t border-rule bg-surface-2 px-4 py-2.5">
               <p className="mb-1.5 text-[11.5px] text-muted">
                 Item codes — one per {unit.replace(/s$/, "")}, each on its own
@@ -2323,6 +2407,17 @@ function Consignments({
               </div>
             </div>
           )}
+
+          {open?.id === c.id && open.panel === "listing" && (
+            <BatchListingPanel
+              batch={c}
+              composedTitle={composedTitle}
+              composedDescription={composedDescription}
+              onSaved={(patch) =>
+                setSaved((prev) => ({ ...prev, [c.id]: { ...prev[c.id], ...patch } }))
+              }
+            />
+          )}
         </div>
       ))}
 
@@ -2339,6 +2434,131 @@ function Consignments({
         <span className="text-[12px] font-normal text-muted">
           received all time
         </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What this consignment is called and shows, wherever it is sold.
+ *
+ * Every field composes when it is blank — see @slk/domain/listing — so this
+ * is never a form somebody has to fill in before a batch can be listed. It is
+ * where the run that earns a paragraph gets one.
+ */
+function BatchListingPanel({
+  batch,
+  composedTitle,
+  composedDescription,
+  onSaved,
+}: {
+  batch: RecordDetail["consignments"][number];
+  composedTitle: string;
+  composedDescription: string;
+  /** What actually landed, normalised the way the server stores it. */
+  onSaved: (patch: Partial<RecordDetail["consignments"][number]>) => void;
+}) {
+  const [title, setTitle] = useState(batch.title ?? "");
+  const [description, setDescription] = useState(batch.description ?? "");
+  const [weight, setWeight] = useState(
+    batch.weightGrams === null ? "" : String(batch.weightGrams),
+  );
+  const [hsn, setHsn] = useState(batch.hsnCode ?? "");
+
+  const [pending, startTransition] = useTransition();
+  const [result, setResult] = useState<ActionResult | null>(null);
+
+  const dirty =
+    title !== (batch.title ?? "") ||
+    description !== (batch.description ?? "") ||
+    weight !== (batch.weightGrams === null ? "" : String(batch.weightGrams)) ||
+    hsn !== (batch.hsnCode ?? "");
+
+  const save = () => {
+    // The same blank-means-clear normalisation the action applies, so what
+    // this reports as saved is what is actually now in the database rather
+    // than the raw text of the fields.
+    const normalised = {
+      title: title.trim() === "" ? null : title.trim(),
+      description: description.trim() === "" ? null : description.trim(),
+      weightGrams: weight.trim() === "" ? null : Number(weight),
+      hsnCode: hsn.trim() === "" ? null : hsn.trim(),
+    };
+
+    startTransition(async () => {
+      const outcome = await setBatchListing(batch.id, normalised);
+      setResult(outcome);
+      if (outcome.ok) onSaved(normalised);
+    });
+  };
+
+  return (
+    <div className="flex flex-col gap-4 border-t border-rule bg-surface-2 px-4 py-3.5">
+      <label className="block">
+        <span className="mb-1 block text-[12px] text-ink-2">Title</span>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder={composedTitle}
+          className="w-full rounded-md border border-rule-2 bg-surface px-3 py-1.5 text-[13.5px] text-ink placeholder:text-faint"
+        />
+      </label>
+
+      <label className="block">
+        <span className="mb-1 block text-[12px] text-ink-2">Description</span>
+        <textarea
+          rows={3}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder={composedDescription || "Nothing composes yet — the taxonomy for this record is not filled in."}
+          className="w-full rounded-md border border-rule-2 bg-surface px-3 py-1.5 text-[13.5px] leading-relaxed text-ink placeholder:text-faint"
+        />
+        <span className="mt-1 block text-[11px] text-faint">
+          Blank uses the sentence above, composed from Craft & Design. Typing
+          here replaces it for this consignment only.
+        </span>
+      </label>
+
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block">
+          <span className="mb-1 block text-[12px] text-ink-2">Weight (g)</span>
+          <input
+            type="number"
+            min="1"
+            max="60000"
+            value={weight}
+            onChange={(e) => setWeight(e.target.value)}
+            placeholder="Not weighed"
+            className="w-full rounded-md border border-rule-2 bg-surface px-3 py-1.5 text-right text-[13.5px] tabular-nums text-ink placeholder:text-faint"
+          />
+        </label>
+
+        <label className="block">
+          <span className="mb-1 block text-[12px] text-ink-2">HSN Code</span>
+          <input
+            value={hsn}
+            onChange={(e) => setHsn(e.target.value)}
+            placeholder="Not set"
+            className="w-full rounded-md border border-rule-2 bg-surface px-3 py-1.5 font-mono text-[13.5px] text-ink placeholder:text-faint"
+          />
+        </label>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          disabled={!dirty || pending}
+          onClick={save}
+          className="rounded-md bg-brick px-3 py-1.5 text-[12.5px] font-medium text-on-brick hover:bg-brick-2 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {pending ? "Saving…" : "Save listing"}
+        </button>
+
+        {result && (
+          <span className={`text-[12.5px] ${result.ok ? "text-ok" : "text-brick"}`}>
+            {result.message}
+          </span>
+        )}
       </div>
     </div>
   );

@@ -208,7 +208,16 @@ async function labelsFor(
 }
 
 export async function saveRecord(draft: RecordDraft): Promise<ActionResult> {
-  const denied = await guard("office");
+  /*
+    `floor`, matching createRecord.
+
+    This was `office`, and the PATCH API route was changed to `floor` for the
+    reason its own docstring gives — whoever enters a record should be able to
+    correct their own typo — but this guard, one call down, was left behind.
+    The route's floor actors were reaching here and being refused "That needs
+    office access." on every save, which made the route's own claim false.
+  */
+  const denied = await guard("floor");
   if (denied !== null) return denied;
 
   const errors = await validate(draft);
@@ -1197,6 +1206,77 @@ export async function recordMovement(
   };
 }
 
+
+/**
+ * What this consignment is listed as, where it needs to say something the
+ * rest of the line does not.
+ *
+ * Every field here composes when it is null — see @slk/domain/listing for
+ * title and description, and the Images tab for a photograph's alt text.
+ * Setting one to an empty string is the same as leaving it null: it clears
+ * the override rather than storing an empty sentence.
+ */
+export interface BatchListingPatch {
+  title?: string | null;
+  description?: string | null;
+  /** Grams. */
+  weightGrams?: number | null;
+  hsnCode?: string | null;
+}
+
+export async function setBatchListing(
+  batchId: string,
+  patch: BatchListingPatch,
+): Promise<ActionResult> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
+  const [row] = await db.execute<{ code: string; colourwayId: string }>(sql`
+    select code, colourway_id as "colourwayId" from batch where id = ${batchId}
+  `);
+
+  if (row === undefined) {
+    return { ok: false, message: "That consignment no longer exists." };
+  }
+
+  const set: SQL[] = [];
+
+  if (patch.title !== undefined) {
+    const trimmed = patch.title?.trim() ?? "";
+    set.push(sql`title = ${trimmed === "" ? null : trimmed}`);
+  }
+
+  if (patch.description !== undefined) {
+    const trimmed = patch.description?.trim() ?? "";
+    set.push(sql`description = ${trimmed === "" ? null : trimmed}`);
+  }
+
+  if (patch.weightGrams !== undefined) {
+    if (
+      patch.weightGrams !== null &&
+      (!Number.isFinite(patch.weightGrams) ||
+        patch.weightGrams < 1 ||
+        patch.weightGrams > 60000)
+    ) {
+      return { ok: false, message: "That weight does not look right for a saree." };
+    }
+
+    set.push(sql`weight_grams = ${patch.weightGrams}`);
+  }
+
+  if (patch.hsnCode !== undefined) {
+    const trimmed = patch.hsnCode?.trim() ?? "";
+    set.push(sql`hsn_code = ${trimmed === "" ? null : trimmed}`);
+  }
+
+  if (set.length === 0) return { ok: true, message: "Nothing to change." };
+
+  await db.execute(sql`update batch set ${sql.join(set, sql`, `)} where id = ${batchId}`);
+
+  revalidatePath("/records");
+
+  return { ok: true, message: `Saved the listing for ${row.code}.` };
+}
 
 /* ----------------------------------------------------------------- codes */
 

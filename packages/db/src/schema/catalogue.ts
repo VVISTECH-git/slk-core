@@ -297,6 +297,35 @@ export const batch = pgTable(
     reference: text("reference"),
     note: text("note"),
 
+    /**
+     * What the storefront calls this consignment, when the composed name is
+     * not the one to read.
+     *
+     * Null composes from the design and its colour. The override is for the
+     * run that needs a hand — a festival edition, a collaboration, a name the
+     * taxonomy cannot reach.
+     */
+    title: text("title"),
+
+    /**
+     * The shopper-facing paragraph. Null composes from the taxonomy.
+     *
+     * Distinct from `note` directly above, which is internal and says why a
+     * delivery was short. This is the only text on the record written to be
+     * read by somebody deciding whether to buy.
+     */
+    description: text("description"),
+
+    /** Grams. Shipping is priced by weight, and a saree runs 400 to 900. */
+    weightGrams: integer("weight_grams"),
+
+    /**
+     * The HSN code this consignment is invoiced under. Handloom is not all one
+     * code and GST is charged on it, so it belongs on the thing being sold
+     * rather than assumed across the catalogue.
+     */
+    hsnCode: text("hsn_code"),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -363,6 +392,16 @@ export const image = pgTable(
     width: integer("width"),
     height: integer("height"),
     sortOrder: integer("sort_order").notNull().default(0),
+
+    /**
+     * What the photograph shows, for a reader who cannot see it.
+     *
+     * Null composes from the product, its colour and the slot — "Teal
+     * Kalamkari Cotton Saree, pallu" — which is better than the empty string
+     * every image would otherwise carry, and better than most alt text
+     * anybody types at four in the afternoon with forty more to upload.
+     */
+    alt: text("alt"),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

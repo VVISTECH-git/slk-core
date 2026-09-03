@@ -31,6 +31,15 @@ export {
 
 export { colourSwatch, isPaleSwatch } from "./colour";
 
+export {
+  listingAlt,
+  listingDescription,
+  listingTitle,
+  type ListingAltParts,
+  type ListingDescriptionParts,
+  type ListingTitleParts,
+} from "./listing";
+
 export { stockAt, type LocationPosition } from "./stock";
 
 export {

@@ -269,6 +269,9 @@ function loadConsignments(colourwayId: string) {
       l.name                                        as location,
       to_char(b.received_at, 'DD Mon YYYY')         as "receivedAt",
       b.reference, b.note,
+      b.title, b.description,
+      b.weight_grams                                as "weightGrams",
+      b.hsn_code                                    as "hsnCode",
       array_remove(array_agg(p.code order by p.serial), null) as items
     from batch b
     left join location l on l.id = b.location_id

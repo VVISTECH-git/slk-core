@@ -9,7 +9,8 @@
     "./naming": "./src/naming.ts",
     "./stock": "./src/stock.ts",
     "./vocabulary": "./src/vocabulary.ts",
-    "./money": "./src/money.ts"
+    "./money": "./src/money.ts",
+    "./listing": "./src/listing.ts"
   },
   "scripts": {
     "test": "node --experimental-strip-types --test \"src/**/*.test.ts\"",

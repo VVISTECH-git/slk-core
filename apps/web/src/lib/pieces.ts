@@ -75,6 +75,58 @@ async function qr(text: string): Promise<string> {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
+/**
+ * One piece, by the code on its label.
+ *
+ * The scanner's question, and a different one from `loadPieces`: that builds
+ * the whole table and encodes a QR for every row, which is right for a screen
+ * that prints labels and ruinous for answering "which saree is this" fifty
+ * times an hour on a phone. No QR here — the phone reads codes, it does not
+ * print them.
+ *
+ * Accepts an item code (500001, one saree) or a product code (300001, the
+ * consignment). Both are on labels a person might point a camera at, and
+ * refusing the wrong one because it named a delivery rather than a piece
+ * would be a strange thing to explain while holding it.
+ */
+export async function findPieces(code: string): Promise<
+  Omit<PieceRow, "itemQr" | "productQr">[]
+> {
+  return db.execute<Omit<PieceRow, "itemQr" | "productQr">>(sql`
+    select
+      p.id,
+      p.code                                    as "itemCode",
+      b.code                                    as "productCode",
+      p.serial,
+      d.code                                    as "designCode",
+      d.name,
+      colour.label                              as colour,
+      product_type.label                        as "productType",
+      motif_cat.label                           as "motifCategory",
+      motif.label                               as motif,
+      here.name                                 as location,
+      coalesce(pos.is_held, false)              as "isHeld",
+      arrived.name                              as "receivedInto",
+      to_char(b.received_at, 'DD Mon YYYY')     as "receivedAt",
+      to_char(b.received_at, 'YYYY-MM-DD')      as "receivedOn",
+      b.reference,
+      cw.retail_minor::double precision         as "priceMinor"
+    from piece p
+    join colourway cw on cw.id = p.colourway_id
+    join design d     on d.id  = cw.design_id
+    left join batch b            on b.id = p.batch_id
+    left join piece_position pos on pos.piece_id = p.id
+    left join location here      on here.id = pos.location_id
+    left join location arrived   on arrived.id = b.location_id
+    left join lookup_value colour       on colour.id = cw.colour_id
+    left join lookup_value product_type on product_type.id = d.product_type_id
+    left join lookup_value motif_cat    on motif_cat.id = d.motif_category_id
+    left join lookup_value motif        on motif.id = d.motif_id
+    where p.code = ${code} or b.code = ${code}
+    order by p.serial
+  `);
+}
+
 export async function loadPieces(): Promise<PieceRow[]> {
   const rows = await db.execute<Omit<PieceRow, "itemQr" | "productQr">>(sql`
     select
@@ -94,7 +146,9 @@ export async function loadPieces(): Promise<PieceRow[]> {
       to_char(b.received_at, 'DD Mon YYYY')     as "receivedAt",
       to_char(b.received_at, 'YYYY-MM-DD')      as "receivedOn",
       b.reference,
-      cw.retail_minor                           as "priceMinor"
+      -- Cast, or bigint arrives as a string through db.execute and the type
+      -- above is a lie. Same as loadRecords and loadRecord.
+      cw.retail_minor::double precision         as "priceMinor"
     from piece p
     join colourway cw on cw.id = p.colourway_id
     join design d     on d.id  = cw.design_id

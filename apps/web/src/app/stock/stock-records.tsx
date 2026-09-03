@@ -102,8 +102,11 @@ const NOT_FILTERABLE = new Set<ColumnKey>([
   "status",
 ]);
 
-/** Three icon buttons at ~28px plus gaps and cell padding. */
-const ACTIONS_WIDTH = 116;
+/** Four icon buttons at ~28px plus gaps and cell padding. */
+const ACTIONS_WIDTH = 148;
+
+/** A tick, a border and its own padding — the same shape everywhere it appears. */
+const CHECKBOX_WIDTH = 40;
 
 const PER_PAGE = 25;
 
@@ -187,6 +190,17 @@ export function StockRecords({
   const [selected, setSelected] = useState<string | null>(null);
   const [viewing, setViewing] = useState<PieceRow | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  /**
+   * Which pieces are queued for a label sheet.
+   *
+   * A Set of ids rather than rows, so a tick survives the row being sorted or
+   * paged away from — the mobile app's print flow works the same way, one
+   * consignment ticked and printed together rather than page by page.
+   */
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  /** The pieces currently on the print sheet, or null when it is closed. */
+  const [printing, setPrinting] = useState<PieceRow[] | null>(null);
 
   /**
    * The QR codes, on or off.
@@ -453,6 +467,30 @@ export function StockRecords({
               </>
             )}
           </span>
+
+          {chosen.size > 0 && (
+            <div className="ml-auto flex items-center gap-3">
+              <span className="text-[12.5px] text-muted">
+                {chosen.size} selected
+              </span>
+              <button
+                type="button"
+                onClick={() =>
+                  setPrinting(pieces.filter((p) => chosen.has(p.id)))
+                }
+                className="rounded-md border border-brick bg-brick-soft px-2.5 py-1 text-[12.5px] font-medium text-brick hover:opacity-80"
+              >
+                Print labels
+              </button>
+              <button
+                type="button"
+                onClick={() => setChosen(new Set())}
+                className="text-[12.5px] text-muted hover:text-ink"
+              >
+                Clear
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto">
@@ -465,11 +503,45 @@ export function StockRecords({
             className="w-full table-fixed text-[13.5px]"
             style={{
               minWidth:
-                columns.reduce((sum, c) => sum + widthOf(c), 0) + ACTIONS_WIDTH,
+                columns.reduce((sum, c) => sum + widthOf(c), 0) +
+                ACTIONS_WIDTH +
+                CHECKBOX_WIDTH,
             }}
           >
             <thead>
               <tr>
+                <th
+                  style={{ width: CHECKBOX_WIDTH }}
+                  className="sticky top-0 z-20 border-b border-rule bg-surface px-4 py-2.5"
+                >
+                  <input
+                    type="checkbox"
+                    aria-label="Select all pieces on this page"
+                    // Indeterminate is set imperatively below — a checkbox
+                    // cannot express "some, not all" through its own props.
+                    ref={(el) => {
+                      if (el) {
+                        el.indeterminate =
+                          pageRows.some((p) => chosen.has(p.id)) &&
+                          !pageRows.every((p) => chosen.has(p.id));
+                      }
+                    }}
+                    checked={
+                      pageRows.length > 0 && pageRows.every((p) => chosen.has(p.id))
+                    }
+                    onChange={(e) => {
+                      setChosen((prev) => {
+                        const next = new Set(prev);
+                        for (const p of pageRows) {
+                          if (e.target.checked) next.add(p.id);
+                          else next.delete(p.id);
+                        }
+                        return next;
+                      });
+                    }}
+                    className="size-3.5"
+                  />
+                </th>
                 {columns.map((c) => (
                   <HeaderCell
                     key={c.key}
@@ -504,7 +576,7 @@ export function StockRecords({
             <tbody>
               {pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={columns.length + 1} className="px-4 py-16 text-center">
+                  <td colSpan={columns.length + 2} className="px-4 py-16 text-center">
                     <p className="mb-1 text-[15px] font-medium text-ink">
                       {pieces.length === 0 ? "No pieces yet" : "No pieces match"}
                     </p>
@@ -535,6 +607,23 @@ export function StockRecords({
                       selected === p.id ? "bg-brick-soft" : "hover:bg-surface-2"
                     }`}
                   >
+                    <td className="px-4" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${p.itemCode}`}
+                        checked={chosen.has(p.id)}
+                        onChange={() =>
+                          setChosen((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(p.id)) next.delete(p.id);
+                            else next.add(p.id);
+                            return next;
+                          })
+                        }
+                        className="size-3.5"
+                      />
+                    </td>
+
                     {columns.map((c) => {
                       const value = cell(p, c.key);
 
@@ -596,6 +685,7 @@ export function StockRecords({
                         }}
                         onCopyItem={() => void copy("Item code", p.itemCode)}
                         onCopyProduct={() => void copy("Product code", p.productCode)}
+                        onPrint={() => setPrinting([p])}
                       />
                     </td>
                   </tr>
@@ -620,7 +710,12 @@ export function StockRecords({
           piece={viewing}
           onCopy={(what, value) => void copy(what, value)}
           onClose={() => setViewing(null)}
+          onPrint={() => setPrinting([viewing])}
         />
+      )}
+
+      {printing && (
+        <PrintLabels pieces={printing} onClose={() => setPrinting(null)} />
       )}
     </div>
   );
@@ -629,22 +724,25 @@ export function StockRecords({
 /**
  * What a piece can be asked to do from the row.
  *
- * Three, where Product Management has six, and that is the honest count: a
+ * Four, where Product Management has six, and that is the honest count: a
  * piece is a physical object with a label on it, not a record with prices and
  * images and a stock ledger behind it. The two copy buttons are here because
  * the codes are the reason anyone is on this screen — they get pasted into a
- * courier form, a message, a spreadsheet.
+ * courier form, a message, a spreadsheet. Print is here for the same reason:
+ * a torn or missing label is found one piece at a time, in front of it.
  */
 function RowActions({
   hasProductCode,
   onOpen,
   onCopyItem,
   onCopyProduct,
+  onPrint,
 }: {
   hasProductCode: boolean;
   onOpen: () => void;
   onCopyItem: () => void;
   onCopyProduct: () => void;
+  onPrint: () => void;
 }) {
   const actions: { title: string; path: string; run: () => void; off?: boolean }[] = [
     {
@@ -664,6 +762,11 @@ function RowActions({
       path: "M3 5h14v10H3z M7 8.5h6 M7 11.5h4",
       run: onCopyProduct,
       off: !hasProductCode,
+    },
+    {
+      title: "Print this label",
+      path: "M5 7V3h10v4 M4 7h12v6H4z M6 10h8v6H6z",
+      run: onPrint,
     },
   ];
 
@@ -716,10 +819,12 @@ function PiecePanel({
   piece,
   onCopy,
   onClose,
+  onPrint,
 }: {
   piece: PieceRow;
   onCopy: (what: string, value: string | null) => void;
   onClose: () => void;
+  onPrint: () => void;
 }) {
   const fields: [string, string][] = [
     ["Product", piece.name],
@@ -812,8 +917,15 @@ function PiecePanel({
           </span>
           <button
             type="button"
-            onClick={onClose}
+            onClick={onPrint}
             className="ml-auto rounded-lg border border-rule-2 bg-surface px-4 py-2 text-[13.5px] text-ink-2 hover:border-ink-2"
+          >
+            Print label
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-rule-2 bg-surface px-4 py-2 text-[13.5px] text-ink-2 hover:border-ink-2"
           >
             Close
           </button>
@@ -859,6 +971,133 @@ function Code({
         {code ?? "—"}
       </button>
       <span className="block text-[11px] text-faint">{label}</span>
+    </div>
+  );
+}
+
+/**
+ * A sheet of tags, one per piece, ready for the browser's own print dialog.
+ *
+ * No PDF library: the mobile app builds one because a phone hands its labels
+ * to a print job with no browser standing between them, but this already has
+ * one, and a browser's print dialog is a PDF exporter whenever the printer
+ * chosen is "Save as PDF". What earns its keep here is the layout, not a
+ * document format — one card in millimetres, QR left, name and code beside
+ * it, the same three things the mobile card shows so a label reads the same
+ * whichever app printed it.
+ *
+ * The isolation trick is the standard one: everything on the page is made
+ * invisible for print, the sheet is made visible and pinned to the page
+ * origin, so nothing else the app is showing — a table, a scrollbar, a
+ * sidebar — ends up on the paper. Print is never triggered on mount; the
+ * button is what a browser will actually honour without a permission prompt,
+ * and it gives a moment to check the sheet before committing paper to it.
+ */
+function PrintLabels({
+  pieces,
+  onClose,
+}: {
+  pieces: PieceRow[];
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          #print-label-sheet, #print-label-sheet * { visibility: visible; }
+          #print-label-sheet {
+            position: fixed;
+            inset: 0;
+            margin: 0;
+            padding: 10mm;
+            max-height: none;
+            border: none;
+            border-radius: 0;
+            box-shadow: none;
+            background: #fff;
+          }
+          .no-print { display: none !important; }
+        }
+      `}</style>
+
+      <button
+        type="button"
+        aria-label="Close"
+        onClick={onClose}
+        className="absolute inset-0 cursor-default bg-ink/25 no-print"
+      />
+
+      <div
+        id="print-label-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Print labels"
+        className="relative flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-rule bg-surface shadow-2xl"
+      >
+        <header className="no-print flex flex-none items-center gap-3 border-b border-rule px-6 py-4">
+          <div>
+            <h2 className="text-[16px] font-semibold text-ink">Print Labels</h2>
+            <p className="text-[12.5px] text-muted">
+              {pieces.length} label{pieces.length === 1 ? "" : "s"}, one per
+              item code.
+            </p>
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-rule-2 bg-surface px-3 py-2 text-[13.5px] text-ink-2 hover:border-ink-2"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="rounded-lg bg-brick px-4 py-2 text-[13.5px] font-medium text-on-brick hover:bg-brick-2"
+            >
+              Print
+            </button>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto bg-surface-2 p-4">
+          <div
+            className="grid gap-2.5"
+            style={{ gridTemplateColumns: "repeat(auto-fill, 70mm)" }}
+          >
+            {pieces.map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center gap-2 border border-ink/30 bg-white p-1.5"
+                style={{ width: "70mm", height: "38mm" }}
+              >
+                {p.itemQr !== null && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={p.itemQr}
+                    alt={`QR code for ${p.itemCode}`}
+                    className="size-[30mm] flex-none"
+                  />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="line-clamp-2 text-[8.5px] leading-tight font-semibold text-black">
+                    {p.name}
+                  </p>
+                  {p.colour !== null && (
+                    <p className="truncate text-[7.5px] text-black/70">
+                      {p.colour}
+                    </p>
+                  )}
+                  <p className="mt-1 font-mono text-[9.5px] text-black">
+                    {p.itemCode}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

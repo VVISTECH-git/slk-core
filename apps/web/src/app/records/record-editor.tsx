@@ -153,10 +153,24 @@ export function RecordEditor({
    *
    * Held here rather than written on each tick, because on a new record
    * there is no colourway to attach them to until Finish.
+   *
+   * A new record starts with every applicable slot already wanted — a saree
+   * is assumed to want its Body, Pallu, Border and Blouse shot, and asking
+   * somebody to tick four boxes to say what is already true is a step with no
+   * question in it. This does not mandate anything: nothing here blocks
+   * Finish, and a slot that stays empty just reads "To be shot" and shows up
+   * on the phone's shot list — which is telling, not requiring. Unticking one
+   * is still there for the saree that genuinely has no blouse piece.
    */
-  const [imageSlots, setImageSlots] = useState<string[]>(
-    () => record?.images.map((i) => i.slotId ?? "").filter(Boolean) ?? [],
-  );
+  const [imageSlots, setImageSlots] = useState<string[]>(() => {
+    if (record) return record.images.map((i) => i.slotId ?? "").filter(Boolean);
+
+    const productType = attributes.productType ?? attributes.homeProductType;
+
+    return (options["image_slot"] ?? [])
+      .filter((o) => o.parentId === null || o.parentId === productType)
+      .map((o) => o.id);
+  });
   /**
    * The adjectives, several of them.
    *
@@ -2641,7 +2655,9 @@ function ImageSlots({
         Photographs This Product Needs
       </h3>
       <p className="mb-3 text-[12px] leading-relaxed text-muted">
-        Tick what should be shot. The list comes from Master Lists, so adding a
+        Everything here is assumed wanted — upload straight into whichever
+        slot you have a photograph for. Untick one only if it genuinely does
+        not apply to this piece. The list comes from Master Lists, so adding a
         new kind of photograph there offers it on every record.
       </p>
 
@@ -2674,8 +2690,8 @@ function ImageSlots({
       {colourwayId === null && (
         <Note>
           Photographs can be added once the record exists — Finish writes it,
-          and this tab is then where the pictures go. Ticking here says which
-          ones are wanted.
+          and this tab is then where the pictures go. What is ticked now is
+          what this product will start out needing.
         </Note>
       )}
 

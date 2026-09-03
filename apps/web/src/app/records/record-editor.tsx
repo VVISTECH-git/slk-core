@@ -189,11 +189,20 @@ export function RecordEditor({
   const industry = labelOf("industry", attributes.industry);
   const isHome = isHomeIndustry(industry);
 
-  const productType = isHome
-    ? labelOf("home_product_type", attributes.homeProductType)
-    : labelOf("product_type", attributes.productType);
+  /*
+    By the value's frozen code, not its label.
 
-  const isSaree = !isHome && productType === "Saree";
+    Pallu, blouse and border are asked about because the product is a saree,
+    and this decided that by comparing the displayed name to "Saree". Renaming
+    the category on Master Lists — to fix a spelling, or to say "Saree
+    (Handloom)" — would have taken every one of those fields off the form with
+    nothing to explain it. A code is assigned once and never recomputed.
+  */
+  const isSaree =
+    !isHome &&
+    (options["product_type"] ?? []).some(
+      (o) => o.id === attributes.productType && o.code === "saree",
+    );
 
   /**
    * Which sub types a product type has is data, not code.

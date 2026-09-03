@@ -155,6 +155,29 @@ async function validate(draft: RecordDraft): Promise<Record<string, string>> {
   return errors;
 }
 
+/**
+ * Whether a product type is tracked piece by piece.
+ *
+ * The flag lives in the product type's `meta`, beside a colour's hex and a
+ * motif category's abbreviation — per-value facts have lived there since the
+ * vocabulary existed. Absent means pooled, which is the safe way round: a
+ * design that should have been serialised can be corrected, while item codes
+ * minted for cloth sold by the metre cannot be taken back off it.
+ *
+ * Dupatta, Fabric, Bedsheets, Scarves and Stolls are all pooled today.
+ * Serialising one is a migration setting this key, not a change here.
+ */
+async function isSerialised(productTypeId: string | null): Promise<boolean> {
+  if (productTypeId === null || productTypeId === "") return false;
+
+  const [row] = await db.execute<{ serialised: boolean }>(sql`
+    select coalesce((meta ->> 'serialised')::boolean, false) as serialised
+    from lookup_value where id = ${productTypeId}
+  `);
+
+  return row?.serialised ?? false;
+}
+
 /** Labels for the values an id points at, so a name can be composed. */
 async function labelsFor(
   ids: (string | null | undefined)[],
@@ -544,6 +567,22 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
 
   const productType = label("productType") ?? label("homeProductType");
 
+  /*
+    Whether this design is tagged piece by piece.
+
+    Read from the product type rather than compared against the word "Saree",
+    which is a label anyone can edit on Master Lists. Renaming it would have
+    made every design created afterwards pooled — no pieces, no item codes, no
+    QR labels — with nothing on any screen to say why.
+
+    Re-read from the database rather than taken from the form: a Server Action
+    is reachable by POST whether or not a screen sent it, and this decides
+    whether item codes exist for the life of the design.
+  */
+  const serialised = await isSerialised(
+    draft.attributes.productType ?? draft.attributes.homeProductType ?? null,
+  );
+
   const [last] = await db
     .select({ max: sql<number>`coalesce(max(${design.seq}), 0)::int` })
     .from(design);
@@ -578,7 +617,7 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
     insert into design (code, seq, name, name_is_custom, is_serialised, notes, ${sql.join(columns, sql`, `)})
     values (
       ${code}, ${seq}, ${draft.nameIsCustom ? draft.name : name},
-      ${draft.nameIsCustom}, ${productType === "Saree"},
+      ${draft.nameIsCustom}, ${serialised},
       ${draft.notes.trim() === "" ? null : draft.notes},
       ${sql.join(values, sql`, `)}
     )

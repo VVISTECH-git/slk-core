@@ -281,6 +281,13 @@
       "when": 1788435001000,
       "tag": "0039_an_owner_can_erase_a_record",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1788435002000,
+      "tag": "0040_serialisation_is_a_property_not_a_name",
+      "breakpoints": true
     }
   ]
 }

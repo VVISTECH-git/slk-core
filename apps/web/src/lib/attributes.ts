@@ -74,11 +74,26 @@ export const ATTRIBUTE_KEYS = Object.keys(ATTRIBUTES) as AttributeKey[];
 export interface Option {
   id: string;
   label: string;
+  /**
+   * The value's frozen identity. Renaming a category on Master Lists changes
+   * its label and leaves this alone, so anything that has to recognise a
+   * particular value recognises it by this and never by what it is called.
+   */
+  code: string;
   /** The value this one sits under — the list filters on it. */
   parentId: string | null;
   /** How a product type is measured. Only product types have one. */
   soldById: string | null;
   hex: string | null;
+  /**
+   * Whether this product type is tracked piece by piece.
+   *
+   * A fact about the product type, kept on the product type — sarees are
+   * tagged individually and get item codes, cloth by the metre is not. It was
+   * a comparison against the literal string "Saree", which would have gone
+   * quietly wrong the first time anybody renamed the category.
+   */
+  serialised: boolean;
   /** Pre-selected on a new record. At most one per list. */
   isDefault: boolean;
 }

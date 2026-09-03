@@ -36,6 +36,7 @@ export async function loadOptions(): Promise<Options> {
       listCode: lookupList.code,
       id: lookupValue.id,
       label: lookupValue.label,
+      code: lookupValue.code,
       parentId: lookupValue.parentValueId,
       soldById: lookupValue.soldById,
       meta: lookupValue.meta,
@@ -73,19 +74,23 @@ export async function loadOptions(): Promise<Options> {
   const options: Options = {};
 
   for (const row of rows) {
+    // Per-value facts live in `meta` — a colour's hex, a product type's
+    // serialised flag — and are read out here so nothing downstream has to
+    // know the column is jsonb.
+    const meta: Record<string, unknown> =
+      typeof row.meta === "object" && row.meta !== null
+        ? (row.meta as Record<string, unknown>)
+        : {};
+
     (options[row.listCode] ??= []).push({
       id: row.id,
       label: row.label,
+      code: row.code,
       parentId: row.parentId,
       soldById: row.soldById,
       isDefault: row.isDefault,
-      hex:
-        typeof row.meta === "object" &&
-        row.meta !== null &&
-        "hex" in row.meta &&
-        typeof (row.meta as { hex: unknown }).hex === "string"
-          ? (row.meta as { hex: string }).hex
-          : null,
+      hex: typeof meta["hex"] === "string" ? meta["hex"] : null,
+      serialised: meta["serialised"] === true,
     });
   }
 

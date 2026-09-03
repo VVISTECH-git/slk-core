@@ -121,10 +121,24 @@ export async function loadRecords(
       uom.label                                         as uom,
       d.is_serialised                                   as "isSerialised",
       coalesce(oh.qty, 0)::int                          as quantity,
-      cw.retail_minor                                   as "priceMinor",
-      cw.cost_minor                                     as "costMinor",
-      cw.wholesale_minor                                as "wholesaleMinor",
-      cw.mrp_minor                                      as "mrpMinor",
+      /*
+        Cast, or these arrive as strings.
+
+        The price columns are bigint, and this is db.execute — raw driver
+        values, not Drizzle's typed select — so postgres.js hands int8 back as
+        a string however the schema declares it. The type above says
+        number-or-null and said so while the value was "349999", which is a
+        lie that arithmetic would have turned into concatenation. It reached a
+        phone first: the Dart client cast to num and threw.
+
+        double precision rather than int, because int caps at about ₹21m per
+        unit and the column is bigint precisely so nobody has to think about a
+        ceiling. Every paise value a price can hold is exact below 2^53.
+      */
+      cw.retail_minor::double precision                 as "priceMinor",
+      cw.cost_minor::double precision                   as "costMinor",
+      cw.wholesale_minor::double precision              as "wholesaleMinor",
+      cw.mrp_minor::double precision                    as "mrpMinor",
       coalesce(pc.n, 0)::int                            as pieces,
       (d.status = 'archived' or not cw.is_active)       as "isArchived"
     from colourway cw

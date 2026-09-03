@@ -130,9 +130,15 @@ export async function loadRecord(
         d.notes,
         cw.colour_id as "colourId",
         cw.secondary_colour_id as "secondaryColourId",
-        cw.cost_minor as "costMinor", cw.making_minor as "makingMinor",
-        cw.wholesale_minor as "wholesaleMinor", cw.retail_minor as "retailMinor",
-        cw.mrp_minor as "mrpMinor",
+        -- Cast for the same reason as loadRecords: bigint through db.execute
+        -- comes back as a string, and RecordDetail declares these as numbers.
+        -- The editor got away with it because JS coerces on arithmetic; a
+        -- typed client does not.
+        cw.cost_minor::double precision as "costMinor",
+        cw.making_minor::double precision as "makingMinor",
+        cw.wholesale_minor::double precision as "wholesaleMinor",
+        cw.retail_minor::double precision as "retailMinor",
+        cw.mrp_minor::double precision as "mrpMinor",
         ${sql.join(selects, sql`, `)}
       from colourway cw join design d on d.id = cw.design_id
       where cw.id = ${colourwayId}

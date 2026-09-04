@@ -69,6 +69,7 @@ async function main(): Promise<void> {
     channel_id: string;
     colourway_id: string;
     design_name: string;
+    product_type: string | null;
     is_serialised: boolean;
     sellable: number | null;
     retail_minor: number | null;
@@ -96,6 +97,7 @@ async function main(): Promise<void> {
       ch.id               as channel_id,
       cw.id               as colourway_id,
       d.name              as design_name,
+      product_type.label  as product_type,
       d.is_serialised,
       cbs.sellable,
       bp.retail_minor,
@@ -123,6 +125,7 @@ async function main(): Promise<void> {
     join channel ch   on ch.code = ${channelCode}
     join channel_batch_sellable cbs on cbs.batch_id = b.id and cbs.channel_id = ch.id
     join batch_price bp on bp.batch_id = b.id
+    left join lookup_value product_type  on product_type.id  = d.product_type_id
     left join lookup_value colour        on colour.id        = cw.colour_id
     left join lookup_value colour2       on colour2.id       = cw.secondary_colour_id
     left join lookup_value craft         on craft.id         = d.craft_technique_id

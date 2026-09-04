@@ -62,6 +62,7 @@ export async function pushListingForColourway(
       bp.retail_minor,
       cbs.sellable,
       d.name                 as design_name,
+      product_type.label     as product_type,
       b.title                 as title_override,
       b.description           as description_override,
       b.weight_grams,
@@ -86,6 +87,7 @@ export async function pushListingForColourway(
     join design d          on d.id = cw.design_id
     join batch_price bp     on bp.batch_id = b.id
     join channel_batch_sellable cbs on cbs.channel_id = cl.channel_id and cbs.batch_id = b.id
+    left join lookup_value product_type  on product_type.id  = d.product_type_id
     left join lookup_value colour        on colour.id        = cw.colour_id
     left join lookup_value colour2       on colour2.id       = cw.secondary_colour_id
     left join lookup_value craft         on craft.id         = d.craft_technique_id

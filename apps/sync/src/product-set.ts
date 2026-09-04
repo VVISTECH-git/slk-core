@@ -1,5 +1,6 @@
 import { listingAlt, listingDescription, listingTitle } from "@slk/domain";
 
+import { shopifyCategoryFor } from "./taxonomy";
 import type { ShopifyClient } from "./shopify-client";
 
 /**
@@ -11,6 +12,7 @@ import type { ShopifyClient } from "./shopify-client";
  */
 export type ConsignmentRow = {
   design_name: string;
+  product_type: string | null;
   colour: string | null;
   secondary_colour: string | null;
   craft_technique: string | null;
@@ -114,12 +116,13 @@ export async function sendProductSet(
       status: "ACTIVE",
       // Shopify's own standard taxonomy — separate from tags/collections,
       // and left unset before this shipped an empty "Category:" on every
-      // listing. Sarees only for now (found via Shopify's taxonomy search:
-      // "Apparel & Accessories > Clothing > Traditional & Ceremonial
-      // Clothing > Saris & Lehengas > Saris"), because Saree is the only
-      // serialised product type that can be published at all today — this
-      // needs a real mapping once a second product type gets there.
-      category: "gid://shopify/TaxonomyCategory/aa-1-23-2-1",
+      // listing. Mapped from our own product_type via taxonomy.ts, found
+      // by searching Shopify's real category tree rather than guessed.
+      // Omitted entirely for a product type with no mapping yet, rather
+      // than failing the whole publish over it.
+      ...(shopifyCategoryFor(row.product_type) !== undefined && {
+        category: shopifyCategoryFor(row.product_type),
+      }),
       tags: [row.colour, row.craft_technique, row.textile_material ?? row.fibre_type, row.motif].filter(
         (t): t is string => t !== null,
       ),

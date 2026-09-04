@@ -67,19 +67,28 @@ export function InlineLookupCell({
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
     }
+    // Scroll events don't bubble, but a capture-phase listener on window
+    // still sees them fire on the way down — including the popover's own
+    // option list scrolling under the mouse. Without this check, reaching
+    // for an option below the fold closed the popover on the very scroll
+    // meant to reveal it, before the click could ever land.
+    function onScroll(e: Event) {
+      if (menu.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    }
     function away() {
       setOpen(false);
     }
 
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
-    window.addEventListener("scroll", away, true);
+    window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", away);
 
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", away, true);
+      window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", away);
     };
   }, [open]);

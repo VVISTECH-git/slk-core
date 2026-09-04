@@ -346,22 +346,25 @@ try {
   await main();
 } catch (error) {
   /*
-    A postgres.js error's own .message can BE the whole "Failed query: ...\n
-    params: ..." block for certain error classes — no distinct short cause
-    to print. Pulling the structured fields out explicitly, prefixed so
-    they're unmistakable, means a rerun can never again lose the actual
-    reason inside a wall of query text.
+    Drizzle wraps the driver's own error in DrizzleQueryError, with the real
+    thing — a postgres.js PostgresError, code/detail/hint and all — sitting
+    on .cause rather than replacing the outer message. Printing only the
+    outer error hid it twice already; walking the whole cause chain is what
+    actually gets to it.
   */
   console.error("\n  ── ERROR ──────────────────────────────────");
-  if (error instanceof Error) {
-    console.error(`  ${error.constructor.name}: ${error.message}`);
-    const extra = error as unknown as Record<string, unknown>;
+  let current: unknown = error;
+  let depth = 0;
+  while (current instanceof Error && depth < 6) {
+    console.error(`  ${current.constructor.name}: ${current.message}`);
+    const extra = current as unknown as Record<string, unknown>;
     for (const key of ["code", "detail", "hint", "severity", "routine", "constraint_name", "column_name", "table_name"]) {
-      if (extra[key] !== undefined) console.error(`  ${key}: ${extra[key]}`);
+      if (extra[key] !== undefined) console.error(`    ${key}: ${extra[key]}`);
     }
-  } else {
-    console.error(`  ${String(error)}`);
+    current = extra["cause"];
+    depth++;
   }
+  if (!(error instanceof Error)) console.error(`  ${String(error)}`);
   console.error("  ───────────────────────────────────────────\n");
   process.exitCode = 1;
 } finally {

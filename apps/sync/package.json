@@ -7,10 +7,14 @@
   "scripts": {
     "dev": "node --watch --experimental-strip-types src/index.ts",
     "start": "node --experimental-strip-types src/index.ts",
+    "publish-one": "node --experimental-strip-types src/publish.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@slk/domain": "workspace:*"
+    "@slk/db": "workspace:*",
+    "@slk/domain": "workspace:*",
+    "dotenv": "^16.4.7",
+    "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

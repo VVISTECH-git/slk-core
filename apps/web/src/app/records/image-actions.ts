@@ -3,6 +3,9 @@
 import { guard, requireActor } from "@/lib/session";
 import { sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+
+import { pushListingForColourway } from "@slk/sync/publish-listing";
 
 import { db } from "@/lib/db";
 import {
@@ -15,6 +18,24 @@ import {
 } from "@/lib/storage";
 
 import type { ActionResult } from "./actions";
+
+/**
+ * Republishes an already-listed consignment's photographs (and everything
+ * else) after one changes — same helper as actions.ts's, kept as its own
+ * copy rather than exported across files: a "use server" module's exports
+ * are all callable as actions, which a void internal utility should not be.
+ */
+function scheduleListingPush(colourwayId: string): void {
+  after(() =>
+    pushListingForColourway(db, colourwayId)
+      .then((results) => {
+        for (const r of results) {
+          if (r.error) console.error(`[listing-push] ${r.channelCode} ${r.productCode}: ${r.error}`);
+        }
+      })
+      .catch((error: unknown) => console.error("[listing-push] failed", error)),
+  );
+}
 
 /**
  * Photographs, stored in R2 and referenced from the record.
@@ -148,6 +169,7 @@ export async function confirmImage(
     await remove(previous).catch(() => undefined);
   }
 
+  scheduleListingPush(colourwayId);
   revalidatePath("/records");
 
   return { ok: true, message: "Photograph added." };
@@ -177,6 +199,7 @@ export async function removeImage(
     await remove(row.storageKey).catch(() => undefined);
   }
 
+  scheduleListingPush(colourwayId);
   revalidatePath("/records");
 
   return { ok: true, message: "Photograph removed. The slot is still wanted." };

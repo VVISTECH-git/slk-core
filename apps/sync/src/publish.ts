@@ -3,9 +3,9 @@ import { resolve } from "node:path";
 import { config } from "dotenv";
 import { sql } from "drizzle-orm";
 
-import { listingAlt, listingDescription, listingTitle } from "@slk/domain";
 import { createDb, directUrl } from "@slk/db";
 
+import { sendProductSet } from "./product-set";
 import { shopifyClient } from "./shopify-client";
 
 config({ path: resolve(process.cwd(), "../../.env") });
@@ -172,131 +172,28 @@ async function main(): Promise<void> {
 
   const base = required("R2_PUBLIC_BASE_URL").replace(/\/$/, "");
 
-  const title = row.title_override ?? listingTitle({
-    designName: row.design_name,
-    colour: row.colour,
-    secondaryColour: row.secondary_colour,
-  });
-
-  const description = row.description_override ?? listingDescription({
-    craftTechnique: row.craft_technique,
-    textileMaterial: row.textile_material,
-    fibreType: row.fibre_type,
-    motif: row.motif,
-    motifCategory: row.motif_category,
-    borderHeight: row.border_height,
-    borderStyle: row.border_style,
-    palluDesign: row.pallu_design,
-    blouseAvailable: row.blouse_available,
-    blouseStyle: row.blouse_style,
-    blouseMaterial: row.blouse_material,
-  });
-
-  console.log(`\n  ${productCode} — ${title}`);
-  console.log(`  ${photos.length} photograph(s), sellable ${row.sellable} at ${channelCode}`);
+  console.log(`\n  ${productCode} — sellable ${row.sellable}, ${photos.length} photograph(s) at ${channelCode}`);
   console.log(existingLink !== undefined
     ? `  Already listed as ${existingLink.shopify_product_id} — updating it.\n`
     : `  Not listed yet — creating.\n`);
 
-  // ── Shopify ────────────────────────────────────────────────────────────
-
-  const { locations } = await client.graphql<{ locations: { nodes: { id: string; name: string }[] } }>(
-    `query { locations(first: 10) { nodes { id name } } }`,
-    {},
+  const sent = await sendProductSet(
+    client,
+    productCode,
+    row,
+    photos,
+    base,
+    row.retail_minor!,
+    row.sellable ?? 0,
+    existingLink?.shopify_product_id,
   );
 
-  if (locations.nodes.length === 0) {
-    throw new Error("This Shopify store has no locations at all — nothing to set inventory against.");
-  }
-
-  if (locations.nodes.length > 1) {
-    console.log("  More than one Shopify location exists; using the first:");
-    for (const l of locations.nodes) console.log(`    ${l.id}  ${l.name}`);
-  }
-
-  const location = locations.nodes[0]!;
-
-  const PRODUCT_SET = `
-    mutation PublishConsignment($input: ProductSetInput!) {
-      productSet(input: $input, synchronous: true) {
-        product {
-          id
-          handle
-          variants(first: 1) {
-            nodes { id inventoryItem { id } }
-          }
-        }
-        userErrors { field message }
-      }
-    }
-  `;
-
-  const result = await client.graphql<{
-    productSet: {
-      product: {
-        id: string;
-        handle: string;
-        variants: { nodes: { id: string; inventoryItem: { id: string } }[] };
-      } | null;
-      userErrors: { field: string[]; message: string }[];
-    };
-  }>(PRODUCT_SET, {
-    input: {
-      // Present only on a second run — its absence is what tells productSet
-      // to create rather than update.
-      ...(existingLink !== undefined && { id: existingLink.shopify_product_id }),
-      title,
-      descriptionHtml: description,
-      vendor: "Sree Lakshmi Kalamkari",
-      status: "ACTIVE",
-      tags: [row.colour, row.craft_technique, row.textile_material ?? row.fibre_type, row.motif].filter(
-        (t): t is string => t !== null,
-      ),
-      productOptions: [{ name: "Title", values: [{ name: "Default Title" }] }],
-      variants: [
-        {
-          optionValues: [{ optionName: "Title", name: "Default Title" }],
-          price: (row.retail_minor! / 100).toFixed(2),
-          sku: productCode,
-          inventoryItem: {
-            tracked: true,
-            sku: productCode,
-            ...(row.weight_grams !== null && {
-              measurement: { weight: { value: row.weight_grams, unit: "GRAMS" } },
-            }),
-          },
-          inventoryQuantities: [
-            { locationId: location.id, name: "available", quantity: row.sellable ?? 0 },
-          ],
-        },
-      ],
-      files: photos.map((p) => ({
-        originalSource: `${base}/${p.storage_key}`,
-        alt: p.alt_override ?? listingAlt({ colour: row.colour, designName: row.design_name, slot: p.slot }),
-        contentType: "IMAGE",
-      })),
-    },
-  });
-
-  if (result.productSet.userErrors.length > 0) {
-    throw new Error(
-      "Shopify refused it:\n" +
-        result.productSet.userErrors.map((e) => `    ${e.field.join(".")}: ${e.message}`).join("\n"),
-    );
-  }
-
-  const product = result.productSet.product!;
-  const variant = product.variants.nodes[0];
-
-  if (variant === undefined) {
-    throw new Error(`Shopify accepted the product but returned no variant — nothing to link. Product: ${product.id}`);
-  }
-
-  console.log(`\n  ${existingLink !== undefined ? "Updated" : "Created"}: https://${client.domain}/admin/products/${product.id.split("/").pop()}\n`);
+  console.log(`\n  ${sent.title}`);
+  console.log(`  ${existingLink !== undefined ? "Updated" : "Created"}: https://${client.domain}/admin/products/${sent.productId.split("/").pop()}\n`);
 
   await db.execute(sql`
     insert into channel_link (channel_id, batch_id, shopify_product_id, shopify_variant_id, shopify_inventory_item_id)
-    values (${row.channel_id}, ${row.batch_id}, ${product.id}, ${variant.id}, ${variant.inventoryItem.id})
+    values (${row.channel_id}, ${row.batch_id}, ${sent.productId}, ${sent.variantId}, ${sent.inventoryItemId})
     on conflict (channel_id, batch_id) do update set
       shopify_product_id = excluded.shopify_product_id,
       shopify_variant_id = excluded.shopify_variant_id,

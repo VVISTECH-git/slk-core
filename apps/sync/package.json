@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./inventory-push": "./src/inventory-push.ts",
+    "./publish-listing": "./src/publish-listing.ts",
     "./shopify-client": "./src/shopify-client.ts"
   },
   "scripts": {

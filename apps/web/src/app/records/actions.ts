@@ -8,6 +8,7 @@ import { after } from "next/server";
 import { colourway, design, location, movement } from "@slk/db";
 import { designCode, designName } from "@slk/domain";
 import { pushInventoryForColourway } from "@slk/sync/inventory-push";
+import { pushListingForColourway } from "@slk/sync/publish-listing";
 
 import { db } from "@/lib/db";
 import { remove } from "@/lib/storage";
@@ -40,6 +41,28 @@ export interface ActionResult {
    * Empty when nothing arrived — a record can exist before any stock does.
    */
   productCodes?: string[];
+}
+
+/**
+ * Republishes whatever is already listed for this colourway, on every
+ * channel it is listed on — never awaited, never why a save fails.
+ *
+ * Shared by every action that changes something a listing shows: the main
+ * editor save, an inline taxonomy edit, the Listing panel's overrides, and
+ * (in image-actions.ts) adding or removing a photograph. A consignment
+ * nobody has published yet is untouched — this only keeps an existing
+ * listing honest, it does not create the first one.
+ */
+function scheduleListingPush(colourwayId: string): void {
+  after(() =>
+    pushListingForColourway(db, colourwayId)
+      .then((results) => {
+        for (const r of results) {
+          if (r.error) console.error(`[listing-push] ${r.channelCode} ${r.productCode}: ${r.error}`);
+        }
+      })
+      .catch((error: unknown) => console.error("[listing-push] failed", error)),
+  );
 }
 
 /** Everything the editor can change, as it arrives from the form. */
@@ -301,6 +324,7 @@ export async function saveRecord(draft: RecordDraft): Promise<ActionResult> {
 
   const adjustment = await correctCount(cw.id, draft.quantity, await actingId());
 
+  scheduleListingPush(cw.id);
   revalidatePath("/records");
 
   return {
@@ -934,6 +958,14 @@ export async function setRecordField(
 
   await recomposeName(row.designId, row.nameIsCustom);
 
+  // Every colour of this design, not only the one that was open — the
+  // field just written lives on the design, so it composes into every
+  // sibling's title and description exactly the same way.
+  const siblingRows = await db.execute<{ id: string }>(sql`
+    select id from colourway where design_id = ${row.designId}
+  `);
+  for (const sibling of siblingRows) scheduleListingPush(sibling.id);
+
   revalidatePath("/records");
 
   const spread =
@@ -995,6 +1027,7 @@ async function setColour(
     .set({ colourId: valueId, updatedAt: new Date() })
     .where(eq(colourway.id, colourwayId));
 
+  scheduleListingPush(colourwayId);
   revalidatePath("/records");
 
   return { ok: true, message: "Saved." };
@@ -1298,6 +1331,7 @@ export async function setBatchListing(
 
   await db.execute(sql`update batch set ${sql.join(set, sql`, `)} where id = ${batchId}`);
 
+  scheduleListingPush(row.colourwayId);
   revalidatePath("/records");
 
   return { ok: true, message: `Saved the listing for ${row.code}.` };

@@ -192,9 +192,19 @@ async function bookReservation(
 
 /**
  * A refund releases whatever hold that order still has on the refunded
- * consignments. Whether the piece had already shipped is not this table's
- * business — a physical return is a separate, staff-entered movement; this
- * only ends the reservation.
+ * consignments — by the quantity actually refunded, not the whole
+ * reservation. An order for 3 with 1 refunded leaves 2 still held; only a
+ * refund that reaches the full quantity releases it.
+ *
+ * Reduced in place rather than split into two rows, because
+ * reservation's own unique key is (channel, order, batch) — one row is all
+ * the shape allows. Nothing is lost by that: channel_event kept the raw
+ * refund payload when this webhook was received, so the history is still
+ * there, just not summarised on this row.
+ *
+ * Whether the piece had already shipped is not this table's business — a
+ * physical return is a separate, staff-entered movement; this only ends
+ * (or shrinks) the reservation.
  */
 async function releaseRefundedLines(
   channelId: string,
@@ -211,8 +221,24 @@ async function releaseRefundedLines(
     `);
     if (batchRow === undefined) continue;
 
+    const [current] = await db.execute<{ qty: number }>(sql`
+      select qty from reservation
+      where channel_id = ${channelId}
+        and batch_id = ${batchRow.id}
+        and external_order_id = ${externalOrderId}
+        and status = 'held'
+    `);
+
+    // Nothing held for this line — already released, or never booked.
+    if (current === undefined) continue;
+
+    const remaining = Math.max(0, current.qty - item.quantity);
+
     await db.execute(sql`
-      update reservation set status = 'released', updated_at = now()
+      update reservation set
+        qty = ${remaining},
+        status = ${remaining > 0 ? "held" : "released"},
+        updated_at = now()
       where channel_id = ${channelId}
         and batch_id = ${batchRow.id}
         and external_order_id = ${externalOrderId}

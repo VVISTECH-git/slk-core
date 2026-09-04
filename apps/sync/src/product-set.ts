@@ -123,6 +123,12 @@ export async function sendProductSet(
       ...(shopifyCategoryFor(row.product_type) !== undefined && {
         category: shopifyCategoryFor(row.product_type),
       }),
+      // The classic free-text "product type" field — a different field
+      // from `category` above. Found by checking the live storefront: the
+      // theme's own "Category:" label reads this legacy string, not the
+      // structured taxonomy category, so a listing with only `category` set
+      // still shows a blank "Category:" to a real customer. Set both.
+      ...(row.product_type !== null && { productType: row.product_type }),
       tags: [row.colour, row.craft_technique, row.textile_material ?? row.fibre_type, row.motif].filter(
         (t): t is string => t !== null,
       ),

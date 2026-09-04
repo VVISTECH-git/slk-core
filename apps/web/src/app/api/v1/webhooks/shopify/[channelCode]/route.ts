@@ -224,14 +224,19 @@ async function releaseRefundedLines(
     /*
       One atomic UPDATE rather than read-then-write: every expression in a
       Postgres UPDATE's SET clause sees the row as it was before this
-      statement, so `qty` on the right of `greatest(...)` is always the
+      statement, so `qty` on the right of these CASEs is always the
       pre-refund value even under concurrent refunds for the same order —
       there is no window for a second refund to read a qty this one is
       about to overwrite.
+
+      qty only ever moves down while it stays positive — reservation has a
+      CHECK (qty > 0), and a released row is a historical record of what
+      was held, not a live count, so a refund that reaches or exceeds it
+      leaves qty at its last true value and only flips status.
     */
     await db.execute(sql`
       update reservation set
-        qty = greatest(0, qty - ${item.quantity}),
+        qty = case when qty - ${item.quantity} > 0 then qty - ${item.quantity} else qty end,
         status = case when qty - ${item.quantity} <= 0 then 'released' else 'held' end,
         updated_at = now()
       where channel_id = ${channelId}

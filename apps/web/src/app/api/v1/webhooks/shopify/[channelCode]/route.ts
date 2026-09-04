@@ -41,7 +41,14 @@ export async function POST(
 ): Promise<Response> {
   const { channelCode } = await params;
 
-  const secret = process.env[`SHOPIFY_${channelCode.toUpperCase()}_CLIENT_SECRET`];
+  /*
+    A store-level secret, not the app's Client Secret — Settings ›
+    Notifications › Webhooks shows it directly on the page ("Your webhooks
+    will be signed with …"), separate from and unrelated to the
+    client_credentials exchange the outbound side uses. Assumed these were
+    the same thing originally; they are not, confirmed against a live 401.
+  */
+  const secret = process.env[`SHOPIFY_${channelCode.toUpperCase()}_WEBHOOK_SECRET`];
   // 404, not 401 — a channel that will never exist should not be retried
   // forever by whatever sent this.
   if (secret === undefined) return new Response("Unknown channel.", { status: 404 });
@@ -59,8 +66,6 @@ export async function POST(
   // guaranteed to equal x.
   const raw = await request.text();
 
-  // Shopify signs with the app's Client Secret — the same one the
-  // client_credentials exchange uses, not a separate webhook secret.
   const expected = createHmac("sha256", secret).update(raw, "utf8").digest("base64");
   const expectedBuf = Buffer.from(expected);
   const signatureBuf = Buffer.from(signature, "base64");

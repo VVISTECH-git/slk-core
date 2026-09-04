@@ -11,9 +11,9 @@ import { createHmac, randomUUID } from "node:crypto";
  *
  * topic is one of: orders/create, orders/cancelled, refunds/create
  *
- * Needs SHOPIFY_<CODE>_CLIENT_SECRET in the environment — the real receiver
- * verifies against the same secret, since Shopify signs webhooks with the
- * app's Client Secret rather than a separate webhook secret.
+ * Needs SHOPIFY_<CODE>_WEBHOOK_SECRET in the environment — the store-level
+ * signing secret shown on Settings › Notifications › Webhooks, separate
+ * from the app's Client Secret the outbound side uses.
  */
 
 const [channelCode, topic, productCode, qtyArg] = process.argv.slice(2);
@@ -27,10 +27,12 @@ if (channelCode === undefined || topic === undefined || productCode === undefine
 }
 
 const PREFIX = channelCode.toUpperCase();
-const secret = process.env[`SHOPIFY_${PREFIX}_CLIENT_SECRET`];
+// The store-level signing secret shown on Settings › Notifications ›
+// Webhooks — not the app's Client Secret, a separate value entirely.
+const secret = process.env[`SHOPIFY_${PREFIX}_WEBHOOK_SECRET`];
 
 if (secret === undefined || secret === "") {
-  console.error(`\n  SHOPIFY_${PREFIX}_CLIENT_SECRET is not set.\n`);
+  console.error(`\n  SHOPIFY_${PREFIX}_WEBHOOK_SECRET is not set.\n`);
   process.exit(1);
 }
 

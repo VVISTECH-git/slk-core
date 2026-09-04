@@ -12,6 +12,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "publish-one": "tsx src/publish.ts",
+    "test-webhook": "tsx src/test-webhook.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

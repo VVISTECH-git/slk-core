@@ -272,6 +272,38 @@ export function RecordsTable({
     router.refresh();
   };
 
+  /**
+   * A photograph is confirmed against the server the moment it uploads —
+   * unlike every other field in the editor, which only becomes real on
+   * Save. It must not go through `done`: that closes the whole dialog,
+   * which was silently discarding whatever the other tabs hadn't been
+   * saved yet the instant one photo finished uploading. This only
+   * re-fetches the one record being edited, so the Images tab can show
+   * what just landed, without touching anything else about the dialog.
+   */
+  const refreshEditingRecord = (message: string) => {
+    setToast(message);
+
+    const id = editing?.record?.id;
+    if (id === undefined) return;
+
+    void (async () => {
+      try {
+        const response = await fetch(`/records/${id}`);
+        if (!response.ok) return;
+        const fresh = (await response.json()) as RecordDetail;
+        setEditing((current) =>
+          current !== null && current.record?.id === id
+            ? { ...current, record: fresh }
+            : current,
+        );
+      } catch {
+        // The photo is already saved server-side; a failed refresh here
+        // just means the dialog won't show it until it's reopened.
+      }
+    })();
+  };
+
   const [query, setQuery] = useState("");
   const [industry, setIndustry] = useState("");
 
@@ -825,6 +857,7 @@ export function RecordsTable({
           initialTab={editing.tab}
           onClose={() => setEditing(null)}
           onSaved={done}
+          onPhotoChanged={refreshEditingRecord}
         />
       )}
 

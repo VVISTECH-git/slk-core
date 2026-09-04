@@ -112,6 +112,7 @@ export function RecordEditor({
   initialTab,
   onClose,
   onSaved,
+  onPhotoChanged,
 }: {
   record: RecordDetail | null;
   options: Options;
@@ -119,6 +120,17 @@ export function RecordEditor({
   initialTab: TabKey;
   onClose: () => void;
   onSaved: (message: string) => void;
+  /**
+   * A photograph is its own upload, confirmed against the server the moment
+   * it lands — unlike everything else in this dialog, which only becomes
+   * real on Save. It must not share onSaved: that closes the whole editor,
+   * which was silently discarding whatever the other tabs hadn't been saved
+   * yet (a colour just chosen on Craft & Design, say) the instant a photo
+   * finished uploading. This only asks the row this record came from to
+   * fetch a fresh copy — so Images can show what was just added — without
+   * touching the dialog itself.
+   */
+  onPhotoChanged: (message: string) => void;
 }) {
   const isNew = record === null;
 
@@ -1063,7 +1075,7 @@ export function RecordEditor({
               setChosen={setImageSlots}
               taken={record?.images ?? []}
               colourwayId={record?.id ?? null}
-              onChanged={onSaved}
+              onChanged={onPhotoChanged}
             />
           )}
 

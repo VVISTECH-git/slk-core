@@ -92,9 +92,9 @@ export async function pushInventoryForColourway(
         input: {
           name: "available",
           reason: "correction",
-          // No prior quantity to compare against — this is a fresh
-          // recompute from the ledger, not an incremental adjustment.
-          ignoreCompareQuantity: true,
+          // ignoreCompareQuantity is not a real field on this input — found
+          // by actually calling the API, not by reading docs. Shopify
+          // rejected the whole mutation over it.
           quantities: items.map((i) => ({
             inventoryItemId: i.shopify_inventory_item_id,
             locationId: location.id,

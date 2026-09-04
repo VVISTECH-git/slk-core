@@ -25,6 +25,14 @@ const NAV = [
     icon: "M3 6l7-3 7 3v8l-7 3-7-3z M3 6l7 3 7-3 M10 9v8",
   },
   {
+    // What a channel's order already booked, waiting for someone to
+    // actually take the piece off the shelf — floor work, same as any
+    // other movement, not owner territory like Channels is.
+    href: "/picking",
+    label: "Picking List",
+    icon: "M4 4h12v13l-3-2-3 2-3-2-3 2z M7 8h6 M7 11h6",
+  },
+  {
     href: "/operational-standard",
     label: "Master Lists",
     icon: "M4 4h5v5H4z M11 4h5v5h-5z M4 11h5v5H4z M11 11h5v5h-5z",

@@ -66,8 +66,38 @@ async function main(): Promise<void> {
   const domain = required(`SHOPIFY_${PREFIX}_STORE_DOMAIN`)
     .replace(/^https?:\/\//, "")
     .replace(/\/$/, "");
-  const token = required(`SHOPIFY_${PREFIX}_ADMIN_TOKEN`);
   const apiVersion = process.env["SHOPIFY_API_VERSION"] ?? "2026-07";
+
+  /*
+    This store has no legacy custom-app flow left — Dev Dashboard only, which
+    means no static Admin API token to hand a script. The Client ID + Secret
+    pair (the app's own Credentials, not the "App automation token" — that
+    one is scoped to CLI deploys, not general Admin API calls) exchanges for
+    a real access token via OAuth's client_credentials grant: no browser, no
+    callback URL, right for an app with exactly one installer.
+  */
+  const clientId = required(`SHOPIFY_${PREFIX}_CLIENT_ID`);
+  const clientSecret = required(`SHOPIFY_${PREFIX}_CLIENT_SECRET`);
+
+  const tokenRes = await fetch(`https://${domain}/admin/oauth/access_token`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "client_credentials",
+    }),
+  });
+
+  const tokenBody = (await tokenRes.json()) as { access_token?: string; error?: string; error_description?: string };
+
+  if (!tokenRes.ok || tokenBody.access_token === undefined) {
+    throw new Error(
+      `Token exchange ${tokenRes.status}: ${tokenBody.error ?? ""} ${tokenBody.error_description ?? JSON.stringify(tokenBody)}`,
+    );
+  }
+
+  const token = tokenBody.access_token;
 
   const [row] = await db.execute<{
     batch_id: string;

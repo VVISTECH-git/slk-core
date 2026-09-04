@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { sql } from "drizzle-orm";
 
 import type { Database } from "@slk/db";
@@ -78,9 +80,51 @@ export async function pushInventoryForColourway(
       const location = locations.nodes[0];
       if (location === undefined) throw new Error("store has no locations");
 
+      /*
+        inventorySetQuantities is a compare-and-set: it requires
+        changeFromQuantity — what it currently believes the level is — and
+        rejects the call without it. Confirmed against Shopify's own schema
+        via introspection, not a doc guess. One query per item rather than
+        trusting a locally-cached number, since this push runs precisely
+        because something changed and a stale belief here would make the
+        very check meant to catch a race fail to catch it.
+      */
+      const withCurrent = await Promise.all(
+        items.map(async (i) => {
+          const { inventoryItem } = await client.graphql<{
+            inventoryItem: {
+              inventoryLevel: { quantities: { quantity: number }[] } | null;
+            } | null;
+          }>(
+            `query($id: ID!, $locationId: ID!) {
+              inventoryItem(id: $id) {
+                inventoryLevel(locationId: $locationId) {
+                  quantities(names: ["available"]) { quantity }
+                }
+              }
+            }`,
+            { id: i.shopify_inventory_item_id, locationId: location.id },
+          );
+
+          return {
+            ...i,
+            current: inventoryItem?.inventoryLevel?.quantities[0]?.quantity ?? 0,
+          };
+        }),
+      );
+
+      /*
+        @idempotent needs a literal key on the field, not a variable — found
+        by introspecting Shopify's own schema for its exact syntax rather
+        than guessing after the first rejection. A fresh key every call:
+        this push is a fresh recompute each time, not a retry of a specific
+        earlier attempt, so there is nothing to deliberately de-duplicate
+        against.
+      */
+      const idempotencyKey = randomUUID();
       const INVENTORY_SET = `
         mutation InventorySet($input: InventorySetQuantitiesInput!) {
-          inventorySetQuantities(input: $input) {
+          inventorySetQuantities(input: $input) @idempotent(key: "${idempotencyKey}") {
             userErrors { field message }
           }
         }
@@ -92,13 +136,11 @@ export async function pushInventoryForColourway(
         input: {
           name: "available",
           reason: "correction",
-          // ignoreCompareQuantity is not a real field on this input — found
-          // by actually calling the API, not by reading docs. Shopify
-          // rejected the whole mutation over it.
-          quantities: items.map((i) => ({
+          quantities: withCurrent.map((i) => ({
             inventoryItemId: i.shopify_inventory_item_id,
             locationId: location.id,
             quantity: i.sellable ?? 0,
+            changeFromQuantity: i.current,
           })),
         },
       });

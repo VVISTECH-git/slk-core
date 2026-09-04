@@ -195,6 +195,19 @@ async function validate(draft: RecordDraft): Promise<Record<string, string>> {
 }
 
 /**
+ * Names what's actually wrong, instead of sending someone hunting across six
+ * tabs for the two red dots. Every entry in `errors` is already a complete,
+ * specific sentence — "Fiber type is needed", "A selling price is needed" —
+ * written once, for the text sitting right under the field itself; this
+ * reuses those same sentences rather than a second, vaguer copy of them.
+ */
+function summarizeErrors(errors: Record<string, string>): string {
+  const messages = Object.values(errors).map((m) => m.replace(/\.+$/, ""));
+  if (messages.length === 0) return "Some fields still need attention.";
+  return `${messages.join("; ")}.`;
+}
+
+/**
  * Whether a product type is tracked piece by piece.
  *
  * The flag lives in the product type's `meta`, beside a colour's hex and a
@@ -248,7 +261,7 @@ export async function saveRecord(draft: RecordDraft): Promise<ActionResult> {
   const errors = await validate(draft);
 
   if (Object.keys(errors).length > 0) {
-    return { ok: false, message: "Some fields still need attention.", errors };
+    return { ok: false, message: summarizeErrors(errors), errors };
   }
 
   if (draft.colourwayId === undefined) {
@@ -617,7 +630,7 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
   }
 
   if (Object.keys(errors).length > 0) {
-    return { ok: false, message: "Some fields still need attention.", errors };
+    return { ok: false, message: summarizeErrors(errors), errors };
   }
 
   const labels = await labelsFor([

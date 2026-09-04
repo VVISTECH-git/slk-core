@@ -315,7 +315,24 @@ async function main(): Promise<void> {
 try {
   await main();
 } catch (error) {
-  console.error(`\n  ${error instanceof Error ? error.message : String(error)}\n`);
+  /*
+    A postgres.js error's own .message can BE the whole "Failed query: ...\n
+    params: ..." block for certain error classes — no distinct short cause
+    to print. Pulling the structured fields out explicitly, prefixed so
+    they're unmistakable, means a rerun can never again lose the actual
+    reason inside a wall of query text.
+  */
+  console.error("\n  ── ERROR ──────────────────────────────────");
+  if (error instanceof Error) {
+    console.error(`  ${error.constructor.name}: ${error.message}`);
+    const extra = error as unknown as Record<string, unknown>;
+    for (const key of ["code", "detail", "hint", "severity", "routine", "constraint_name", "column_name", "table_name"]) {
+      if (extra[key] !== undefined) console.error(`  ${key}: ${extra[key]}`);
+    }
+  } else {
+    console.error(`  ${String(error)}`);
+  }
+  console.error("  ───────────────────────────────────────────\n");
   process.exitCode = 1;
 } finally {
   // $client is drizzle-orm's escape hatch to the underlying postgres-js

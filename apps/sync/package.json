@@ -14,6 +14,7 @@
     "start": "tsx src/index.ts",
     "publish-one": "tsx src/publish.ts",
     "test-webhook": "tsx src/test-webhook.ts",
+    "test-listing-push": "tsx src/test-listing-push.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

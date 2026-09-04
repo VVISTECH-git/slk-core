@@ -38,7 +38,13 @@ function required(name: string): string {
   return value;
 }
 
-const db = createDb({ url: directUrl(), mode: "direct" });
+// mode deliberately not forced to "direct": if DIRECT_URL turns out to
+// actually be a pooled connection string (easy to grab the wrong one out of
+// a dozen similarly-named Postgres vars), createSql's own inference from the
+// hostname is what protects against the failure DEPLOY.md warns about —
+// prepared statements silently breaking over PgBouncer's transaction
+// pooling, in a way that looks like an intermittent, unrelated bug.
+const db = createDb({ url: directUrl() });
 
 /*
   Everything lives inside main() and every exit is a thrown error, not

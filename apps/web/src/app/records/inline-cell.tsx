@@ -148,6 +148,15 @@ export function InlineLookupCell({
           <div
             ref={menu}
             role="listbox"
+            onClick={(e) => {
+              // Same reasoning as the anchor button: this portal's clicks
+              // still bubble through the row it was born in, React-tree-wise,
+              // not DOM-tree-wise. One stop here, on the whole popover, covers
+              // the search input along with every option below it, rather
+              // than repeating the same guard on each child that could ever
+              // catch a click.
+              e.stopPropagation();
+            }}
             style={{
               position: "fixed",
               top: at?.top ?? -9999,

@@ -138,7 +138,16 @@ export function ToastBar({
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-6 left-1/2 z-50 flex max-w-lg -translate-x-1/2 items-start gap-3 rounded-lg border px-4 py-3 text-[13px] shadow-[var(--shadow)]"
+      /*
+        Top-right, not bottom-center. A table can run to any length, and
+        a dialog's own Cancel/Save sit at the bottom of the dialog — either
+        way, bottom-center put the toast right where the reader's eyes
+        already weren't and, on a short page, far enough below the fold to
+        go unnoticed entirely. Top-right is the one spot that stays close
+        to the header actions that usually caused the toast in the first
+        place, and never competes with a dialog's own footer.
+      */
+      className="fixed top-6 right-6 z-50 flex max-w-lg items-start gap-3 rounded-lg border px-4 py-3 text-[13px] shadow-[var(--shadow)]"
       style={{
         background: toast.ok ? "var(--ok-soft)" : "var(--brick-soft)",
         borderColor: toast.ok ? "var(--ok)" : "var(--brick)",

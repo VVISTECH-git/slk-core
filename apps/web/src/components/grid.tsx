@@ -924,8 +924,13 @@ export function Toast({
         code from the piece panel produced its only feedback behind a grey
         wash. A toast is the newest and shortest-lived thing on the screen; it
         should never be the thing that loses.
+
+        Top-right, not bottom-center — see the same note on ToastBar in
+        components/ui.tsx. Same reasoning here: a long table's actions can
+        happen anywhere down the page, and bottom-center put the toast
+        wherever the reader's eyes weren't.
       */
-      className="fixed bottom-6 left-1/2 z-60 -translate-x-1/2 rounded-lg border border-rule bg-surface px-4 py-2.5 text-[13.5px] text-ink shadow-lg"
+      className="fixed top-6 right-6 z-60 rounded-lg border border-rule bg-surface px-4 py-2.5 text-[13.5px] text-ink shadow-lg"
     >
       {message}
       <button

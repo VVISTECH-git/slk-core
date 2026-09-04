@@ -155,6 +155,43 @@ export async function sendProductSet(
     throw new Error(`Shopify accepted the product but returned no variant. Product: ${product.id}`);
   }
 
+  /*
+    Active status alone does not make a product visible anywhere — Shopify
+    treats "exists, for sale" and "published to a sales channel" as two
+    separate facts. Found by actually checking the storefront: the product
+    created fine, set inventory fine, and was still a 404 for a real
+    customer until this ran. Online Store only — Point of Sale is a
+    decision this codebase has not been asked to make.
+  */
+  const { publications } = await client.graphql<{
+    publications: { nodes: { id: string; name: string }[] };
+  }>(`query { publications(first: 10) { nodes { id name } } }`);
+
+  const onlineStore = publications.nodes.find((p) => p.name === "Online Store");
+
+  if (onlineStore !== undefined) {
+    const PUBLISH = `
+      mutation Publish($id: ID!, $input: [PublicationInput!]!) {
+        publishablePublish(id: $id, input: $input) {
+          userErrors { field message }
+        }
+      }
+    `;
+
+    const publishResult = await client.graphql<{
+      publishablePublish: { userErrors: { field: string[]; message: string }[] };
+    }>(PUBLISH, { id: product.id, input: [{ publicationId: onlineStore.id }] });
+
+    if (publishResult.publishablePublish.userErrors.length > 0) {
+      throw new Error(
+        "Shopify accepted the product but refused publishing it: " +
+          publishResult.publishablePublish.userErrors
+            .map((e) => `${e.field.join(".")}: ${e.message}`)
+            .join("; "),
+      );
+    }
+  }
+
   return {
     productId: product.id,
     variantId: variant.id,

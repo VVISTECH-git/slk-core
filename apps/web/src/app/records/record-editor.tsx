@@ -782,6 +782,7 @@ export function RecordEditor({
                     lines={openingStock}
                     setLines={setOpeningStock}
                     unit={uom}
+                    error={errors["openingStock"]}
                   />
                 </div>
               )}
@@ -1939,6 +1940,7 @@ function OpeningStock({
   lines,
   setLines,
   unit,
+  error,
 }: {
   locations: PickableLocation[];
   lines: OpeningLine[];
@@ -1951,6 +1953,7 @@ function OpeningStock({
    * could mean two quite different things.
    */
   unit: string | null;
+  error?: string;
 }) {
   const internal = locations.filter((l) => l.isInternal);
 
@@ -1981,7 +1984,9 @@ function OpeningStock({
   return (
     <>
       <div className="mb-3 flex items-baseline justify-between">
-        <h3 className="text-[15px] font-semibold text-ink">Opening Stock</h3>
+        <h3 className="text-[15px] font-semibold text-ink">
+          Opening Stock<span className="text-brick"> *</span>
+        </h3>
         <span className="text-[12.5px] text-muted">
           Total{" "}
           <span className="font-mono text-[13.5px] tabular-nums text-ink">{total}</span>
@@ -1994,6 +1999,9 @@ function OpeningStock({
           )}
         </span>
       </div>
+      {error !== undefined && (
+        <p className="mb-2 text-[11.5px] text-brick">{error}</p>
+      )}
 
       <div className="overflow-hidden rounded-lg border border-rule bg-surface">
         {lines.map((line, index) => {
@@ -2064,9 +2072,9 @@ function OpeningStock({
 
       <Note>
         Each line is recorded as stock arriving from Production into that
-        location, so the count can still be explained a year from now. Leave it
-        all blank if the stock is not counted yet — it can arrive later through
-        Record movement.
+        location, so the count can still be explained a year from now. A
+        record with nothing here has no consignment and no product code —
+        at least one location needs a real quantity before it can be saved.
       </Note>
     </>
   );

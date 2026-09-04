@@ -599,6 +599,23 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
 
   const errors = await validate(draft);
 
+  /*
+    recordOpeningStock silently drops a blank, zero or negative line rather
+    than erroring — right for a single stray line among several real ones,
+    wrong as the only thing on the form: that let a colourway save with no
+    stock and no product code at all, indistinguishable on the shelf from
+    one that just hasn't arrived yet. A consignment is a quantity that
+    actually landed somewhere; nothing to enter here means there is nothing
+    to save yet, and Record A Movement is where it belongs once there is.
+  */
+  const hasOpeningQuantity = draft.openingStock.some(
+    (line) => line.locationId !== "" && Number(line.qty) > 0,
+  );
+  if (!hasOpeningQuantity) {
+    errors["openingStock"] =
+      "At least one location needs a quantity greater than zero.";
+  }
+
   if (Object.keys(errors).length > 0) {
     return { ok: false, message: "Some fields still need attention.", errors };
   }

@@ -197,6 +197,14 @@ async function main(): Promise<void> {
     order by i.sort_order
   `);
 
+  // A second run of the same consignment updates the product it already
+  // made rather than creating a sibling — this is the whole reason
+  // channel_link exists (see the schema comment on it).
+  const [existingLink] = await db.execute<{ shopify_product_id: string }>(sql`
+    select shopify_product_id from channel_link
+    where channel_id = ${row.channel_id} and batch_id = ${row.batch_id}
+  `);
+
   const base = required("R2_PUBLIC_BASE_URL").replace(/\/$/, "");
 
   const title = row.title_override ?? listingTitle({
@@ -220,7 +228,10 @@ async function main(): Promise<void> {
   });
 
   console.log(`\n  ${productCode} — ${title}`);
-  console.log(`  ${photos.length} photograph(s), sellable ${row.sellable} at ${channelCode}\n`);
+  console.log(`  ${photos.length} photograph(s), sellable ${row.sellable} at ${channelCode}`);
+  console.log(existingLink !== undefined
+    ? `  Already listed as ${existingLink.shopify_product_id} — updating it.\n`
+    : `  Not listed yet — creating.\n`);
 
   // ── Shopify ────────────────────────────────────────────────────────────
 
@@ -285,6 +296,9 @@ async function main(): Promise<void> {
     };
   }>(PRODUCT_SET, {
     input: {
+      // Present only on a second run — its absence is what tells productSet
+      // to create rather than update.
+      ...(existingLink !== undefined && { id: existingLink.shopify_product_id }),
       title,
       descriptionHtml: description,
       vendor: "Sree Lakshmi Kalamkari",
@@ -332,14 +346,19 @@ async function main(): Promise<void> {
     throw new Error(`Shopify accepted the product but returned no variant — nothing to link. Product: ${product.id}`);
   }
 
-  console.log(`\n  Created: https://${domain}/admin/products/${product.id.split("/").pop()}\n`);
+  console.log(`\n  ${existingLink !== undefined ? "Updated" : "Created"}: https://${domain}/admin/products/${product.id.split("/").pop()}\n`);
 
   await db.execute(sql`
     insert into channel_link (channel_id, batch_id, shopify_product_id, shopify_variant_id, shopify_inventory_item_id)
     values (${row.channel_id}, ${row.batch_id}, ${product.id}, ${variant.id}, ${variant.inventoryItem.id})
+    on conflict (channel_id, batch_id) do update set
+      shopify_product_id = excluded.shopify_product_id,
+      shopify_variant_id = excluded.shopify_variant_id,
+      shopify_inventory_item_id = excluded.shopify_inventory_item_id,
+      updated_at = now()
   `);
 
-  console.log("  channel_link written — a second run of this consignment would now need to update, not create.\n");
+  console.log("  channel_link written.\n");
 }
 
 try {

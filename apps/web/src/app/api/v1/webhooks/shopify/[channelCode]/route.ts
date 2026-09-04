@@ -67,7 +67,10 @@ export async function POST(
   const raw = await request.text();
 
   const expected = createHmac("sha256", secret).update(raw, "utf8").digest("base64");
-  const expectedBuf = Buffer.from(expected);
+  // Both sides decoded from base64 into the actual hash bytes — Buffer.from
+  // with no encoding defaults to utf8, which turned the base64 *text* into
+  // bytes instead of decoding what it represents. Never could have matched.
+  const expectedBuf = Buffer.from(expected, "base64");
   const signatureBuf = Buffer.from(signature, "base64");
 
   const verified =

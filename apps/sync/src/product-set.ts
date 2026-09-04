@@ -112,6 +112,14 @@ export async function sendProductSet(
       descriptionHtml: description,
       vendor: "Sree Lakshmi Kalamkari",
       status: "ACTIVE",
+      // Shopify's own standard taxonomy — separate from tags/collections,
+      // and left unset before this shipped an empty "Category:" on every
+      // listing. Sarees only for now (found via Shopify's taxonomy search:
+      // "Apparel & Accessories > Clothing > Traditional & Ceremonial
+      // Clothing > Saris & Lehengas > Saris"), because Saree is the only
+      // serialised product type that can be published at all today — this
+      // needs a real mapping once a second product type gets there.
+      category: "gid://shopify/TaxonomyCategory/aa-1-23-2-1",
       tags: [row.colour, row.craft_technique, row.textile_material ?? row.fibre_type, row.motif].filter(
         (t): t is string => t !== null,
       ),

@@ -221,23 +221,18 @@ async function releaseRefundedLines(
     `);
     if (batchRow === undefined) continue;
 
-    const [current] = await db.execute<{ qty: number }>(sql`
-      select qty from reservation
-      where channel_id = ${channelId}
-        and batch_id = ${batchRow.id}
-        and external_order_id = ${externalOrderId}
-        and status = 'held'
-    `);
-
-    // Nothing held for this line — already released, or never booked.
-    if (current === undefined) continue;
-
-    const remaining = Math.max(0, current.qty - item.quantity);
-
+    /*
+      One atomic UPDATE rather than read-then-write: every expression in a
+      Postgres UPDATE's SET clause sees the row as it was before this
+      statement, so `qty` on the right of `greatest(...)` is always the
+      pre-refund value even under concurrent refunds for the same order —
+      there is no window for a second refund to read a qty this one is
+      about to overwrite.
+    */
     await db.execute(sql`
       update reservation set
-        qty = ${remaining},
-        status = ${remaining > 0 ? "held" : "released"},
+        qty = greatest(0, qty - ${item.quantity}),
+        status = case when qty - ${item.quantity} <= 0 then 'released' else 'held' end,
         updated_at = now()
       where channel_id = ${channelId}
         and batch_id = ${batchRow.id}

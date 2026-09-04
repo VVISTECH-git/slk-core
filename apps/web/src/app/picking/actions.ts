@@ -23,8 +23,27 @@ import type { ActionResult } from "../records/actions";
  * sending out more than a location actually holds — packing a Shopify
  * order is not a different kind of event from a walk-in sale, only a
  * different reason it happened.
+ *
+ * Deliberately not one db.transaction() wrapping the claim, the stock
+ * check and the insert — that hung indefinitely in production, every
+ * time, on the third statement, the one live query against `db` in this
+ * whole app that opens a real multi-statement transaction. `db` here
+ * connects through DATABASE_URL, the pooler — everywhere else in this app
+ * (@slk/sync, migrations, Drizzle Studio) that needs actual transactional
+ * semantics goes through DIRECT_URL instead, for exactly this reason; see
+ * packages/db's own env.ts. Reproduced with a live pg_stat_activity check:
+ * the backend sat "idle in transaction" / ClientRead forever right after
+ * that query, meaning Postgres had already answered and was waiting on
+ * the app to speak next — a driver/pooler mismatch, not a slow query.
+ *
+ * Sequential statements instead, each already safe alone: the claim is
+ * still one atomic UPDATE ... WHERE status = 'held', so a second caller
+ * racing the first still gets zero rows back rather than double-claiming.
+ * The one new failure mode a transaction would have rolled back on its
+ * own — claimed, but rejected on the stock check — is handled by hand,
+ * putting the reservation back to 'held' rather than leaving it stranded
+ * as 'fulfilled' with nothing to show for it.
  */
-/** Thrown inside the transaction to reject cleanly, without rolling back into a 500. */
 class PackRejected extends Error {}
 
 export async function packReservation(
@@ -50,74 +69,76 @@ export async function packReservation(
   let packedQty = 0;
   let externalOrderName: string | null = null;
 
+  // Atomic claim: this UPDATE only succeeds once. A second caller's
+  // WHERE status = 'held' matches nothing the moment the first commits,
+  // so it gets zero rows back rather than racing the write below.
+  const [claimed] = await db.execute<{
+    qty: number;
+    batchId: string;
+    externalOrderName: string | null;
+  }>(sql`
+    update reservation set status = 'fulfilled', updated_at = now()
+    where id = ${reservationId} and status = 'held'
+    returning qty, batch_id as "batchId", external_order_name as "externalOrderName"
+  `);
+
+  if (claimed === undefined) {
+    return {
+      ok: false,
+      message: "That order is not waiting to be packed — somebody may already have packed it.",
+    };
+  }
+
   try {
-    // Everything inside one transaction: claiming the reservation, checking
-    // stock and writing the movement either all happen or none do. Without
-    // this, a second click (or a second person) racing the first between
-    // the status check and the write could pack the same order twice — the
-    // ledger would show two movements for one physical piece leaving.
-    await db.transaction(async (tx) => {
-      // Atomic claim: this UPDATE only succeeds once. A second caller's
-      // WHERE status = 'held' matches nothing the moment the first commits,
-      // so it gets zero rows back rather than racing the write below.
-      const [claimed] = await tx.execute<{
-        qty: number;
-        batchId: string;
-        externalOrderName: string | null;
-      }>(sql`
-        update reservation set status = 'fulfilled', updated_at = now()
-        where id = ${reservationId} and status = 'held'
-        returning qty, batch_id as "batchId", external_order_name as "externalOrderName"
-      `);
+    const [batch] = await db.execute<{ colourwayId: string }>(sql`
+      select colourway_id as "colourwayId" from batch where id = ${claimed.batchId}
+    `);
+    if (batch === undefined) throw new PackRejected("That consignment no longer exists.");
 
-      if (claimed === undefined) {
-        throw new PackRejected(
-          "That order is not waiting to be packed — somebody may already have packed it.",
-        );
-      }
+    // Same check recordMovement makes: cannot send out more than this
+    // location actually holds of this colourway.
+    const [held] = await db.execute<{ qty: number }>(sql`
+      select (
+        coalesce((select sum(m.qty)::int from movement m
+                  where m.colourway_id = ${batch.colourwayId} and m.to_location_id = ${locationId}), 0)
+      - coalesce((select sum(m.qty)::int from movement m
+                  where m.colourway_id = ${batch.colourwayId} and m.from_location_id = ${locationId}), 0)
+      ) as qty
+    `);
+    const available = held?.qty ?? 0;
 
-      const [batch] = await tx.execute<{ colourwayId: string }>(sql`
-        select colourway_id as "colourwayId" from batch where id = ${claimed.batchId}
-      `);
-      if (batch === undefined) throw new PackRejected("That consignment no longer exists.");
+    if (claimed.qty > available) {
+      throw new PackRejected(
+        available === 0
+          ? `There is nothing at ${picked.name} to pack this from.`
+          : `Only ${available} at ${picked.name} — this order needs ${claimed.qty}.`,
+      );
+    }
 
-      // Same check recordMovement makes: cannot send out more than this
-      // location actually holds of this colourway.
-      const [held] = await tx.execute<{ qty: number }>(sql`
-        select (
-          coalesce((select sum(m.qty)::int from movement m
-                    where m.colourway_id = ${batch.colourwayId} and m.to_location_id = ${locationId}), 0)
-        - coalesce((select sum(m.qty)::int from movement m
-                    where m.colourway_id = ${batch.colourwayId} and m.from_location_id = ${locationId}), 0)
-        ) as qty
-      `);
-      const available = held?.qty ?? 0;
-
-      if (claimed.qty > available) {
-        throw new PackRejected(
-          available === 0
-            ? `There is nothing at ${picked.name} to pack this from.`
-            : `Only ${available} at ${picked.name} — this order needs ${claimed.qty}.`,
-        );
-      }
-
-      await tx.insert(movement).values({
-        colourwayId: batch.colourwayId,
-        qty: claimed.qty,
-        kind: "sold",
-        fromLocationId: locationId,
-        toLocationId: customer.id,
-        occurredAt: new Date(),
-        reference: claimed.externalOrderName,
-        note: null,
-        actorId: await actingId(),
-      });
-
-      colourwayId = batch.colourwayId;
-      packedQty = claimed.qty;
-      externalOrderName = claimed.externalOrderName;
+    await db.insert(movement).values({
+      colourwayId: batch.colourwayId,
+      qty: claimed.qty,
+      kind: "sold",
+      fromLocationId: locationId,
+      toLocationId: customer.id,
+      occurredAt: new Date(),
+      reference: claimed.externalOrderName,
+      note: null,
+      actorId: await actingId(),
     });
+
+    colourwayId = batch.colourwayId;
+    packedQty = claimed.qty;
+    externalOrderName = claimed.externalOrderName;
   } catch (error) {
+    // The claim already happened as its own statement — nothing to roll
+    // back automatically, so undo it by hand before answering. Still the
+    // same reservation, still safe to try again.
+    await db.execute(sql`
+      update reservation set status = 'held', updated_at = now()
+      where id = ${reservationId} and status = 'fulfilled'
+    `);
+
     if (error instanceof PackRejected) return { ok: false, message: error.message };
     throw error;
   }

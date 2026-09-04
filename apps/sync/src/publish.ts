@@ -40,7 +40,11 @@ if (channelCode === undefined || productCode === undefined) {
 }
 
 const PREFIX = channelCode.toUpperCase();
-const domain = required(`SHOPIFY_${PREFIX}_STORE_DOMAIN`);
+// Tolerate the value someone copies from a browser address bar — protocol
+// and trailing slash are the obvious mistake, not a different store.
+const domain = required(`SHOPIFY_${PREFIX}_STORE_DOMAIN`)
+  .replace(/^https?:\/\//, "")
+  .replace(/\/$/, "");
 const token = required(`SHOPIFY_${PREFIX}_ADMIN_TOKEN`);
 const apiVersion = process.env["SHOPIFY_API_VERSION"] ?? "2026-07";
 

@@ -44,6 +44,14 @@ const NAV = [
     icon: "M7 9a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z M2.5 16c0-2.5 2-4.2 4.5-4.2s4.5 1.7 4.5 4.2 M13 5.2a2.2 2.2 0 0 1 0 4.3 M14 11.6c1.9.4 3.2 1.8 3.2 3.9",
     owner: true,
   },
+  {
+    // Whether a storefront exists and what it would be told to sell — owner
+    // territory, same reasoning as Staff. Not floor work, and not live yet.
+    href: "/channels",
+    label: "Channels",
+    icon: "M4 6l1-3h10l1 3 M4 6h12v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6z M8 9v2a2 2 0 0 0 4 0V9",
+    owner: true,
+  },
 ] as const;
 
 const RAIL_KEY = "slk.sidebar.rail";

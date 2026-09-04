@@ -57,6 +57,9 @@ importers:
       '@slk/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@slk/sync':
+        specifier: workspace:*
+        version: link:../sync
       aws4fetch:
         specifier: ^1.0.20
         version: 1.0.20

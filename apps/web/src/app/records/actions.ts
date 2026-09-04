@@ -3,9 +3,11 @@
 import { actingId, guard } from "@/lib/session";
 import { eq, sql, type SQL } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
 import { colourway, design, location, movement } from "@slk/db";
 import { designCode, designName } from "@slk/domain";
+import { pushInventoryForColourway } from "@slk/sync/inventory-push";
 
 import { db } from "@/lib/db";
 import { remove } from "@/lib/storage";
@@ -1184,6 +1186,29 @@ export async function recordMovement(
     note,
     actorId: await actingId(),
   });
+
+  /*
+    Never awaited — after() runs this once the response has already gone
+    back to whoever recorded the sale, so a Shopify hiccup can never be why
+    a sale failed or felt slow. A no-op for the vast majority of movements:
+    the query inside finds nothing to push unless this colourway has a batch
+    actually linked to a channel, which only a previously published
+    consignment has.
+
+    Whole colourway, not just this movement's batch — recordMovement writes
+    a quantity, not a scan, so piece_position (and therefore
+    channel_batch_sellable) can shift for every batch of this colourway, not
+    only the one this particular sale happened to be entered against.
+  */
+  after(() =>
+    pushInventoryForColourway(db, colourwayId)
+      .then((results) => {
+        for (const r of results) {
+          if (r.error) console.error(`[inventory-push] ${r.channelCode}: ${r.error}`);
+        }
+      })
+      .catch((error: unknown) => console.error("[inventory-push] failed", error)),
+  );
 
   revalidatePath("/records");
 

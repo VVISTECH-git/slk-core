@@ -6,6 +6,8 @@ import { sql } from "drizzle-orm";
 import { listingAlt, listingDescription, listingTitle } from "@slk/domain";
 import { createDb, directUrl } from "@slk/db";
 
+import { shopifyClient } from "./shopify-client";
+
 config({ path: resolve(process.cwd(), "../../.env") });
 
 /**
@@ -60,44 +62,7 @@ async function main(): Promise<void> {
     throw new Error("Usage: pnpm --filter @slk/sync publish-one <channelCode> <productCode>");
   }
 
-  const PREFIX = channelCode.toUpperCase();
-  // Tolerate the value someone copies from a browser address bar — protocol
-  // and trailing slash are the obvious mistake, not a different store.
-  const domain = required(`SHOPIFY_${PREFIX}_STORE_DOMAIN`)
-    .replace(/^https?:\/\//, "")
-    .replace(/\/$/, "");
-  const apiVersion = process.env["SHOPIFY_API_VERSION"] ?? "2026-07";
-
-  /*
-    This store has no legacy custom-app flow left — Dev Dashboard only, which
-    means no static Admin API token to hand a script. The Client ID + Secret
-    pair (the app's own Credentials, not the "App automation token" — that
-    one is scoped to CLI deploys, not general Admin API calls) exchanges for
-    a real access token via OAuth's client_credentials grant: no browser, no
-    callback URL, right for an app with exactly one installer.
-  */
-  const clientId = required(`SHOPIFY_${PREFIX}_CLIENT_ID`);
-  const clientSecret = required(`SHOPIFY_${PREFIX}_CLIENT_SECRET`);
-
-  const tokenRes = await fetch(`https://${domain}/admin/oauth/access_token`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      client_id: clientId,
-      client_secret: clientSecret,
-      grant_type: "client_credentials",
-    }),
-  });
-
-  const tokenBody = (await tokenRes.json()) as { access_token?: string; error?: string; error_description?: string };
-
-  if (!tokenRes.ok || tokenBody.access_token === undefined) {
-    throw new Error(
-      `Token exchange ${tokenRes.status}: ${tokenBody.error ?? ""} ${tokenBody.error_description ?? JSON.stringify(tokenBody)}`,
-    );
-  }
-
-  const token = tokenBody.access_token;
+  const client = await shopifyClient(channelCode);
 
   const [row] = await db.execute<{
     batch_id: string;
@@ -235,26 +200,7 @@ async function main(): Promise<void> {
 
   // ── Shopify ────────────────────────────────────────────────────────────
 
-  async function shopify<T>(query: string, variables: Record<string, unknown>): Promise<T> {
-    const res = await fetch(`https://${domain}/admin/api/${apiVersion}/graphql.json`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-shopify-access-token": token,
-      },
-      body: JSON.stringify({ query, variables }),
-    });
-
-    const body = (await res.json()) as { data?: T; errors?: unknown };
-
-    if (!res.ok || body.errors) {
-      throw new Error(`Shopify ${res.status}: ${JSON.stringify(body.errors ?? body)}`);
-    }
-
-    return body.data as T;
-  }
-
-  const { locations } = await shopify<{ locations: { nodes: { id: string; name: string }[] } }>(
+  const { locations } = await client.graphql<{ locations: { nodes: { id: string; name: string }[] } }>(
     `query { locations(first: 10) { nodes { id name } } }`,
     {},
   );
@@ -285,7 +231,7 @@ async function main(): Promise<void> {
     }
   `;
 
-  const result = await shopify<{
+  const result = await client.graphql<{
     productSet: {
       product: {
         id: string;
@@ -346,7 +292,7 @@ async function main(): Promise<void> {
     throw new Error(`Shopify accepted the product but returned no variant — nothing to link. Product: ${product.id}`);
   }
 
-  console.log(`\n  ${existingLink !== undefined ? "Updated" : "Created"}: https://${domain}/admin/products/${product.id.split("/").pop()}\n`);
+  console.log(`\n  ${existingLink !== undefined ? "Updated" : "Created"}: https://${client.domain}/admin/products/${product.id.split("/").pop()}\n`);
 
   await db.execute(sql`
     insert into channel_link (channel_id, batch_id, shopify_product_id, shopify_variant_id, shopify_inventory_item_id)

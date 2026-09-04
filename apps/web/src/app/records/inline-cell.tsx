@@ -177,7 +177,14 @@ export function InlineLookupCell({
                 type="button"
                 role="option"
                 aria-selected={value === null}
-                onClick={() => {
+                onClick={(e) => {
+                  // A portal's click still bubbles through the *React* tree
+                  // it was born in, not the DOM tree it renders into — so
+                  // without this, picking a value here also fired the row's
+                  // own onClick underneath and popped open the full editor
+                  // right after. The anchor button already stops it for the
+                  // open/close toggle; this is the same fix for the pick.
+                  e.stopPropagation();
                   setOpen(false);
                   onPick(null);
                 }}
@@ -197,7 +204,8 @@ export function InlineLookupCell({
                     type="button"
                     role="option"
                     aria-selected={o.label === value}
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setOpen(false);
                       if (o.label !== value) onPick(o.id);
                     }}

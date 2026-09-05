@@ -68,6 +68,14 @@ function scheduleListingPush(colourwayId: string): void {
 /** Everything the editor can change, as it arrives from the form. */
 export interface RecordDraft {
   colourwayId?: string;
+  /**
+   * Set when this is a new colour of a design that already exists — what
+   * "Copy to a new colour" opens. createRecord then adds a colourway under
+   * that design instead of minting a new one, and applies the attributes to
+   * the design the same way saveRecord does, because they are shared by
+   * every colour under it. Nothing is written until Finish.
+   */
+  designId?: string;
   attributes: Partial<Record<AttributeKey, string | null>>;
 
   /**
@@ -563,51 +571,6 @@ export async function deleteRecord(colourwayId: string): Promise<ActionResult> {
   };
 }
 
-/** A new colour under an existing design — the common way stock arrives. */
-export async function copyRecord(colourwayId: string): Promise<ActionResult> {
-  const denied = await guard("office");
-  if (denied !== null) return denied;
-
-  const rows = await db
-    .select()
-    .from(colourway)
-    .where(eq(colourway.id, colourwayId));
-
-  const source = rows[0];
-  if (source === undefined) return { ok: false, message: "Nothing to copy." };
-
-  const [made] = await db
-    .insert(colourway)
-    .values({
-      designId: source.designId,
-      // Colour starts blank so the copy is a deliberate choice, not an
-      // accident of the button label — it can end up the same colour as the
-      // source (a later arrival of hand-done work in the same nominal
-      // colour is its own record, not the same physical piece) or a
-      // genuinely different one.
-      colourId: null,
-      costMinor: source.costMinor,
-      makingMinor: source.makingMinor,
-      wholesaleMinor: source.wholesaleMinor,
-      retailMinor: source.retailMinor,
-      mrpMinor: source.mrpMinor,
-    })
-    .returning();
-
-  revalidatePath("/records");
-
-  return {
-    ok: made !== undefined,
-    message: "Copied. Choose its colour.",
-    // The copy exists precisely to become a different colour, and it is not a
-    // usable record until it has one — it shows in the table as a blank
-    // swatch and a dash. Handing the id back lets the caller open it straight
-    // away rather than leaving someone to find the row and work out that the
-    // colour is set somewhere else.
-    colourwayId: made?.id,
-  };
-}
-
 /** A brand-new design, minted with the next sequence number. */
 export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
   const denied = await guard("floor");
@@ -648,6 +611,84 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
   };
 
   const productType = label("productType") ?? label("homeProductType");
+
+  /*
+    A new colour of a design that already exists.
+
+    The design's attributes are shared by every colour under it, so they are
+    written the way saveRecord writes them — to the design — rather than
+    ignored, which would have let the form show one fibre and the table
+    another. Then one colourway, its image slots and its opening stock: the
+    same three things the fresh-design path makes after the design itself.
+
+    This used to be done by copyRecord inserting a blank colourway the moment
+    the button was clicked, before any editor opened. Cancel then had nothing
+    to cancel: two clicks left two nameless rows with no colour and no stock.
+    A copy is a draft until Finish, like every other new record.
+  */
+  if (draft.designId !== undefined) {
+    const [parent] = await db.execute<{ id: string; code: string }>(sql`
+      select id, code from design where id = ${draft.designId}
+    `);
+    if (parent === undefined) return { ok: false, message: "That design no longer exists." };
+
+    const composed = designName({
+      descriptors: draft.descriptors.map((id) => labels.get(id) ?? null),
+      craftTechnique: label("craftTechnique"),
+      regionalStyle: label("regionalStyle"),
+      silkSubFamily: label("silkSubFamily"),
+      cottonSubFamily: label("cottonSubFamily"),
+      fibreType: label("fibreType"),
+      garmentType: label("garmentType"),
+      productType,
+    });
+    const assignments = ATTRIBUTE_KEYS.map((key) => {
+      const value = draft.attributes[key];
+      return sql`${sql.identifier(ATTRIBUTES[key].column)} = ${value === "" ? null : (value ?? null)}`;
+    });
+
+    const made = await db.transaction(async (tx) => {
+      await tx.execute(sql`
+        update design set
+          ${sql.join(assignments, sql`, `)},
+          name = ${draft.nameIsCustom ? draft.name : composed},
+          name_is_custom = ${draft.nameIsCustom},
+          notes = ${draft.notes.trim() === "" ? null : draft.notes},
+          updated_at = now()
+        where id = ${parent.id}
+      `);
+      await setDescriptors(tx, parent.id, draft.descriptors);
+      const [row] = await tx
+        .insert(colourway)
+        .values({
+          designId: parent.id,
+          colourId: draft.colourId,
+          secondaryColourId: draft.secondaryColourId,
+          costMinor: toMinor(draft.prices.cost),
+          makingMinor: toMinor(draft.prices.making),
+          wholesaleMinor: toMinor(draft.prices.wholesale),
+          retailMinor: toMinor(draft.prices.retail),
+          mrpMinor: toMinor(draft.prices.mrp),
+        })
+        .returning({ id: colourway.id });
+      return row;
+    });
+
+    if (made === undefined) return { ok: false, message: "Could not add the colour." };
+
+    await setImageSlots(made.id, draft.imageSlots);
+    const opening = await recordOpeningStock(made.id, draft.openingStock);
+
+    revalidatePath("/records");
+
+    const colour = draft.colourId ? (labels.get(draft.colourId) ?? "a new colour") : "a new colour";
+    return {
+      ok: true,
+      message: `Added ${colour} to ${parent.code}.${opening.message === null ? "" : ` ${opening.message}`}`,
+      colourwayId: made.id,
+      productCodes: opening.codes,
+    };
+  }
 
   /*
     Whether this design is tagged piece by piece.

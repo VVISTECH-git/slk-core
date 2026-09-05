@@ -109,6 +109,7 @@ export interface PickableLocation {
 
 export function RecordEditor({
   record,
+  template = null,
   options,
   locations,
   initialTab,
@@ -117,6 +118,13 @@ export function RecordEditor({
   onPhotoChanged,
 }: {
   record: RecordDetail | null;
+  /**
+   * For a copy: the record whose design this new colour joins. The form
+   * opens filled from it, with the colour blank, and nothing is written
+   * until Finish — cancelling a copy leaves no trace, which the old
+   * insert-on-click copy did not manage.
+   */
+  template?: RecordDetail | null;
   options: Options;
   locations: PickableLocation[];
   initialTab: TabKey;
@@ -141,17 +149,20 @@ export function RecordEditor({
   // that is a click on the Values screen, not a code change.
   const [attributes, setAttributes] = useState<
     Partial<Record<AttributeKey, string | null>>
-  >(() => record?.attributes ?? defaultAttributes(options));
+  >(() => (record ?? template)?.attributes ?? defaultAttributes(options));
   const [colourId, setColourId] = useState<string | null>(record?.colourId ?? null);
   const [secondaryColourId, setSecondaryColourId] = useState<string | null>(
     record?.secondaryColourId ?? null,
   );
+  // A copy inherits the source's prices: a second colour of the same saree
+  // usually costs the same, and a different number is one edit away.
+  const seed = record ?? template;
   const [prices, setPrices] = useState({
-    cost: asInput(record?.costMinor ?? null),
-    making: asInput(record?.makingMinor ?? null),
-    wholesale: asInput(record?.wholesaleMinor ?? null),
-    retail: asInput(record?.retailMinor ?? null),
-    mrp: asInput(record?.mrpMinor ?? null),
+    cost: asInput(seed?.costMinor ?? null),
+    making: asInput(seed?.makingMinor ?? null),
+    wholesale: asInput(seed?.wholesaleMinor ?? null),
+    retail: asInput(seed?.retailMinor ?? null),
+    mrp: asInput(seed?.mrpMinor ?? null),
   });
   const [quantity, setQuantity] = useState(
     isNew ? "1" : String(record.stock.onHand),
@@ -177,7 +188,7 @@ export function RecordEditor({
    * is still there for the saree that genuinely has no blouse piece.
    */
   const [imageSlots, setImageSlots] = useState<string[]>(() => {
-    if (record) return record.images.map((i) => i.slotId ?? "").filter(Boolean);
+    if (seed) return seed.images.map((i) => i.slotId ?? "").filter(Boolean);
 
     const productType = attributes.productType ?? attributes.homeProductType;
 
@@ -193,11 +204,11 @@ export function RecordEditor({
    * table, not to a column on the design.
    */
   const [descriptors, setDescriptors] = useState<string[]>(
-    () => record?.descriptors ?? [],
+    () => seed?.descriptors ?? [],
   );
-  const [notes, setNotes] = useState(record?.notes ?? "");
-  const [name, setName] = useState(record?.name ?? "");
-  const [nameIsCustom, setNameIsCustom] = useState(record?.nameIsCustom ?? false);
+  const [notes, setNotes] = useState(seed?.notes ?? "");
+  const [name, setName] = useState(seed?.name ?? "");
+  const [nameIsCustom, setNameIsCustom] = useState(seed?.nameIsCustom ?? false);
 
   const [tab, setTab] = useState<TabKey>(initialTab);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -568,6 +579,7 @@ export function RecordEditor({
 
     const draft: RecordDraft = {
       colourwayId: record?.id,
+      designId: record === null ? template?.designId : undefined,
       attributes,
       descriptors,
       colourId,
@@ -607,7 +619,7 @@ export function RecordEditor({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={isNew ? "New Product Record" : `Edit ${record.code}`}
+        aria-label={isNew ? (template ? `New colour of ${template.code}` : "New Product Record") : `Edit ${record.code}`}
         // A fixed height, not one that follows the content. Basic has nine
         // fields and Material has five, so sizing to content made the dialog
         // jump — and moved the Cancel and Save buttons under the pointer
@@ -618,10 +630,13 @@ export function RecordEditor({
         <header className="border-b border-rule px-6 pt-5">
           <div className="mb-4 flex items-baseline gap-3">
             <h2 className="text-[19px] font-semibold tracking-tight text-ink">
-              {isNew ? "New Product Record" : record.name}
+              {isNew ? (template ? `New colour of ${template.name}` : "New Product Record") : record.name}
             </h2>
             {!isNew && (
               <span className="font-mono text-[12px] text-faint">{record.code}</span>
+            )}
+            {isNew && template && (
+              <span className="font-mono text-[12px] text-faint">{template.code}</span>
             )}
             <button
               type="button"

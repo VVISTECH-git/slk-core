@@ -26,7 +26,7 @@ import {
 import { useColumnOrder, useColumnWidths, useVisibleColumns } from "@/lib/column-widths";
 import type { RecordRow } from "@/lib/records";
 
-import { copyRecord, setRecordField, type InlineField } from "./actions";
+import { setRecordField, type InlineField } from "./actions";
 import { InlineLookupCell } from "./inline-cell";
 import { ArchiveDialog, RecordEditor, type PickableLocation } from "./record-editor";
 
@@ -190,6 +190,8 @@ export function RecordsTable({
   const router = useRouter();
   const [editing, setEditing] = useState<{
     record: RecordDetail | null;
+    /** A copy: the source record, whose design the new colour joins. */
+    template?: RecordDetail;
     tab: EditorTab;
   } | null>(null);
   const [archiving, setArchiving] = useState<RecordRow | null>(null);
@@ -774,33 +776,28 @@ export function RecordsTable({
                         onAction={(action) => {
                           if (action === "delete") setArchiving(row);
                           else if (action === "copy") {
-                            // Copy has no dialog to open, so the spinner on
-                            // its own button is the only thing telling the
-                            // reader the click landed.
+                            // Nothing is written here. The editor opens as a
+                            // new record filled from this one, with the
+                            // colour blank — that is the whole point of the
+                            // copy — and the colourway is made on Finish.
+                            // Cancel leaves no row behind. It used to insert
+                            // first and ask afterwards, which left blank
+                            // colourways in the table every time somebody
+                            // changed their mind.
                             setOpening({ id: row.id, action });
                             startLoading(async () => {
                               try {
-                                const result = await copyRecord(row.id);
-
-                                // A copy is not a usable record until it has
-                                // a colour — that is the whole reason it
-                                // exists. Landing back on the table with a
-                                // blank swatch and no way to see where the
-                                // colour is set is not finishing the job.
-                                //
-                                // Craft & Design, because that is where the
-                                // colour is. It opened on Basic, which was
-                                // right until the field moved and then said
-                                // "choose its colour" over a tab that no
-                                // longer has one.
-                                if (result.ok && result.colourwayId) {
-                                  setToast(result.message);
-                                  router.refresh();
-                                  open(result.colourwayId, "basic", "craft");
+                                const response = await fetch(`/records/${row.id}`);
+                                if (!response.ok) {
+                                  setToast("Could not open that record to copy it.");
                                   return;
                                 }
-
-                                done(result.message);
+                                const source = (await response.json()) as RecordDetail;
+                                // Craft & Design, because that is where the
+                                // colour is asked.
+                                setEditing({ record: null, template: source, tab: "craft" });
+                              } catch {
+                                setToast("Could not reach the server. Check your connection.");
                               } finally {
                                 setOpening(null);
                               }
@@ -865,6 +862,7 @@ export function RecordsTable({
       {editing && (
         <RecordEditor
           record={editing.record}
+          template={editing.template ?? null}
           options={options}
           locations={locations}
           initialTab={editing.tab}

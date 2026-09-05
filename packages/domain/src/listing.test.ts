@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import { listingAlt, listingDescription, listingTitle } from "./listing.ts";
+import { listingAlt, listingDescription, listingTags, listingTitle } from "./listing.ts";
 
 test("listingTitle appends the colours it is given", () => {
   assert.equal(
@@ -120,4 +120,39 @@ test("listingAlt degrades to just the name with nothing else", () => {
     listingAlt({ designName: "Kalamkari Cotton Saree" }),
     "Kalamkari Cotton Saree",
   );
+});
+
+test("listingTags sends one plain label per attribute, in sidebar order", () => {
+  assert.deepEqual(
+    listingTags({
+      colour: "Black",
+      fibreType: "Cotton",
+      textileMaterial: "Mul Mul",
+      craftTechnique: "Kalamkari",
+      craftSubType: "Hand Block",
+      motifCategory: "Fauna",
+      motif: "Fish",
+      sareeStyle: "All Over",
+      productionMethod: "Handicraft",
+      blouseAvailable: "Yes",
+    }),
+    ["Black", "Cotton", "Mul Mul", "Kalamkari", "Hand Block", "Fauna", "Fish", "All Over", "Handicraft", "With Blouse"],
+  );
+});
+
+test("listingTags drops blank attributes and never tags a missing blouse", () => {
+  assert.deepEqual(
+    listingTags({ colour: "Teal", craftTechnique: "Kalamkari", blouseAvailable: "No", sareeStyle: " " }),
+    ["Teal", "Kalamkari"],
+  );
+  assert.deepEqual(listingTags({}), []);
+});
+
+test("listingTags sends a label once even when two attributes share it", () => {
+  // "Linen" is both a colour and a fibre in the Master Lists.
+  assert.deepEqual(listingTags({ colour: "Linen", fibreType: "Linen" }), ["Linen"]);
+});
+
+test("listingTags still honours the older 'With Blouse' spelling", () => {
+  assert.deepEqual(listingTags({ blouseAvailable: "With Blouse" }), ["With Blouse"]);
 });

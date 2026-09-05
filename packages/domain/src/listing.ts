@@ -143,6 +143,74 @@ export function listingDescription(parts: ListingDescriptionParts): string {
   return sentences.join(" ");
 }
 
+export interface ListingTagParts {
+  colour?: string | null;
+  fibreType?: string | null;
+  textileMaterial?: string | null;
+  craftTechnique?: string | null;
+  /** Hand Block, Hand Screen — the branch of the technique. */
+  craftSubType?: string | null;
+  motif?: string | null;
+  /** Floral, Fauna, Birds — the family the motif belongs to. */
+  motifCategory?: string | null;
+  /** All Over, Half and Half, Scattered Buta — how the design sits on a saree. */
+  sareeStyle?: string | null;
+  /** "Handicraft" or "Machine Made". */
+  productionMethod?: string | null;
+  /** "Yes" / "No" as the Blouse Availability list stores it. */
+  blouseAvailable?: string | null;
+}
+
+/**
+ * The tag the storefront uses to mean "comes with a blouse piece". A fixed
+ * word rather than the list's own "Yes", because "Yes" on its own tells a
+ * shopper nothing and would collide with any other yes/no attribute.
+ */
+export const WITH_BLOUSE_TAG = "With Blouse";
+
+/**
+ * The product tags a listing carries on Shopify — one plain label per
+ * attribute, nothing prefixed, nothing invented.
+ *
+ * Tags are the only thing a storefront can filter on without an app, so this
+ * list *is* the filter sidebar: the theme groups each tag back into its
+ * attribute by matching it against the same Master Lists. Decided with SLK on
+ * 5 Sep 2026 which attributes earn a tag — colour, cloth, craft and its
+ * branch, motif and its family, saree layout, whether a hand made it, and
+ * whether a blouse comes with it. Border, pallu and blouse detail stay in the
+ * description: true, but too fine to filter on.
+ *
+ * Order is the sidebar's order. Blank attributes drop their tag rather than
+ * leaving a placeholder, and a label that appears twice (a colour that is
+ * also a fibre) is sent once.
+ */
+export function listingTags(parts: ListingTagParts): string[] {
+  const tags: (string | null)[] = [
+    present(parts.colour),
+    present(parts.fibreType),
+    present(parts.textileMaterial),
+    present(parts.craftTechnique),
+    present(parts.craftSubType),
+    present(parts.motifCategory),
+    present(parts.motif),
+    present(parts.sareeStyle),
+    present(parts.productionMethod),
+    // The list stores Yes/No; an older row may still say "With Blouse".
+    present(parts.blouseAvailable) === "Yes" || present(parts.blouseAvailable) === WITH_BLOUSE_TAG
+      ? WITH_BLOUSE_TAG
+      : null,
+  ];
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of tags) {
+    if (t === null || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
 export interface ListingAltParts {
   colour?: string | null;
   designName: string;

@@ -34,9 +34,12 @@ export { colourSwatch, isPaleSwatch } from "./colour";
 export {
   listingAlt,
   listingDescription,
+  listingTags,
   listingTitle,
+  WITH_BLOUSE_TAG,
   type ListingAltParts,
   type ListingDescriptionParts,
+  type ListingTagParts,
   type ListingTitleParts,
 } from "./listing";
 

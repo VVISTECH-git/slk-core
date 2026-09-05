@@ -1,4 +1,4 @@
-import { listingAlt, listingDescription, listingTitle } from "@slk/domain";
+import { listingAlt, listingDescription, listingTags, listingTitle } from "@slk/domain";
 
 import { shopifyCategoryFor } from "./taxonomy";
 import type { ShopifyClient } from "./shopify-client";
@@ -139,14 +139,24 @@ export async function sendProductSet(
       // structured taxonomy category, so a listing with only `category` set
       // still shows a blank "Category:" to a real customer. Set both.
       ...(row.product_type !== null && { productType: row.product_type }),
-      // Both cloth tags, not one falling back to the other: textile material
-      // ("Mul Mul") is more specific than fibre type ("Cotton"), and a
-      // storefront collection keyed on the fibre needs that broader tag
-      // present even when the specific one is too — dropping it here is
-      // what left "Cotton Sarees" with nothing to match against.
-      tags: [row.colour, row.craft_technique, row.textile_material, row.fibre_type, row.motif].filter(
-        (t): t is string => t !== null,
-      ),
+      // One plain label per attribute — the storefront's filter sidebar is
+      // built from exactly these, so which attributes earn a tag is decided
+      // in @slk/domain (listingTags), not here. Both cloth tags go: textile
+      // material ("Mul Mul") is more specific than fibre type ("Cotton"),
+      // and a collection keyed on the fibre needs the broader tag present
+      // even when the specific one is too.
+      tags: listingTags({
+        colour: row.colour,
+        fibreType: row.fibre_type,
+        textileMaterial: row.textile_material,
+        craftTechnique: row.craft_technique,
+        craftSubType: row.craft_sub_type,
+        motif: row.motif,
+        motifCategory: row.motif_category,
+        sareeStyle: row.saree_style,
+        productionMethod: row.production_method,
+        blouseAvailable: row.blouse_available,
+      }),
       productOptions: [{ name: "Title", values: [{ name: "Default Title" }] }],
       variants: [
         {

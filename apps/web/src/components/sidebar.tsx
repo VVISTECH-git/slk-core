@@ -53,8 +53,8 @@ const NAV = [
     owner: true,
   },
   {
-    // Whether a storefront exists and what it would be told to sell — owner
-    // territory, same reasoning as Staff. Not floor work, and not live yet.
+    // Every storefront, every consignment on it, and the buttons that put
+    // them there — owner territory, same reasoning as Staff. Not floor work.
     href: "/channels",
     label: "Channels",
     icon: "M4 6l1-3h10l1 3 M4 6h12v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6z M8 9v2a2 2 0 0 0 4 0V9",

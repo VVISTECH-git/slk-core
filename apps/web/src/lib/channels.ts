@@ -3,13 +3,15 @@ import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 
 /**
- * What a channel could sell right now, read straight from
- * `channel_batch_sellable` — proof the numbers are right before the bridge
- * ever calls Shopify with them. See the 3 Sep design.
+ * Every consignment each channel could sell, and whether it is listed there.
+ *
+ * The sellable numbers come straight from `channel_batch_sellable` — proof
+ * the count is right before the bridge sends it to Shopify (the 3 Sep
+ * design). The listing state comes from `channel_link`, which the publish
+ * action writes; a row without one has never been put on that channel.
  *
  * Restricted to live stock the same way Product Management is: an archived
- * design or a retired colourway has nothing to prove here, and would just be
- * noise on a screen meant to answer "is this number correct".
+ * design or a retired colourway has nothing to sell and nothing to list.
  */
 
 export interface ChannelSellableRow {
@@ -25,6 +27,14 @@ export interface ChannelSellableRow {
   onHand: number | null;
   reserved: number | null;
   sellable: number | null;
+  /** Paise. Null means the publish action will refuse it. */
+  retailMinor: number | null;
+  /** Photographs actually uploaded for this colourway. */
+  photos: number;
+  /** Null until the consignment has been published to this channel. */
+  shopifyProductId: string | null;
+  /** When it was last published or republished there — ISO, or null. */
+  listedAt: string | null;
 }
 
 export async function loadChannelSellable(): Promise<ChannelSellableRow[]> {
@@ -41,6 +51,10 @@ export async function loadChannelSellable(): Promise<ChannelSellableRow[]> {
     on_hand: number | null;
     reserved: number | null;
     sellable: number | null;
+    retail_minor: number | null;
+    photos: number;
+    shopify_product_id: string | null;
+    listed_at: string | null;
   }>(sql`
     select
       cbs.channel_id,
@@ -54,12 +68,21 @@ export async function loadChannelSellable(): Promise<ChannelSellableRow[]> {
       cbs.is_serialised,
       cbs.on_hand,
       cbs.reserved,
-      cbs.sellable
+      cbs.sellable,
+      bp.retail_minor,
+      (
+        select count(*)::int from image i
+        where i.colourway_id = cw.id and i.storage_key is not null
+      )              as photos,
+      cl.shopify_product_id,
+      cl.updated_at  as listed_at
     from channel_batch_sellable cbs
     join channel ch     on ch.id = cbs.channel_id
     join colourway cw   on cw.id = cbs.colourway_id
     join design d       on d.id  = cw.design_id
     left join lookup_value colour on colour.id = cw.colour_id
+    left join batch_price bp      on bp.batch_id = cbs.batch_id
+    left join channel_link cl     on cl.channel_id = cbs.channel_id and cl.batch_id = cbs.batch_id
     where d.status <> 'archived' and cw.is_active
     order by ch.code, d.code, cbs.code
   `);
@@ -77,5 +100,9 @@ export async function loadChannelSellable(): Promise<ChannelSellableRow[]> {
     onHand: r.on_hand,
     reserved: r.reserved,
     sellable: r.sellable,
+    retailMinor: r.retail_minor,
+    photos: r.photos,
+    shopifyProductId: r.shopify_product_id,
+    listedAt: r.listed_at === null ? null : new Date(r.listed_at).toISOString(),
   }));
 }

@@ -54,7 +54,8 @@ type TabKey =
   | "garment"
   | "prices"
   | "images"
-  | "stock";
+  | "stock"
+  | "publish";
 
 /** Which tab a field lives on, so an error can point at one. */
 const FIELD_TAB: Record<string, TabKey> = {
@@ -322,6 +323,9 @@ export function RecordEditor({
     // the rows are written once the colourway exists.
     list.push({ key: "images", label: "Images" });
     list.push({ key: "stock", label: "Stock" });
+    // Putting it in front of customers is the last step, and one a record
+    // that has not been finished cannot take: there is no consignment yet.
+    if (!isNew) list.push({ key: "publish", label: "Publish" });
     return list;
   }, [isSaree, isGarment, isNew]);
 
@@ -1095,6 +1099,8 @@ export function RecordEditor({
               composedDescription={composedDescription}
             />
           )}
+
+          {activeTab === "publish" && <PublishTab record={record} />}
 
           {activeTab === "basic" && (
             <label className="mt-4 block">
@@ -2504,6 +2510,146 @@ function Consignments({
         </span>
       </div>
     </div>
+  );
+}
+
+/**
+ * The last step: putting the record in front of customers.
+ *
+ * Publishing already existed — behind a "Channels" toggle on a consignment
+ * row on the Stock tab, where nobody found it twice in one day. It stays
+ * there, because that row is where a consignment's own facts live; this tab
+ * is the front door to the same buttons, with the one thing the row could
+ * not show: whether the record is actually ready to be seen.
+ *
+ * The checks warn, they do not block. The publish action refuses a missing
+ * price itself; everything else here is a listing that would go up looking
+ * worse than it should, which is the owner's call to make with open eyes.
+ */
+function PublishTab({ record }: { record: RecordDetail | null }) {
+  // Per-consignment channel state, so a Publish here flips to Republish
+  // without waiting for the whole record to reload.
+  const [channelsByBatch, setChannelsByBatch] = useState<
+    Record<string, RecordDetail["consignments"][number]["channels"]>
+  >(() => Object.fromEntries((record?.consignments ?? []).map((c) => [c.id, c.channels])));
+
+  if (record === null) {
+    return (
+      <Note>
+        Finish the record first. A listing is made from a consignment, and the
+        first consignment is written when Finish is pressed.
+      </Note>
+    );
+  }
+
+  const photos = record.images.filter((i) => i.url !== null).length;
+  const checks: { ok: boolean; text: string }[] = [
+    record.retailMinor !== null
+      ? { ok: true, text: `Retail price ${money(record.retailMinor)}` }
+      : { ok: false, text: "No retail price. Set one on Prices — Shopify is refused without it." },
+    photos > 0
+      ? { ok: true, text: `${photos} photograph${photos === 1 ? "" : "s"}` }
+      : { ok: false, text: "No photographs. The listing goes up with a blank tile until Images has at least a Body shot." },
+    record.colourId !== null
+      ? { ok: true, text: "Colour set" }
+      : { ok: false, text: "No colour. The title will be the bare design name and the Colour filter will not find it." },
+    record.attributes.fibreType
+      ? { ok: true, text: "Fibre type set" }
+      : { ok: false, text: "No fibre type. The Fibre filter and the Cotton / Silk collections will not find it." },
+    record.attributes.craftTechnique
+      ? { ok: true, text: "Craft technique set" }
+      : { ok: false, text: "No craft technique. The Craft filter and the Kalamkari collection will not find it." },
+  ];
+  const warnings = checks.filter((c) => !c.ok).length;
+
+  return (
+    <div className="flex flex-col gap-5">
+      <PublishSection
+        title="Ready to be seen?"
+        lede={
+          warnings === 0
+            ? "Everything a listing is made from is here."
+            : `${warnings} thing${warnings === 1 ? "" : "s"} worth fixing first. Publishing still works; the listing just says less than it could.`
+        }
+      >
+        <ul className="flex flex-col gap-1.5">
+          {checks.map((c) => (
+            <li key={c.text} className="flex items-start gap-2 text-[13px]">
+              <span className={`mt-px flex-none ${c.ok ? "text-ok" : "text-brick"}`} aria-hidden="true">
+                {c.ok ? "✓" : "!"}
+              </span>
+              <span className={c.ok ? "text-ink-2" : "text-ink"}>{c.text}</span>
+            </li>
+          ))}
+        </ul>
+      </PublishSection>
+
+      <PublishSection
+        title="Consignments"
+        lede="Each consignment is its own listing on each channel. Publish puts it up; Republish sends the current title, description, tags, price and photos to a listing that already exists."
+      >
+        {record.consignments.length === 0 ? (
+          <Note>No consignment yet — receive stock on the Stock tab first.</Note>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {record.consignments.map((c) => {
+              const channels = channelsByBatch[c.id] ?? c.channels;
+              const live = channels.filter((ch) => ch.shopifyProductId !== null).length;
+              return (
+                <div key={c.id} className="overflow-hidden rounded-lg border border-rule-2">
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 bg-surface-2 px-4 py-2.5">
+                    <span className="font-mono text-[13px] text-ink">{c.code}</span>
+                    <span className="text-[12.5px] text-muted">
+                      {c.qty} received{c.location ? ` into ${c.location}` : ""} · {c.receivedAt}
+                    </span>
+                    <span className="ml-auto text-[12px] text-muted">
+                      {live === 0
+                        ? "not listed anywhere"
+                        : `listed on ${live} of ${channels.length} channel${channels.length === 1 ? "" : "s"}`}
+                    </span>
+                  </div>
+                  <ChannelsPanel
+                    batchId={c.id}
+                    channels={channels}
+                    onPublished={(code) =>
+                      setChannelsByBatch((prev) => ({
+                        ...prev,
+                        [c.id]: channels.map((ch) =>
+                          ch.code === code
+                            ? { ...ch, shopifyProductId: ch.shopifyProductId ?? "pending" }
+                            : ch,
+                        ),
+                      }))
+                    }
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </PublishSection>
+    </div>
+  );
+}
+
+/** A titled block on the Publish tab — a list or cards, not the field grid Section() lays out. */
+function PublishSection({
+  title,
+  lede,
+  children,
+}: {
+  title: string;
+  lede: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section>
+      <h3 className="border-b border-rule pb-1.5 text-[12px] font-semibold tracking-wide text-muted uppercase">
+        {title}
+      </h3>
+      <p className="mt-2 mb-3 max-w-2xl text-[12.5px] leading-relaxed text-muted">{lede}</p>
+      {children}
+    </section>
   );
 }
 

@@ -272,7 +272,18 @@ function loadConsignments(colourwayId: string) {
       b.title, b.description,
       b.weight_grams                                as "weightGrams",
       b.hsn_code                                    as "hsnCode",
-      array_remove(array_agg(p.code order by p.serial), null) as items
+      array_remove(array_agg(p.code order by p.serial), null) as items,
+      -- A correlated subquery rather than another join: channel × the
+      -- piece join above would multiply every item code once per channel,
+      -- turning array_agg(p.code) into duplicates. This runs once per
+      -- batch row regardless of how many pieces it has.
+      (
+        select coalesce(json_agg(jsonb_build_object(
+          'code', ch.code, 'name', ch.name, 'shopifyProductId', cl.shopify_product_id
+        ) order by ch.code), '[]'::json)
+        from channel ch
+        left join channel_link cl on cl.channel_id = ch.id and cl.batch_id = b.id
+      ) as channels
     from batch b
     left join location l on l.id = b.location_id
     left join piece p    on p.batch_id = b.id

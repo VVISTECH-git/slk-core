@@ -156,6 +156,13 @@ export interface RecordDetail {
     /** Grams. Null until entered — there is no honest default for a weight. */
     weightGrams: number | null;
     hsnCode: string | null;
+
+    /**
+     * Every channel this business sells through, and whether this specific
+     * consignment is listed on it yet. A batch can be on some channels and
+     * not others — each is its own decision, not a side effect of the other.
+     */
+    channels: { code: string; name: string; shopifyProductId: string | null }[];
   }[];
 
   /**

@@ -37,6 +37,7 @@ import {
   removeImage,
   storageStatus,
 } from "./image-actions";
+import { publishBatchToChannel } from "./publish-actions";
 
 /**
  * One editor for a record, not four dialogs.
@@ -2336,9 +2337,9 @@ function Consignments({
   // Which row is expanded, and to which of its two panels — items or
   // listing. One row open at a time: the panel is wide, and two open
   // consignments would mean scrolling past one to read the other.
-  const [open, setOpen] = useState<{ id: string; panel: "items" | "listing" } | null>(
-    null,
-  );
+  const [open, setOpen] = useState<
+    { id: string; panel: "items" | "listing" | "channels" } | null
+  >(null);
 
   /*
     What has been saved this session, layered over what the record loaded
@@ -2367,7 +2368,7 @@ function Consignments({
 
   const total = consignments.reduce((sum, c) => sum + c.qty, 0);
 
-  const toggle = (id: string, panel: "items" | "listing") =>
+  const toggle = (id: string, panel: "items" | "listing" | "channels") =>
     setOpen((prev) => (prev?.id === id && prev.panel === panel ? null : { id, panel }));
 
   return (
@@ -2420,6 +2421,21 @@ function Consignments({
               >
                 {open?.id === c.id && open.panel === "listing" ? "Hide" : "Listing"}
               </button>
+
+              {c.channels.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => toggle(c.id, "channels")}
+                  title="Which channels this consignment is published to"
+                  className={`text-[12px] hover:text-ink-2 ${
+                    c.channels.some((ch) => ch.shopifyProductId !== null)
+                      ? "font-medium text-brick"
+                      : "text-faint"
+                  }`}
+                >
+                  {open?.id === c.id && open.panel === "channels" ? "Hide" : "Channels"}
+                </button>
+              )}
             </div>
           </div>
 
@@ -2452,6 +2468,24 @@ function Consignments({
               }
             />
           )}
+
+          {open?.id === c.id && open.panel === "channels" && (
+            <ChannelsPanel
+              batchId={c.id}
+              channels={c.channels}
+              onPublished={(code) =>
+                setSaved((prev) => ({
+                  ...prev,
+                  [c.id]: {
+                    ...prev[c.id],
+                    channels: c.channels.map((ch) =>
+                      ch.code === code ? { ...ch, shopifyProductId: ch.shopifyProductId ?? "pending" } : ch,
+                    ),
+                  },
+                }))
+              }
+            />
+          )}
         </div>
       ))}
 
@@ -2469,6 +2503,81 @@ function Consignments({
           received all time
         </span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Whether this one consignment is on each channel the business sells
+ * through, and the button that puts it there.
+ *
+ * Every channel is listed, published or not — a channel this consignment
+ * has never been offered to reads the same as one it was pulled from, which
+ * is deliberate: "not published" is not an error state to explain away, it
+ * is simply the more common one, right up until somebody decides otherwise
+ * by pressing the button.
+ */
+function ChannelsPanel({
+  batchId,
+  channels,
+  onPublished,
+}: {
+  batchId: string;
+  channels: RecordDetail["consignments"][number]["channels"];
+  onPublished: (channelCode: string) => void;
+}) {
+  const [pending, startTransition] = useTransition();
+  const [busyCode, setBusyCode] = useState<string | null>(null);
+  const [result, setResult] = useState<{ code: string; outcome: ActionResult } | null>(null);
+
+  const publish = (code: string) => {
+    setBusyCode(code);
+    startTransition(async () => {
+      const outcome = await publishBatchToChannel(batchId, code);
+      setResult({ code, outcome });
+      setBusyCode(null);
+      if (outcome.ok) onPublished(code);
+    });
+  };
+
+  return (
+    <div className="border-t border-rule bg-surface-2 px-4 py-3">
+      <div className="flex flex-col gap-2">
+        {channels.map((ch) => {
+          const live = ch.shopifyProductId !== null;
+          return (
+            <div
+              key={ch.code}
+              className="flex items-center justify-between gap-3 rounded-md border border-rule bg-surface px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium text-ink">{ch.name}</p>
+                <p className={`text-[11.5px] ${live ? "text-ok" : "text-muted"}`}>
+                  {live ? "Published" : "Not published yet"}
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={pending && busyCode === ch.code}
+                onClick={() => publish(ch.code)}
+                className="flex-none rounded-md border border-rule-2 px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {pending && busyCode === ch.code
+                  ? "Publishing…"
+                  : live
+                    ? "Republish"
+                    : "Publish"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {result !== null && (
+        <p className={`mt-2 text-[12px] ${result.outcome.ok ? "text-ok" : "text-brick"}`}>
+          {result.outcome.message}
+        </p>
+      )}
     </div>
   );
 }

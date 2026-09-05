@@ -580,8 +580,11 @@ export async function copyRecord(colourwayId: string): Promise<ActionResult> {
     .insert(colourway)
     .values({
       designId: source.designId,
-      // Colour is deliberately blank: a copy exists to become a different
-      // colour, and carrying the old one over would trip the unique index.
+      // Colour starts blank so the copy is a deliberate choice, not an
+      // accident of the button label — it can end up the same colour as the
+      // source (a later arrival of hand-done work in the same nominal
+      // colour is its own record, not the same physical piece) or a
+      // genuinely different one.
       colourId: null,
       costMinor: source.costMinor,
       makingMinor: source.makingMinor,

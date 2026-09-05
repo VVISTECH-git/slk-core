@@ -1,0 +1,1 @@
+DROP INDEX "colourway_design_colour_key";

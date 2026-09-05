@@ -206,7 +206,13 @@ export const colourway = pgTable(
     designId: uuid("design_id")
       .notNull()
       .references(() => design.id, { onDelete: "cascade" }),
-    /** The primary colour. With the design, it identifies the colourway. */
+    /**
+     * The primary colour. Not unique with the design — hand-done work means
+     * two arrivals in the same nominal colour are not the same physical
+     * piece, and each gets its own colourway, own photos, own Product Code.
+     * The Product Code on the consignment it receives is what's actually
+     * unique; colour here is a description, not an identity.
+     */
     colourId: attr("colour_id"),
     /** A contrast pallu, a border in another shade. Not part of the identity. */
     secondaryColourId: attr("secondary_colour_id"),
@@ -232,10 +238,7 @@ export const colourway = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [
-    uniqueIndex("colourway_design_colour_key").on(t.designId, t.colourId),
-    index("colourway_design_idx").on(t.designId),
-  ],
+  (t) => [index("colourway_design_idx").on(t.designId)],
 );
 
 /**

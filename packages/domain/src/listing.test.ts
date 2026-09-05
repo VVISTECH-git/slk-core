@@ -78,6 +78,36 @@ test("listingDescription asks nothing of the blouse when there is none", () => {
   );
 });
 
+test("listingDescription leads with a handmade claim and folds in the new facts", () => {
+  const full = listingDescription({
+    productionMethod: "Handicraft",
+    craftTechnique: "Kalamkari",
+    craftSubType: "Hand Block",
+    textileMaterial: "Mul Mul",
+    weaveStructure: "Plain Weave",
+    motif: "Lotus",
+    sareeStyle: "All Over",
+    palluMotif: "Peacock",
+    borderHeight: "4 Inch",
+    borderStyle: "Temple",
+    palluDesign: "Contrast",
+  });
+
+  assert.equal(
+    full,
+    "Handcrafted, not machine-made. Hand Block Kalamkari on Mul Mul. Plain Weave structure. " +
+      "All Over layout. Features a lotus motif. The pallu carries a peacock motif. " +
+      "4 Inch temple border. The pallu is contrast.",
+  );
+});
+
+test("listingDescription states machine production instead of claiming handmade", () => {
+  assert.equal(
+    listingDescription({ productionMethod: "Machine Made", textileMaterial: "Cotton" }),
+    "Machine Made production. Woven in Cotton.",
+  );
+});
+
 test("listingAlt leads with the colour and trails with the slot", () => {
   assert.equal(
     listingAlt({ colour: "Teal", designName: "Kalamkari Cotton Saree", slot: "Pallu" }),

@@ -69,11 +69,16 @@ export async function pushListingForColourway(
       b.hsn_code,
       colour.label              as colour,
       colour2.label             as secondary_colour,
+      prod_method.label          as production_method,
       craft.label                as craft_technique,
+      craft_sub.label             as craft_sub_type,
       material.label              as textile_material,
       fibre.label                  as fibre_type,
+      weave.label                   as weave_structure,
       motif.label                  as motif,
       motif_cat.label               as motif_category,
+      saree_style.label              as saree_style,
+      pallu_motif.label               as pallu_motif,
       border_h.label                 as border_height,
       border_s.label                  as border_style,
       pallu.label                      as pallu_design,
@@ -90,11 +95,16 @@ export async function pushListingForColourway(
     left join lookup_value product_type  on product_type.id  = d.product_type_id
     left join lookup_value colour        on colour.id        = cw.colour_id
     left join lookup_value colour2       on colour2.id       = cw.secondary_colour_id
+    left join lookup_value prod_method   on prod_method.id   = d.production_method_id
     left join lookup_value craft         on craft.id         = d.craft_technique_id
+    left join lookup_value craft_sub     on craft_sub.id     = d.craft_sub_type_id
     left join lookup_value material      on material.id      = d.textile_material_id
     left join lookup_value fibre         on fibre.id         = d.fibre_type_id
+    left join lookup_value weave         on weave.id         = d.weave_structure_id
     left join lookup_value motif         on motif.id         = d.motif_id
     left join lookup_value motif_cat     on motif_cat.id     = d.motif_category_id
+    left join lookup_value saree_style   on saree_style.id   = d.saree_style_id
+    left join lookup_value pallu_motif   on pallu_motif.id   = d.pallu_motif_id
     left join lookup_value border_h      on border_h.id      = d.border_height_id
     left join lookup_value border_s      on border_s.id      = d.border_style_id
     left join lookup_value pallu         on pallu.id         = d.pallu_design_id

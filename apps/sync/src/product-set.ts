@@ -15,11 +15,16 @@ export type ConsignmentRow = {
   product_type: string | null;
   colour: string | null;
   secondary_colour: string | null;
+  production_method: string | null;
   craft_technique: string | null;
+  craft_sub_type: string | null;
   textile_material: string | null;
   fibre_type: string | null;
+  weave_structure: string | null;
   motif: string | null;
   motif_category: string | null;
+  saree_style: string | null;
+  pallu_motif: string | null;
   border_height: string | null;
   border_style: string | null;
   pallu_design: string | null;
@@ -64,11 +69,16 @@ export async function sendProductSet(
   });
 
   const description = row.description_override ?? listingDescription({
+    productionMethod: row.production_method,
     craftTechnique: row.craft_technique,
+    craftSubType: row.craft_sub_type,
     textileMaterial: row.textile_material,
     fibreType: row.fibre_type,
+    weaveStructure: row.weave_structure,
     motif: row.motif,
     motifCategory: row.motif_category,
+    sareeStyle: row.saree_style,
+    palluMotif: row.pallu_motif,
     borderHeight: row.border_height,
     borderStyle: row.border_style,
     palluDesign: row.pallu_design,

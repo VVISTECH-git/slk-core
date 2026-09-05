@@ -43,11 +43,21 @@ export function listingTitle(parts: ListingTitleParts): string {
 }
 
 export interface ListingDescriptionParts {
+  /** "Handicraft" or "Machine Made". A trust claim, not a detail — see below. */
+  productionMethod?: string | null;
   craftTechnique?: string | null;
+  /** The branch of the technique — e.g. Hand Block, Hand Screen, of Kalamkari. */
+  craftSubType?: string | null;
   textileMaterial?: string | null;
   fibreType?: string | null;
+  /** Plain Weave, Jacquard. */
+  weaveStructure?: string | null;
   motif?: string | null;
   motifCategory?: string | null;
+  /** How the design sits on the cloth — All Over, Scattered Buta, Half and Half. */
+  sareeStyle?: string | null;
+  /** The motif on the pallu specifically, distinct from the body's `motif` above. */
+  palluMotif?: string | null;
   borderHeight?: string | null;
   borderStyle?: string | null;
   palluDesign?: string | null;
@@ -70,15 +80,38 @@ export interface ListingDescriptionParts {
 export function listingDescription(parts: ListingDescriptionParts): string {
   const sentences: string[] = [];
 
+  // Leads, ahead of what the piece even is: whether a hand made it is the
+  // one fact a photograph cannot show, and the reason this whole function
+  // exists rather than a paragraph typed once and left to go stale.
+  const method = present(parts.productionMethod);
+  if (method === "Handicraft") sentences.push("Handcrafted, not machine-made.");
+  else if (method) sentences.push(`${method} production.`);
+
   const craft = present(parts.craftTechnique);
+  const craftSubType = present(parts.craftSubType);
+  // The branch folds into the technique's own sentence — "Hand Block
+  // Kalamkari", not two half-sentences saying one thing.
+  const craftLabel = craft && craftSubType ? `${craftSubType} ${craft}` : (craft ?? craftSubType);
   const cloth = present(parts.textileMaterial) ?? present(parts.fibreType);
 
-  if (craft && cloth) sentences.push(`${craft} on ${cloth}.`);
-  else if (craft) sentences.push(`${craft} work.`);
+  if (craftLabel && cloth) sentences.push(`${craftLabel} on ${cloth}.`);
+  else if (craftLabel) sentences.push(`${craftLabel} work.`);
   else if (cloth) sentences.push(`Woven in ${cloth}.`);
+
+  const weave = present(parts.weaveStructure);
+  if (weave) sentences.push(`${weave} structure.`);
+
+  const sareeStyle = present(parts.sareeStyle);
+  if (sareeStyle) sentences.push(`${sareeStyle} layout.`);
 
   const motif = present(parts.motif) ?? present(parts.motifCategory);
   if (motif) sentences.push(`Features a ${motif.toLowerCase()} motif.`);
+
+  // Distinct from the motif above on purpose: a pallu is allowed to carry a
+  // different motif than the body, and this is the one sentence that can
+  // say so instead of describing only whichever fact was queried first.
+  const palluMotif = present(parts.palluMotif);
+  if (palluMotif) sentences.push(`The pallu carries a ${palluMotif.toLowerCase()} motif.`);
 
   const height = present(parts.borderHeight);
   const style = present(parts.borderStyle);

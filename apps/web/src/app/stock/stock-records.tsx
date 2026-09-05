@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { rupees } from "@slk/domain/money";
 
@@ -190,6 +190,15 @@ export function StockRecords({
   const [selected, setSelected] = useState<string | null>(null);
   const [viewing, setViewing] = useState<PieceRow | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Same fix as records-table.tsx's identical toast: no timer at all meant
+  // it sat on screen until someone happened to click its ✕, however many
+  // actions later.
+  useEffect(() => {
+    if (toast === null) return;
+    const timer = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   /**
    * Which pieces are queued for a label sheet.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { colourSwatch, isPaleSwatch } from "@slk/domain/colour";
@@ -195,6 +195,19 @@ export function RecordsTable({
   const [archiving, setArchiving] = useState<RecordRow | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [loading, startLoading] = useTransition();
+
+  // Every call site here only ever hands this a string, not the ActionResult
+  // it came from, so there is no `ok` to tell a success from a failure by —
+  // unlike useToast() elsewhere, which keeps a failure up until dismissed on
+  // purpose. Simpler and blunter here: everything clears on its own, because
+  // the alternative this shipped with was worse — a toast with no timer at
+  // all, silently a fixture of the screen until someone happened to click its
+  // ✕, however many actions later.
+  useEffect(() => {
+    if (toast === null) return;
+    const timer = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   /**
    * Which row is being acted on, so the click has something to show for

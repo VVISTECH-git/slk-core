@@ -139,7 +139,12 @@ export async function sendProductSet(
       // structured taxonomy category, so a listing with only `category` set
       // still shows a blank "Category:" to a real customer. Set both.
       ...(row.product_type !== null && { productType: row.product_type }),
-      tags: [row.colour, row.craft_technique, row.textile_material ?? row.fibre_type, row.motif].filter(
+      // Both cloth tags, not one falling back to the other: textile material
+      // ("Mul Mul") is more specific than fibre type ("Cotton"), and a
+      // storefront collection keyed on the fibre needs that broader tag
+      // present even when the specific one is too — dropping it here is
+      // what left "Cotton Sarees" with nothing to match against.
+      tags: [row.colour, row.craft_technique, row.textile_material, row.fibre_type, row.motif].filter(
         (t): t is string => t !== null,
       ),
       productOptions: [{ name: "Title", values: [{ name: "Default Title" }] }],

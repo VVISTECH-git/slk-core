@@ -38,6 +38,7 @@ export {
   listingTitle,
   styledTitle,
   titleStyleFor,
+  vendorFor,
   AARTISANZ_TITLE_STYLE,
   DEFAULT_TITLE_STYLE,
   type ListingTitleStyle,

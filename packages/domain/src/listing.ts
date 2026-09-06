@@ -58,6 +58,18 @@ export function titleStyleFor(channelCode: string | null | undefined): ListingTi
 }
 
 /**
+ * The name a channel trades under — Shopify's `vendor`, the "By …" line on
+ * a product page. aartisanz sells as Sai Sarees; everything else is the
+ * works' own name. Per channel for the same reason the title style is: the
+ * two shops must not read as one another.
+ */
+export const DEFAULT_VENDOR = "Sree Lakshmi Kalamkari";
+export const AARTISANZ_VENDOR = "Sai Sarees";
+export function vendorFor(channelCode: string | null | undefined): string {
+  return channelCode === "aartisanz" ? AARTISANZ_VENDOR : DEFAULT_VENDOR;
+}
+
+/**
  * "Kalamkari Cotton Saree — Teal, Cornflower". The listing's own name, kept
  * apart from `designName` because a title reads the colour and the design
  * does not — two colourways of one design must not collide on Shopify.

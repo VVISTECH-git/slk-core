@@ -5,6 +5,7 @@ import {
   listingTitle,
   styledTitle,
   titleStyleFor,
+  vendorFor,
 } from "@slk/domain";
 
 import { shopifyCategoryFor } from "./taxonomy";
@@ -140,7 +141,7 @@ export async function sendProductSet(
       ...(existingProductId !== undefined && { id: existingProductId }),
       title,
       descriptionHtml: description,
-      vendor: "Sree Lakshmi Kalamkari",
+      vendor: vendorFor(channelCode),
       status: "ACTIVE",
       // Shopify's own standard taxonomy — separate from tags/collections,
       // and left unset before this shipped an empty "Category:" on every

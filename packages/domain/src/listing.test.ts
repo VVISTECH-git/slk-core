@@ -9,6 +9,7 @@ import {
   listingTitle,
   styledTitle,
   titleStyleFor,
+  vendorFor,
 } from "./listing.ts";
 
 test("listingTitle appends the colours it is given", () => {
@@ -211,4 +212,11 @@ test("listingTags sends a label once even when two attributes share it", () => {
 
 test("listingTags still honours the older 'With Blouse' spelling", () => {
   assert.deepEqual(listingTags({ blouseAvailable: "With Blouse" }), ["With Blouse"]);
+});
+
+test("vendorFor: aartisanz trades as Sai Sarees, everything else as the works", () => {
+  assert.equal(vendorFor("aartisanz"), "Sai Sarees");
+  assert.equal(vendorFor("slk"), "Sree Lakshmi Kalamkari");
+  assert.equal(vendorFor(null), "Sree Lakshmi Kalamkari");
+  assert.equal(vendorFor(undefined), "Sree Lakshmi Kalamkari");
 });

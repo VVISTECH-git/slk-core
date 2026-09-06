@@ -113,6 +113,25 @@ export function recordIdFrom(url: string): string {
   return id;
 }
 
+/**
+ * The id segment right after a named one, for a route nested one level
+ * deeper than `/records/<id>` — `idAfter(url, "consignments")` reads the
+ * `<batchId>` out of `/records/<id>/consignments/<batchId>/publish`, the same
+ * way `recordIdFrom` reads `<id>` itself out of anything under `/records/`.
+ */
+export function idAfter(url: string, marker: string): string {
+  const match = new URL(url).pathname.match(
+    new RegExp(`/${marker}/([^/]+)`),
+  );
+  const id = match?.[1] === undefined ? "" : decodeURIComponent(match[1]);
+
+  if (!/^[0-9a-f-]{36}$/i.test(id)) {
+    throw new ApiError(`Not a valid ${marker} id.`, 400);
+  }
+
+  return id;
+}
+
 /** The body as an object, or a 400 — never a crash on malformed JSON. */
 export async function body(request: Request): Promise<Record<string, unknown>> {
   let parsed: unknown;

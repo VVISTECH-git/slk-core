@@ -1,4 +1,4 @@
-import { saveRecord } from "@/app/records/actions";
+import { deleteRecord, saveRecord } from "@/app/records/actions";
 import { ApiError, body, guarded, recordIdFrom } from "@/lib/api";
 import { loadRecord } from "@/lib/editor";
 import { applyToDraft, draftFromRecord } from "@/lib/record-draft";
@@ -64,4 +64,22 @@ export const PATCH = guarded("floor", async (request) => {
   }
 
   return { id };
+});
+
+/**
+ * Gone — the ledger with it. `owner` only.
+ *
+ * Unconditional once you have that role: there is no server-side "can't
+ * delete if X" the way there is no such check on the web either. The web's
+ * own safety net is a two-step confirm dialog that escalates from Archive to
+ * "Delete instead", not a refusal here — see deleteRecord's doc comment for
+ * exactly what a delete cascades through.
+ */
+export const DELETE = guarded("owner", async (request) => {
+  const id = recordIdFrom(request.url);
+
+  const result = await deleteRecord(id);
+  if (!result.ok) throw new ApiError(result.message, 422, result.errors);
+
+  return { message: result.message };
 });

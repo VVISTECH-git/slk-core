@@ -25,21 +25,77 @@ export interface ListingTitleParts {
   designName: string;
   colour?: string | null;
   secondaryColour?: string | null;
+  /**
+   * The piece code — 300015 — when the channel's style wants it in the title.
+   * Left out otherwise; the SKU always carries it regardless.
+   */
+  productCode?: string | null;
+}
+
+/**
+ * How one channel wants its titles to read.
+ *
+ * Two batches of one design in one colour — the same saree printed twice,
+ * each batch its own consignment — compose the same title, and on the
+ * aartisanz storefront that looked like a duplicate listing (6 Sep 2026).
+ * The code is what tells them apart, and it is already the SKU and the QR
+ * label on the cloth, so aartisanz asked for it in the title too, with "||"
+ * between every part instead of the dash.
+ */
+export interface ListingTitleStyle {
+  /** Between design name, colours and code — " — " by default, " || " for aartisanz. */
+  separator: string;
+  /** Whether the piece code closes the title. */
+  withCode: boolean;
+}
+
+export const DEFAULT_TITLE_STYLE: ListingTitleStyle = { separator: " — ", withCode: false };
+export const AARTISANZ_TITLE_STYLE: ListingTitleStyle = { separator: " || ", withCode: true };
+
+/** The style a channel code maps to; anything unlisted reads the default. */
+export function titleStyleFor(channelCode: string | null | undefined): ListingTitleStyle {
+  return channelCode === "aartisanz" ? AARTISANZ_TITLE_STYLE : DEFAULT_TITLE_STYLE;
 }
 
 /**
  * "Kalamkari Cotton Saree — Teal, Cornflower". The listing's own name, kept
  * apart from `designName` because a title reads the colour and the design
  * does not — two colourways of one design must not collide on Shopify.
+ *
+ * With the aartisanz style: "Kalamkari Cotton Saree || Teal, Cornflower ||
+ * 300015" — the code last, so two batches of one colourway do not collide
+ * either.
  */
-export function listingTitle(parts: ListingTitleParts): string {
+export function listingTitle(
+  parts: ListingTitleParts,
+  style: ListingTitleStyle = DEFAULT_TITLE_STYLE,
+): string {
   const colours = [present(parts.colour), present(parts.secondaryColour)].filter(
     (c): c is string => c !== null,
   );
 
-  return colours.length === 0
-    ? parts.designName
-    : `${parts.designName} — ${colours.join(", ")}`;
+  const segments = [parts.designName];
+  if (colours.length > 0) segments.push(colours.join(", "));
+
+  const code = present(parts.productCode);
+  if (style.withCode && code !== null) segments.push(code);
+
+  return segments.join(style.separator);
+}
+
+/**
+ * A hand-written title, finished the way the channel's style finishes every
+ * title — the code still goes on the end for aartisanz, or an override on
+ * one batch would collide with the other batch of the same colourway all
+ * over again.
+ */
+export function styledTitle(
+  title: string,
+  productCode: string | null | undefined,
+  style: ListingTitleStyle,
+): string {
+  const code = present(productCode);
+  return style.withCode && code !== null ? `${title}${style.separator}${code}` : title;
 }
 
 export interface ListingDescriptionParts {

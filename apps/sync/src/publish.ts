@@ -197,6 +197,7 @@ async function main(): Promise<void> {
 
   const sent = await sendProductSet(
     client,
+    channelCode,
     productCode,
     row,
     photos,

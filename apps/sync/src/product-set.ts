@@ -1,4 +1,11 @@
-import { listingAlt, listingDescription, listingTags, listingTitle } from "@slk/domain";
+import {
+  listingAlt,
+  listingDescription,
+  listingTags,
+  listingTitle,
+  styledTitle,
+  titleStyleFor,
+} from "@slk/domain";
 
 import { shopifyCategoryFor } from "./taxonomy";
 import type { ShopifyClient } from "./shopify-client";
@@ -54,6 +61,7 @@ export interface SentProduct {
  */
 export async function sendProductSet(
   client: ShopifyClient,
+  channelCode: string,
   productCode: string,
   row: ConsignmentRow,
   photos: PhotoRow[],
@@ -62,11 +70,21 @@ export async function sendProductSet(
   sellable: number,
   existingProductId: string | undefined,
 ): Promise<SentProduct> {
-  const title = row.title_override ?? listingTitle({
-    designName: row.design_name,
-    colour: row.colour,
-    secondaryColour: row.secondary_colour,
-  });
+  // Per-channel title style: aartisanz reads "Design || Colour || 300015",
+  // every other channel "Design — Colour". An override still gets the code
+  // where the style wants one — see styledTitle.
+  const titleStyle = titleStyleFor(channelCode);
+  const title = row.title_override !== null
+    ? styledTitle(row.title_override, productCode, titleStyle)
+    : listingTitle(
+        {
+          designName: row.design_name,
+          colour: row.colour,
+          secondaryColour: row.secondary_colour,
+          productCode,
+        },
+        titleStyle,
+      );
 
   const description = row.description_override ?? listingDescription({
     productionMethod: row.production_method,

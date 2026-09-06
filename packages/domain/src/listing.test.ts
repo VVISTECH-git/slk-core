@@ -1,7 +1,15 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import { listingAlt, listingDescription, listingTags, listingTitle } from "./listing.ts";
+import {
+  AARTISANZ_TITLE_STYLE,
+  listingAlt,
+  listingDescription,
+  listingTags,
+  listingTitle,
+  styledTitle,
+  titleStyleFor,
+} from "./listing.ts";
 
 test("listingTitle appends the colours it is given", () => {
   assert.equal(
@@ -27,6 +35,54 @@ test("listingTitle is just the design name with no colour", () => {
     listingTitle({ designName: "Kalamkari Cotton Saree" }),
     "Kalamkari Cotton Saree",
   );
+});
+
+test("listingTitle in the aartisanz style joins with || and ends with the code", () => {
+  assert.equal(
+    listingTitle(
+      { designName: "Kalamkari Cotton Saree", colour: "Black", productCode: "300015" },
+      AARTISANZ_TITLE_STYLE,
+    ),
+    "Kalamkari Cotton Saree || Black || 300015",
+  );
+  assert.equal(
+    listingTitle(
+      {
+        designName: "Kalamkari Cotton Saree",
+        colour: "Teal",
+        secondaryColour: "Cornflower Blue",
+        productCode: "300016",
+      },
+      AARTISANZ_TITLE_STYLE,
+    ),
+    "Kalamkari Cotton Saree || Teal, Cornflower Blue || 300016",
+  );
+  // No colour: the code still follows the name, nothing doubled up.
+  assert.equal(
+    listingTitle({ designName: "Kalamkari Cotton Saree", productCode: "300017" }, AARTISANZ_TITLE_STYLE),
+    "Kalamkari Cotton Saree || 300017",
+  );
+  // Same batch, default style: the code stays out of the title.
+  assert.equal(
+    listingTitle({ designName: "Kalamkari Cotton Saree", colour: "Black", productCode: "300015" }),
+    "Kalamkari Cotton Saree — Black",
+  );
+});
+
+test("titleStyleFor knows aartisanz and defaults everything else", () => {
+  assert.equal(titleStyleFor("aartisanz").separator, " || ");
+  assert.equal(titleStyleFor("aartisanz").withCode, true);
+  assert.equal(titleStyleFor("some-other-store").withCode, false);
+  assert.equal(titleStyleFor(undefined).separator, " — ");
+});
+
+test("styledTitle finishes a hand-written title the same way", () => {
+  assert.equal(
+    styledTitle("Festival Black Kalamkari", "300015", AARTISANZ_TITLE_STYLE),
+    "Festival Black Kalamkari || 300015",
+  );
+  assert.equal(styledTitle("Festival Black Kalamkari", "300015", titleStyleFor("other")), "Festival Black Kalamkari");
+  assert.equal(styledTitle("Festival Black Kalamkari", null, AARTISANZ_TITLE_STYLE), "Festival Black Kalamkari");
 });
 
 test("listingDescription writes one sentence per fact it has", () => {

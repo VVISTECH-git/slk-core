@@ -136,16 +136,42 @@ export async function publishBatchToChannel(
 
   try {
     const client = await shopifyClient(channelCode);
-    const sent = await sendProductSet(
-      client,
-      row.product_code,
-      row,
-      photos,
-      r2Base.replace(/\/$/, ""),
-      row.retail_minor,
-      row.sellable ?? 0,
-      existingLink?.shopify_product_id,
-    );
+    // Narrowed by the null check above; a closure would lose that narrowing.
+    const retailMinor = row.retail_minor;
+    const send = (existingProductId: string | undefined) =>
+      sendProductSet(
+        client,
+        channelCode,
+        row.product_code,
+        row,
+        photos,
+        r2Base.replace(/\/$/, ""),
+        retailMinor,
+        row.sellable ?? 0,
+        existingProductId,
+      );
+
+    /*
+      The link says which Shopify product this consignment is, but Shopify is
+      the one place that link can go stale without us hearing: a product
+      deleted in the admin is simply gone, and an update aimed at it is
+      refused. Found the day the owner cleared four test products and took
+      the real one with them — Republish then failed on a product that did
+      not exist and offered no way forward. When Shopify says the id is
+      unknown, the honest answer is that the listing no longer exists, so
+      make it again and re-link, exactly as a first publish would.
+    */
+    let sent;
+    try {
+      sent = await send(existingLink?.shopify_product_id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const gone =
+        existingLink !== undefined &&
+        /does not exist|not found|could not find|no longer exists|invalid id/i.test(message);
+      if (!gone) throw error;
+      sent = await send(undefined);
+    }
 
     await db.execute(sql`
       insert into channel_link (channel_id, batch_id, shopify_product_id, shopify_variant_id, shopify_inventory_item_id)

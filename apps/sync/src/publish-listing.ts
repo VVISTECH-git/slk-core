@@ -141,6 +141,7 @@ export async function pushListingForColourway(
       const client = await shopifyClient(row.channel_code);
       const sent = await sendProductSet(
         client,
+        row.channel_code,
         row.product_code,
         row,
         photos,

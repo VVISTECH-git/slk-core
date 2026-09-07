@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { colourSwatch, isPaleSwatch } from "@slk/domain/colour";
@@ -468,6 +469,13 @@ export function RecordsTable({
         >
           New Record
         </button>
+
+        <Link
+          href="/records/import"
+          className="rounded-lg border border-rule-2 px-4 py-2 text-[13.5px] font-medium text-ink-2 hover:bg-surface-2"
+        >
+          Import Consignments
+        </Link>
 
         <select
           value={industry}

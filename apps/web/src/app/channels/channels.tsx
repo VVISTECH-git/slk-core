@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import type { ChannelSellableRow } from "@/lib/channels";
+import type { ChannelRow, ChannelSellableRow } from "@/lib/channels";
 import { publishBatchToChannel } from "@/app/records/publish-actions";
 import type { ActionResult } from "@/app/records/actions";
 import { Header } from "@/components/ui";
@@ -25,9 +25,13 @@ import { Header } from "@/components/ui";
  * with nothing to show for it. Done this way, the owner watches the count
  * climb and a failure names the consignment that failed.
  */
-export function Channels({ rows }: { rows: ChannelSellableRow[] }) {
-  const channels = [...new Map(rows.map((r) => [r.channelId, r])).values()];
-
+export function Channels({
+  channels,
+  rows,
+}: {
+  channels: ChannelRow[];
+  rows: ChannelSellableRow[];
+}) {
   return (
     <div className="flex min-h-screen flex-col">
       <Header
@@ -48,10 +52,10 @@ export function Channels({ rows }: { rows: ChannelSellableRow[] }) {
           ) : (
             channels.map((c) => (
               <ChannelSection
-                key={c.channelId}
-                name={c.channelName}
-                code={c.channelCode}
-                rows={rows.filter((r) => r.channelId === c.channelId)}
+                key={c.id}
+                name={c.name}
+                code={c.code}
+                rows={rows.filter((r) => r.channelId === c.id)}
               />
             ))
           )}

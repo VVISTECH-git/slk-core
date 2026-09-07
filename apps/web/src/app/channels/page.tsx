@@ -1,5 +1,5 @@
 import { requirePage } from "@/lib/session";
-import { loadChannelSellable } from "@/lib/channels";
+import { loadChannels, loadChannelSellable } from "@/lib/channels";
 
 import { Channels } from "./channels";
 
@@ -10,5 +10,10 @@ export default async function ChannelsPage() {
   // tell them is set-up, not a floor question.
   await requirePage("owner");
 
-  return <Channels rows={await loadChannelSellable()} />;
+  const [channels, rows] = await Promise.all([
+    loadChannels(),
+    loadChannelSellable(),
+  ]);
+
+  return <Channels channels={channels} rows={rows} />;
 }

@@ -37,6 +37,27 @@ export interface ChannelSellableRow {
   listedAt: string | null;
 }
 
+export interface ChannelRow {
+  id: string;
+  code: string;
+  name: string;
+}
+
+/**
+ * Every channel that exists, whether or not it currently has anything
+ * sellable — the distinction `loadChannelSellable` alone cannot make. Its
+ * rows come from `channel_batch_sellable`, which is empty exactly when
+ * nothing active and serialised exists anywhere, and that emptiness used to
+ * read on this page as "no channel exists yet", even with two real channels
+ * sitting in the `channel` table the whole time.
+ */
+export async function loadChannels(): Promise<ChannelRow[]> {
+  const rows = await db.execute<{ id: string; code: string; name: string }>(
+    sql`select id, code, name from channel order by code`,
+  );
+  return rows.map((r) => ({ id: r.id, code: r.code, name: r.name }));
+}
+
 export async function loadChannelSellable(): Promise<ChannelSellableRow[]> {
   const rows = await db.execute<{
     channel_id: string;

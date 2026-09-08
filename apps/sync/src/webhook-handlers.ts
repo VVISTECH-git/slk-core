@@ -2,6 +2,9 @@ import { sql } from "drizzle-orm";
 
 import type { Database } from "@slk/db";
 
+import { cancelAndRefundOrder } from "./cancel-and-refund";
+import { shopifyClient } from "./shopify-client";
+
 /**
  * What an order or a refund webhook actually does, factored out of the
  * route it arrives on so the nightly reconciliation can replay the same
@@ -84,11 +87,26 @@ export async function bookReservation(
 export type OversoldHold = {
   id: string;
   channelId: string;
+  channelCode: string;
   externalOrderId: string;
   externalOrderName: string | null;
   batchId: string;
   qty: number;
 };
+
+/**
+ * Which channel keeps the sale when a shared pool runs short. Bhanu and his
+ * brother's own call (8 Sep 2026): aartisanz always wins, and the SLK order
+ * that loses is the one `handleWebhookPayload` cancels and refunds
+ * automatically — see the ranking in `demoteOversoldHolds` and the refund
+ * call below. Not "whichever order is not aartisanz": with exactly two
+ * channels today that is the same set, but the rule is stated as who wins,
+ * not who loses, so a third channel added later has an explicit answer
+ * (loses to aartisanz, does not get auto-refunded) rather than an implied
+ * one.
+ */
+const POOL_PRIORITY_CHANNEL = "aartisanz";
+const AUTO_REFUND_CHANNEL = "slk";
 
 /**
  * Finds every held reservation that oversells its pool and releases it —
@@ -108,9 +126,9 @@ export type OversoldHold = {
  * direct connection `reconcile.ts` uses, which would make the fix depend on
  * which caller happened to invoke it. One single atomic statement, run
  * immediately after every booking, works under both and needs no lock:
- * every held reservation sharing a pool is ranked oldest first — Shopify
- * captured payment in that order, so oldest is the fairest winner — and
- * whichever ones push the running total past the pool's true physical
+ * every held reservation sharing a pool is ranked with `aartisanz` first,
+ * then oldest first among whatever remains — see POOL_PRIORITY_CHANNEL —
+ * and whichever ones push the running total past the pool's true physical
  * count are released. Idempotent and safe to call repeatedly: the nightly
  * reconciliation calls it too, over every batch with an open hold, as a
  * backstop for whatever this pass — running right after the webhook that
@@ -129,6 +147,20 @@ export async function demoteOversoldHolds(
 ): Promise<OversoldHold[]> {
   if (batchIds.length === 0) return [];
 
+  // sql`= any(${batchIds})` does not do what it looks like it does: the
+  // postgres.js driver under drizzle does not serialise a plain JS array
+  // into a Postgres array literal here, and Postgres then fails trying to
+  // parse the first element as one — confirmed by actually running this
+  // against a live batch, not assumed from the syntax looking right. A
+  // parenthesised, individually-parameterised list is the pattern already
+  // used everywhere else in this codebase for "match against several ids"
+  // (see labelsFor in records/actions.ts) — sidesteps the array-binding
+  // question entirely.
+  const batchIdList = sql.join(
+    batchIds.map((id) => sql`${id}`),
+    sql`, `,
+  );
+
   return db.execute<OversoldHold>(sql`
     with pool_on_hand as (
       select cp.pool_id, p.batch_id, count(distinct p.id)::int as qty
@@ -136,22 +168,23 @@ export async function demoteOversoldHolds(
       join piece_position pp on pp.piece_id = p.id and pp.is_held
       join channel_location cl on cl.location_id = pp.location_id
       join channel_pool cp on cp.channel_id = cl.channel_id
-      where p.batch_id = any(${batchIds})
+      where p.batch_id in (${batchIdList})
       group by cp.pool_id, p.batch_id
     ),
     ranked as (
       select
-        r.id, r.batch_id, cp.pool_id,
+        r.id, r.batch_id, r.channel_id, cp.pool_id,
         sum(r.qty) over (
           partition by cp.pool_id, r.batch_id
-          order by r.created_at, r.id
+          order by (ch.code = ${POOL_PRIORITY_CHANNEL}) desc, r.created_at, r.id
         ) as running_total
       from reservation r
+      join channel ch on ch.id = r.channel_id
       join channel_pool cp on cp.channel_id = r.channel_id
-      where r.status = 'held' and r.batch_id = any(${batchIds})
+      where r.status = 'held' and r.batch_id in (${batchIdList})
     ),
     losers as (
-      select ranked.id
+      select ranked.id, ranked.channel_id
       from ranked
       join pool_on_hand
         on pool_on_hand.pool_id = ranked.pool_id and pool_on_hand.batch_id = ranked.batch_id
@@ -159,14 +192,68 @@ export async function demoteOversoldHolds(
     )
     update reservation r set
       status = 'released',
-      fulfillment_error = 'Oversold — this piece was already committed to an earlier order sharing the same stock. Released automatically; cancel and refund it on Shopify by hand.',
+      fulfillment_error = 'Oversold — this piece was already committed to an order on the shared stock pool. Released automatically.',
       updated_at = now()
     from losers
+    join channel ch on ch.id = losers.channel_id
     where r.id = losers.id
     returning
-      r.id, r.channel_id as "channelId", r.external_order_id as "externalOrderId",
+      r.id, losers.channel_id as "channelId", ch.code as "channelCode",
+      r.external_order_id as "externalOrderId",
       r.external_order_name as "externalOrderName", r.batch_id as "batchId", r.qty
   `);
+}
+
+/**
+ * Cancels and refunds the Shopify order behind a losing SLK hold — the
+ * money-moving half `demoteOversoldHolds` deliberately does not do itself
+ * (it only touches this codebase's own tables). Scoped to `AUTO_REFUND_CHANNEL`
+ * specifically, not "every loser": that is the one case explicitly
+ * authorized to move real customer money without a person looking at it
+ * first, and a channel added later gets the safer default — released here,
+ * left for a person to cancel by hand — until it is named too.
+ *
+ * Best-effort and logged, never thrown: a Shopify failure here must not be
+ * why the webhook that triggered it fails, since the reservation itself is
+ * already correctly released regardless. The reservation's own
+ * fulfillment_error is updated afterwards either way, so a failed refund is
+ * as visible on the Channels/Picking screens as any other push failure —
+ * "released automatically" is not the same claim as "and the customer has
+ * their money back", and the row should not say the second one unless it
+ * is true.
+ */
+export async function refundLosingOrders(db: Database, losers: OversoldHold[]): Promise<void> {
+  for (const loser of losers) {
+    if (loser.channelCode !== AUTO_REFUND_CHANNEL) continue;
+
+    let message: string;
+
+    try {
+      const client = await shopifyClient(AUTO_REFUND_CHANNEL);
+      const result = await cancelAndRefundOrder(
+        client,
+        loser.externalOrderId,
+        "Automatically cancelled — this piece was already committed to an order on the shared aartisanz/SLK stock pool.",
+      );
+
+      message = result.ok
+        ? "Oversold — released; the Shopify order was cancelled and refunded automatically."
+        : `Oversold — released, but the automatic cancel/refund failed: ${result.error}. Cancel it on Shopify by hand.`;
+
+      if (!result.ok) {
+        console.error(`[oversell] auto-refund failed for order ${loser.externalOrderId}: ${result.error}`);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      message = `Oversold — released, but the automatic cancel/refund failed: ${errorMessage}. Cancel it on Shopify by hand.`;
+      console.error(`[oversell] auto-refund threw for order ${loser.externalOrderId}`, error);
+    }
+
+    await db.execute(sql`
+      update reservation set fulfillment_error = ${message}, updated_at = now()
+      where id = ${loser.id}
+    `);
+  }
 }
 
 /**
@@ -232,10 +319,11 @@ export async function handleWebhookPayload(
     for (const loser of oversold) {
       console.error(
         `[oversell] released ${loser.qty} of batch ${loser.batchId} held by ` +
-          `channel ${loser.channelId}, order ${loser.externalOrderName ?? loser.externalOrderId} — ` +
-          `already committed to an earlier order on the same shared stock.`,
+          `channel ${loser.channelCode}, order ${loser.externalOrderName ?? loser.externalOrderId} — ` +
+          `already committed to an order on the same shared stock.`,
       );
     }
+    await refundLosingOrders(db, oversold);
   } else if (topic === "orders/cancelled") {
     await bookReservation(db, channelId, payload as unknown as ShopifyOrderPayload, "released");
   } else if (topic === "refunds/create") {

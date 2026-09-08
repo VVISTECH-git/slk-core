@@ -9,7 +9,12 @@ import { createDb, directUrl, type Database } from "@slk/db";
 import { fulfillReservationLine } from "./fulfillment";
 import { pushInventoryForColourway } from "./inventory-push";
 import { shopifyClient } from "./shopify-client";
-import { demoteOversoldHolds, HANDLED_TOPICS, handleWebhookPayload } from "./webhook-handlers";
+import {
+  demoteOversoldHolds,
+  refundLosingOrders,
+  HANDLED_TOPICS,
+  handleWebhookPayload,
+} from "./webhook-handlers";
 
 /**
  * The nightly correction pass the rest of the bridge was written to lean on.
@@ -191,10 +196,11 @@ export async function runReconciliation(db: Database): Promise<ReconcileSummary>
   for (const loser of oversold) {
     console.error(
       `[oversell] released ${loser.qty} of batch ${loser.batchId} held by ` +
-        `channel ${loser.channelId}, order ${loser.externalOrderName ?? loser.externalOrderId} — ` +
-        `already committed to an earlier order on the same shared stock.`,
+        `channel ${loser.channelCode}, order ${loser.externalOrderName ?? loser.externalOrderId} — ` +
+        `already committed to an order on the same shared stock.`,
     );
   }
+  await refundLosingOrders(db, oversold);
 
   return {
     inventory: { colourways: linked.length, failures: inventoryFailures },

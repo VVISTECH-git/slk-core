@@ -11,6 +11,7 @@
     "./shopify-client": "./src/shopify-client.ts",
     "./archive-listing": "./src/archive-listing.ts",
     "./fulfillment": "./src/fulfillment.ts",
+    "./cancel-and-refund": "./src/cancel-and-refund.ts",
     "./webhook-handlers": "./src/webhook-handlers.ts",
     "./reconcile": "./src/reconcile.ts"
   },

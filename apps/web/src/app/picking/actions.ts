@@ -109,9 +109,9 @@ export async function packReservation(
     sku: string;
   }>(sql`
     update reservation r set status = 'fulfilled', updated_at = now()
-    from batch b
-    join channel ch on ch.id = r.channel_id
-    where r.id = ${reservationId} and r.status = 'held' and b.id = r.batch_id
+    from batch b, channel ch
+    where r.id = ${reservationId} and r.status = 'held'
+      and b.id = r.batch_id and ch.id = r.channel_id
     returning
       r.qty, r.batch_id as "batchId", r.external_order_name as "externalOrderName",
       r.external_order_id as "externalOrderId", ch.code as "channelCode", b.code as "sku"

@@ -12,6 +12,40 @@ export interface PushResult {
   error?: string;
 }
 
+// A type alias, not an interface: db.execute<T> requires T assignable to
+// Record<string, unknown>, which an object type alias gets implicitly and
+// an interface does not — see the same note on ShotListRow in shot-list.ts.
+type SellableRow = {
+  channel_id: string;
+  channel_code: string;
+  batch_id: string;
+  shopify_inventory_item_id: string;
+  sellable: number | null;
+};
+
+/**
+ * Records whether this attempt reached Shopify, on every `channel_link` row
+ * it touched — one call's worth of "was told about it and it worked (or did
+ * not)", written durably instead of only to `console.error`. `error: null`
+ * clears a previous failure the same way a good push should.
+ */
+async function markPushed(
+  db: Database,
+  items: SellableRow[],
+  error: string | null,
+): Promise<void> {
+  if (items.length === 0) return;
+
+  const batchIds = sql.join(items.map((i) => sql`${i.batch_id}`), sql`, `);
+
+  await db.execute(sql`
+    update channel_link set
+      last_push_error = ${error},
+      last_pushed_at = now()
+    where channel_id = ${items[0]!.channel_id} and batch_id in (${batchIds})
+  `);
+}
+
 /**
  * Recomputes and pushes the sellable count for every consignment of this
  * colourway that is actually listed somewhere, on every channel it is
@@ -33,18 +67,11 @@ export async function pushInventoryForColourway(
   db: Database,
   colourwayId: string,
 ): Promise<PushResult[]> {
-  // A type alias, not an interface: db.execute<T> requires T assignable to
-  // Record<string, unknown>, which an object type alias gets implicitly and
-  // an interface does not — see the same note on ShotListRow in shot-list.ts.
-  type SellableRow = {
-    channel_code: string;
-    shopify_inventory_item_id: string;
-    sellable: number | null;
-  };
-
   const rows = await db.execute<SellableRow>(sql`
     select
+      ch.id   as channel_id,
       ch.code as channel_code,
+      cl.batch_id,
       cl.shopify_inventory_item_id,
       cbs.sellable
     from channel_link cl
@@ -153,13 +180,13 @@ export async function pushInventoryForColourway(
         );
       }
 
+      await markPushed(db, items, null);
       results.push({ channelCode, batches: items.length });
     } catch (error) {
-      results.push({
-        channelCode,
-        batches: items.length,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const message = error instanceof Error ? error.message : String(error);
+
+      await markPushed(db, items, message);
+      results.push({ channelCode, batches: items.length, error: message });
     }
   }
 

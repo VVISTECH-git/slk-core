@@ -207,11 +207,23 @@ function ChannelSection({
                       ) : (
                         <span className="text-muted">Not published</span>
                       )}
-                      {outcome !== undefined && (
+                      {outcome !== undefined ? (
                         <p className={`mt-0.5 text-[11.5px] ${outcome.ok ? "text-ok" : "text-brick"}`}>{outcome.message}</p>
-                      )}
-                      {outcome === undefined && caveat !== null && (
-                        <p className="mt-0.5 text-[11.5px] text-brick">{caveat}</p>
+                      ) : r.lastPushError !== null ? (
+                        // A push that happened on its own — a sale, an
+                        // edit — not a click on this page, so there is no
+                        // `outcome` to show it. Left on the row by
+                        // inventory-push.ts / publish-listing.ts until the
+                        // next attempt (a sale, Republish, or the nightly
+                        // reconciliation) clears it.
+                        <p
+                          className="mt-0.5 text-[11.5px] text-brick"
+                          title={r.lastPushedAt === null ? undefined : `Last attempt ${new Date(r.lastPushedAt).toLocaleString("en-IN")}`}
+                        >
+                          Out of sync — {r.lastPushError}
+                        </p>
+                      ) : (
+                        caveat !== null && <p className="mt-0.5 text-[11.5px] text-brick">{caveat}</p>
                       )}
                     </td>
                     <td className="px-3 py-2 text-right">

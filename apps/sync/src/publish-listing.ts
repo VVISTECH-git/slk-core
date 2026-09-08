@@ -129,11 +129,14 @@ export async function pushListingForColourway(
 
   for (const row of rows) {
     if (row.retail_minor === null) {
-      results.push({
-        channelCode: row.channel_code,
-        productCode: row.product_code,
-        error: "No retail price, on the batch or the line.",
-      });
+      const message = "No retail price, on the batch or the line.";
+
+      await db.execute(sql`
+        update channel_link set last_push_error = ${message}, last_pushed_at = now()
+        where channel_id = ${row.channel_id} and batch_id = ${row.batch_id}
+      `);
+
+      results.push({ channelCode: row.channel_code, productCode: row.product_code, error: message });
       continue;
     }
 
@@ -155,17 +158,22 @@ export async function pushListingForColourway(
         update channel_link set
           shopify_variant_id = ${sent.variantId},
           shopify_inventory_item_id = ${sent.inventoryItemId},
+          last_push_error = null,
+          last_pushed_at = now(),
           updated_at = now()
         where channel_id = ${row.channel_id} and batch_id = ${row.batch_id}
       `);
 
       results.push({ channelCode: row.channel_code, productCode: row.product_code });
     } catch (error) {
-      results.push({
-        channelCode: row.channel_code,
-        productCode: row.product_code,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const message = error instanceof Error ? error.message : String(error);
+
+      await db.execute(sql`
+        update channel_link set last_push_error = ${message}, last_pushed_at = now()
+        where channel_id = ${row.channel_id} and batch_id = ${row.batch_id}
+      `);
+
+      results.push({ channelCode: row.channel_code, productCode: row.product_code, error: message });
     }
   }
 

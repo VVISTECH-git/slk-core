@@ -6,7 +6,9 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
 import { movement } from "@slk/db";
+import { fulfillReservationLine, type FulfillResult } from "@slk/sync/fulfillment";
 import { pushInventoryForColourway } from "@slk/sync/inventory-push";
+import { shopifyClient } from "@slk/sync/shopify-client";
 
 import { db } from "@/lib/db";
 
@@ -46,6 +48,26 @@ import type { ActionResult } from "../records/actions";
  */
 class PackRejected extends Error {}
 
+/**
+ * Records whether Shopify's own order was told this shipped — the write
+ * `fulfillReservationLine`'s result was always going to need, on the two
+ * columns that exist for exactly this. See their doc comments on
+ * `reservation` in channel.ts.
+ */
+async function markFulfillment(reservationId: string, result: FulfillResult): Promise<void> {
+  if (result.ok) {
+    await db.execute(sql`
+      update reservation set fulfilled_at = now(), fulfillment_error = null
+      where id = ${reservationId}
+    `);
+  } else {
+    await db.execute(sql`
+      update reservation set fulfillment_error = ${result.error ?? "Unknown error"}
+      where id = ${reservationId}
+    `);
+  }
+}
+
 export async function packReservation(
   reservationId: string,
   locationId: string,
@@ -72,14 +94,27 @@ export async function packReservation(
   // Atomic claim: this UPDATE only succeeds once. A second caller's
   // WHERE status = 'held' matches nothing the moment the first commits,
   // so it gets zero rows back rather than racing the write below.
+  //
+  // Joined to batch and channel in the same statement for `channelCode`,
+  // `externalOrderId` and `sku` — everything fulfillReservationLine needs to
+  // tell Shopify's own order this shipped, read once, atomically, alongside
+  // the claim itself rather than as a second query against a row that could
+  // have moved between the two.
   const [claimed] = await db.execute<{
     qty: number;
     batchId: string;
     externalOrderName: string | null;
+    externalOrderId: string;
+    channelCode: string;
+    sku: string;
   }>(sql`
-    update reservation set status = 'fulfilled', updated_at = now()
-    where id = ${reservationId} and status = 'held'
-    returning qty, batch_id as "batchId", external_order_name as "externalOrderName"
+    update reservation r set status = 'fulfilled', updated_at = now()
+    from batch b
+    join channel ch on ch.id = r.channel_id
+    where r.id = ${reservationId} and r.status = 'held' and b.id = r.batch_id
+    returning
+      r.qty, r.batch_id as "batchId", r.external_order_name as "externalOrderName",
+      r.external_order_id as "externalOrderId", ch.code as "channelCode", b.code as "sku"
   `);
 
   if (claimed === undefined) {
@@ -154,6 +189,27 @@ export async function packReservation(
       })
       .catch((error: unknown) => console.error("[inventory-push] failed", error)),
   );
+
+  // Also fire-and-forget, for the same reason: the piece has already left
+  // the shelf and the ledger already says so, so a failure telling Shopify
+  // about it afterwards is not a reason to undo the pack — it is recorded on
+  // the reservation itself, for the Picking List to show and the nightly
+  // reconciliation to retry.
+  after(async () => {
+    try {
+      const client = await shopifyClient(claimed.channelCode);
+      const result = await fulfillReservationLine(client, {
+        externalOrderId: claimed.externalOrderId,
+        sku: claimed.sku,
+        quantity: packedQty,
+      });
+      await markFulfillment(reservationId, result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[fulfillment] failed", error);
+      await markFulfillment(reservationId, { ok: false, error: message }).catch(() => undefined);
+    }
+  });
 
   revalidatePath("/picking");
   revalidatePath("/records");

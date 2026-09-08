@@ -7,8 +7,10 @@ import { after } from "next/server";
 
 import { colourway, design, location, movement } from "@slk/db";
 import { designCode, designName } from "@slk/domain";
+import { archiveListing } from "@slk/sync/archive-listing";
 import { pushInventoryForColourway } from "@slk/sync/inventory-push";
 import { pushListingForColourway } from "@slk/sync/publish-listing";
+import { shopifyClient } from "@slk/sync/shopify-client";
 
 import { db } from "@/lib/db";
 import { remove } from "@/lib/storage";
@@ -63,6 +65,56 @@ function scheduleListingPush(colourwayId: string): void {
       })
       .catch((error: unknown) => console.error("[listing-push] failed", error)),
   );
+}
+
+/**
+ * Takes every consignment of this colourway that is listed on a channel off
+ * sale there — the call `archiveRecord` and `deleteRecord` never made.
+ *
+ * Awaited, not fired-and-forgotten like `scheduleListingPush`: a save that
+ * fails to reach Shopify leaves a listing one push behind, which the next
+ * sale or the nightly reconciliation quietly corrects. A record leaving the
+ * catalogue is not self-correcting the same way — nothing else will ever
+ * call archive on this consignment again — so whoever archived or deleted it
+ * needs to know now if a listing was left live on Shopify.
+ *
+ * Reads `channel_link` before the caller does anything destructive to it:
+ * `deleteRecord` cascades that row away with the batch it belongs to, and a
+ * row read after the delete is a row that no longer exists to read.
+ */
+async function archiveChannelListings(
+  colourwayId: string,
+): Promise<{ archived: number; failures: string[] }> {
+  const rows = await db.execute<{ channelCode: string; shopifyProductId: string }>(sql`
+    select ch.code as "channelCode", cl.shopify_product_id as "shopifyProductId"
+    from channel_link cl
+    join channel ch on ch.id = cl.channel_id
+    join batch b on b.id = cl.batch_id
+    where b.colourway_id = ${colourwayId} and cl.shopify_product_id is not null
+  `);
+
+  if (rows.length === 0) return { archived: 0, failures: [] };
+
+  let archived = 0;
+  const failures: string[] = [];
+
+  for (const row of rows) {
+    try {
+      const client = await shopifyClient(row.channelCode);
+      const result = await archiveListing(client, row.shopifyProductId);
+
+      if (result.ok) {
+        archived++;
+      } else {
+        failures.push(`${row.channelCode}: ${result.error}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push(`${row.channelCode}: ${message}`);
+    }
+  }
+
+  return { archived, failures };
 }
 
 /** Everything the editor can change, as it arrives from the form. */
@@ -449,15 +501,23 @@ export async function archiveRecord(colourwayId: string): Promise<ActionResult> 
     }
   });
 
+  const listings = await archiveChannelListings(colourwayId);
+
   revalidatePath("/records");
 
-  return {
-    ok: true,
-    message:
-      (remaining?.n ?? 0) === 0
-        ? "Record archived. Its stock history is kept."
-        : "Colour archived. The design's other colours are unaffected.",
-  };
+  const base =
+    (remaining?.n ?? 0) === 0
+      ? "Record archived. Its stock history is kept."
+      : "Colour archived. The design's other colours are unaffected.";
+
+  const listingNote =
+    listings.failures.length > 0
+      ? ` Could not take it off ${listings.failures.join("; ")}.`
+      : listings.archived > 0
+        ? ` Taken off sale on ${listings.archived} channel${listings.archived === 1 ? "" : "s"}.`
+        : "";
+
+  return { ok: true, message: `${base}${listingNote}` };
 }
 
 /**
@@ -527,6 +587,11 @@ export async function deleteRecord(colourwayId: string): Promise<ActionResult> {
     where colourway_id = ${colourwayId} and storage_key is not null
   `);
 
+  // Before the transaction, not after: channel_link.batch_id cascades away
+  // the moment its batch is deleted below, and a row already gone cannot be
+  // read to find out what it was listed as.
+  const listings = await archiveChannelListings(colourwayId);
+
   await db.transaction(async (tx) => {
     await tx.execute(sql`delete from movement where colourway_id = ${colourwayId}`);
     await tx.execute(sql`delete from piece    where colourway_id = ${colourwayId}`);
@@ -562,12 +627,19 @@ export async function deleteRecord(colourwayId: string): Promise<ActionResult> {
       : null,
   ].filter(Boolean);
 
+  const listingNote =
+    listings.failures.length > 0
+      ? ` It is still listed on ${listings.failures.join("; ")} — take it down there by hand.`
+      : listings.archived > 0
+        ? ` Taken off sale on ${listings.archived} channel${listings.archived === 1 ? "" : "s"} first.`
+        : "";
+
   return {
     ok: true,
     message:
-      also.length === 0
+      (also.length === 0
         ? `Deleted ${what}.`
-        : `Deleted ${what}, with its ${also.join(", ")}.`,
+        : `Deleted ${what}, with its ${also.join(", ")}.`) + listingNote,
   };
 }
 

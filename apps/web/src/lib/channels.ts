@@ -35,6 +35,14 @@ export interface ChannelSellableRow {
   shopifyProductId: string | null;
   /** When it was last published or republished there — ISO, or null. */
   listedAt: string | null;
+  /**
+   * What went wrong on the most recent attempt to reach Shopify for this
+   * row — a listing push, an inventory push, or a publish — whichever ran
+   * last. Null means the last attempt, if there was one, succeeded.
+   */
+  lastPushError: string | null;
+  /** When that most recent attempt happened, successful or not. */
+  lastPushedAt: string | null;
 }
 
 export interface ChannelRow {
@@ -76,6 +84,8 @@ export async function loadChannelSellable(): Promise<ChannelSellableRow[]> {
     photos: number;
     shopify_product_id: string | null;
     listed_at: string | null;
+    last_push_error: string | null;
+    last_pushed_at: string | null;
   }>(sql`
     select
       cbs.channel_id,
@@ -96,7 +106,9 @@ export async function loadChannelSellable(): Promise<ChannelSellableRow[]> {
         where i.colourway_id = cw.id and i.storage_key is not null
       )              as photos,
       cl.shopify_product_id,
-      cl.updated_at  as listed_at
+      cl.updated_at  as listed_at,
+      cl.last_push_error,
+      cl.last_pushed_at
     from channel_batch_sellable cbs
     join channel ch     on ch.id = cbs.channel_id
     join colourway cw   on cw.id = cbs.colourway_id
@@ -125,5 +137,7 @@ export async function loadChannelSellable(): Promise<ChannelSellableRow[]> {
     photos: r.photos,
     shopifyProductId: r.shopify_product_id,
     listedAt: r.listed_at === null ? null : new Date(r.listed_at).toISOString(),
+    lastPushError: r.last_push_error,
+    lastPushedAt: r.last_pushed_at === null ? null : new Date(r.last_pushed_at).toISOString(),
   }));
 }

@@ -8,7 +8,11 @@
     "./inventory-push": "./src/inventory-push.ts",
     "./publish-listing": "./src/publish-listing.ts",
     "./product-set": "./src/product-set.ts",
-    "./shopify-client": "./src/shopify-client.ts"
+    "./shopify-client": "./src/shopify-client.ts",
+    "./archive-listing": "./src/archive-listing.ts",
+    "./fulfillment": "./src/fulfillment.ts",
+    "./webhook-handlers": "./src/webhook-handlers.ts",
+    "./reconcile": "./src/reconcile.ts"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -17,6 +21,7 @@
     "test-webhook": "tsx src/test-webhook.ts",
     "test-listing-push": "tsx src/test-listing-push.ts",
     "test-receive-and-pack": "tsx src/test-receive-and-pack.ts",
+    "reconcile": "tsx src/reconcile.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

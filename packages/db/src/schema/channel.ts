@@ -123,6 +123,24 @@ export const channelLink = pgTable(
     shopifyVariantId: text("shopify_variant_id"),
     shopifyInventoryItemId: text("shopify_inventory_item_id"),
 
+    /**
+     * The last attempt to reach Shopify for this row, and what happened.
+     *
+     * Every push after the first one runs unattended — a save, an image
+     * upload, a movement. Until this, a failure there went to
+     * `console.error` and nowhere else: no row, no flag on the Channels
+     * page, nothing but a line in a server log nobody was watching. This is
+     * written on every attempt, success or not, so a listing quietly out of
+     * step with Shopify is visible on the one screen that already shows
+     * this row instead of waiting to be noticed by a customer.
+     *
+     * Null error with a recent `lastPushedAt` is the healthy state; a
+     * non-null error is what the nightly reconciliation retries and what
+     * the Channels page turns red.
+     */
+    lastPushError: text("last_push_error"),
+    lastPushedAt: timestamp("last_pushed_at", { withTimezone: true }),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -201,6 +219,22 @@ export const reservation = pgTable(
      * the explanation for why the count moved and then moved back.
      */
     status: text("status").notNull().default("held"),
+
+    /**
+     * Whether Shopify's own order was told this shipped.
+     *
+     * Our `status` turning "fulfilled" means the piece physically left the
+     * shelf — the movement is written, the ledger is right, that part is
+     * done and cannot be undone by a Shopify hiccup. Whether the *customer*
+     * heard about it is a second, separate fact: Shopify only sends a
+     * shipping notification once its own fulfillment record is created, and
+     * nothing wrote one before this. Null here with `status = 'fulfilled'`
+     * is the state that used to be invisible — packed here, Shopify still
+     * says "Unfulfilled", no email ever sent.
+     */
+    fulfilledAt: timestamp("fulfilled_at", { withTimezone: true }),
+    /** Set instead of fulfilledAt when Shopify refused or could not be reached. */
+    fulfillmentError: text("fulfillment_error"),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

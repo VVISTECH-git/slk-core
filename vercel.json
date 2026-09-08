@@ -5,5 +5,11 @@
   "regions": ["sin1"],
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then pnpm --filter @slk/db run db:migrate; fi && pnpm turbo run build --filter=@slk/web",
-  "outputDirectory": "apps/web/.next"
+  "outputDirectory": "apps/web/.next",
+  "crons": [
+    {
+      "path": "/api/v1/cron/reconcile",
+      "schedule": "17 20 * * *"
+    }
+  ]
 }

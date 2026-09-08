@@ -316,6 +316,13 @@
       "when": 1788595837974,
       "tag": "0044_a_colour_can_repeat_within_a_design",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1788860563813,
+      "tag": "0045_shopify_gaps_get_closed",
+      "breakpoints": true
     }
   ]
 }

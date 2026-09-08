@@ -188,6 +188,13 @@ export async function sendProductSet(
             ...(row.weight_grams !== null && {
               measurement: { weight: { value: row.weight_grams, unit: "GRAMS" } },
             }),
+            // Read onto every consignment since 0042, and never sent — the
+            // field the batch carries it for was assumed rather than
+            // checked. This is Shopify's actual HS-code field, on the
+            // inventory item, used for customs and duty on an international
+            // order; it is not a metafield SLK would have to add a definition
+            // for first.
+            ...(row.hsn_code !== null && { harmonizedSystemCode: row.hsn_code }),
           },
           inventoryQuantities: [
             { locationId: location.id, name: "available", quantity: sellable },

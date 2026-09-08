@@ -2,6 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { sql } from "drizzle-orm";
 
+import { HANDLED_TOPICS, handleWebhookPayload } from "@slk/sync/webhook-handlers";
+
 import { db } from "@/lib/db";
 
 /**
@@ -21,19 +23,6 @@ import { db } from "@/lib/db";
  * that doesn't verify, or a channel that doesn't exist, is answered before
  * anything is read from the body.
  */
-
-const HANDLED_TOPICS = new Set(["orders/create", "orders/cancelled", "refunds/create"]);
-
-type ShopifyOrderPayload = {
-  id: number | string;
-  name?: string;
-  line_items?: { sku: string | null; quantity: number }[];
-};
-
-type ShopifyRefundPayload = {
-  order_id: number | string;
-  refund_line_items?: { line_item?: { sku: string | null }; quantity: number }[];
-};
 
 export async function POST(
   request: Request,
@@ -112,14 +101,7 @@ export async function POST(
   }
 
   try {
-    if (topic === "orders/create") {
-      await bookReservation(channel.id, payload as unknown as ShopifyOrderPayload, "held");
-    } else if (topic === "orders/cancelled") {
-      await bookReservation(channel.id, payload as unknown as ShopifyOrderPayload, "released");
-    } else if (topic === "refunds/create") {
-      await releaseRefundedLines(channel.id, payload as unknown as ShopifyRefundPayload);
-    }
-
+    await handleWebhookPayload(db, channel.id, topic, payload);
     await markProcessed(channel.id, webhookId);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -148,101 +130,4 @@ async function markProcessed(channelId: string, webhookId: string): Promise<void
     update channel_event set processed_at = now(), error = null
     where channel_id = ${channelId} and shopify_event_id = ${webhookId}
   `);
-}
-
-/**
- * One row per (channel, order, consignment) — matching reservation's own
- * unique key, so a second delivery of the same webhook updates this row
- * rather than doubling the hold.
- *
- * Line items are matched by SKU against `batch.code`: the product code is
- * what publish.ts set the SKU to, so this is the same identifier the floor
- * already reads off a label. A line item whose SKU matches nothing of ours
- * — a shipping charge, a bundle, a typo — is silently skipped rather than
- * failing the whole order.
- */
-async function bookReservation(
-  channelId: string,
-  order: ShopifyOrderPayload,
-  status: "held" | "released",
-): Promise<void> {
-  const externalOrderId = String(order.id);
-  const externalOrderName = order.name ?? null;
-
-  for (const item of order.line_items ?? []) {
-    if (item.sku === null || item.sku === "") continue;
-
-    const [batchRow] = await db.execute<{ id: string }>(sql`
-      select id from batch where code = ${item.sku}
-    `);
-    if (batchRow === undefined) continue;
-
-    await db.execute(sql`
-      insert into reservation
-        (channel_id, batch_id, external_order_id, external_order_name, qty, status)
-      values
-        (${channelId}, ${batchRow.id}, ${externalOrderId}, ${externalOrderName}, ${item.quantity}, ${status})
-      on conflict (channel_id, external_order_id, batch_id) do update set
-        qty = excluded.qty,
-        status = excluded.status,
-        updated_at = now()
-    `);
-  }
-}
-
-/**
- * A refund releases whatever hold that order still has on the refunded
- * consignments — by the quantity actually refunded, not the whole
- * reservation. An order for 3 with 1 refunded leaves 2 still held; only a
- * refund that reaches the full quantity releases it.
- *
- * Reduced in place rather than split into two rows, because
- * reservation's own unique key is (channel, order, batch) — one row is all
- * the shape allows. Nothing is lost by that: channel_event kept the raw
- * refund payload when this webhook was received, so the history is still
- * there, just not summarised on this row.
- *
- * Whether the piece had already shipped is not this table's business — a
- * physical return is a separate, staff-entered movement; this only ends
- * (or shrinks) the reservation.
- */
-async function releaseRefundedLines(
-  channelId: string,
-  refund: ShopifyRefundPayload,
-): Promise<void> {
-  const externalOrderId = String(refund.order_id);
-
-  for (const item of refund.refund_line_items ?? []) {
-    const sku = item.line_item?.sku;
-    if (sku === null || sku === undefined || sku === "") continue;
-
-    const [batchRow] = await db.execute<{ id: string }>(sql`
-      select id from batch where code = ${sku}
-    `);
-    if (batchRow === undefined) continue;
-
-    /*
-      One atomic UPDATE rather than read-then-write: every expression in a
-      Postgres UPDATE's SET clause sees the row as it was before this
-      statement, so `qty` on the right of these CASEs is always the
-      pre-refund value even under concurrent refunds for the same order —
-      there is no window for a second refund to read a qty this one is
-      about to overwrite.
-
-      qty only ever moves down while it stays positive — reservation has a
-      CHECK (qty > 0), and a released row is a historical record of what
-      was held, not a live count, so a refund that reaches or exceeds it
-      leaves qty at its last true value and only flips status.
-    */
-    await db.execute(sql`
-      update reservation set
-        qty = case when qty - ${item.quantity} > 0 then qty - ${item.quantity} else qty end,
-        status = case when qty - ${item.quantity} <= 0 then 'released' else 'held' end,
-        updated_at = now()
-      where channel_id = ${channelId}
-        and batch_id = ${batchRow.id}
-        and external_order_id = ${externalOrderId}
-        and status = 'held'
-    `);
-  }
 }

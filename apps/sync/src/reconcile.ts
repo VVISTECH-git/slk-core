@@ -9,7 +9,7 @@ import { createDb, directUrl, type Database } from "@slk/db";
 import { fulfillReservationLine } from "./fulfillment";
 import { pushInventoryForColourway } from "./inventory-push";
 import { shopifyClient } from "./shopify-client";
-import { HANDLED_TOPICS, handleWebhookPayload } from "./webhook-handlers";
+import { demoteOversoldHolds, HANDLED_TOPICS, handleWebhookPayload } from "./webhook-handlers";
 
 /**
  * The nightly correction pass the rest of the bridge was written to lean on.
@@ -31,15 +31,26 @@ import { HANDLED_TOPICS, handleWebhookPayload } from "./webhook-handlers";
  *      `reservation.status = 'fulfilled'` with `fulfilled_at` still null: the
  *      piece left the shelf, our ledger is right, and Shopify's own order
  *      still says "Unfulfilled" forever with nothing watching for it.
+ *   4. Two channels sharing a physical shelf (SLK's own store and Aartisanz,
+ *      both drawing on the same Hyderabad stock) can each book a hold on the
+ *      same last piece within the same few seconds — Shopify captures
+ *      payment before either storefront can ask this codebase for
+ *      permission, so `bookReservation`'s own guard, in
+ *      `demoteOversoldHolds`, can still miss a race that lands between one
+ *      webhook's insert and its own follow-up check. Run again here, over
+ *      every batch with any open hold, as the backstop for whatever that
+ *      per-webhook pass didn't catch.
  *
- * All three are repaired the same way any other correction in this codebase
+ * All four are repaired the same way any other correction in this codebase
  * is: by recomputing from the source of truth, not by trusting a cached
  * delta. Every linked colourway's sellable count is pushed again in full — a
  * colourway with nothing actually wrong just gets the same number sent
  * twice, which is harmless — every failed event is replayed through the
  * identical handler the live webhook route uses, from `webhook-handlers.ts`,
- * and every unconfirmed fulfilment is retried through the identical call
- * `packReservation` makes, from `fulfillment.ts`.
+ * every unconfirmed fulfilment is retried through the identical call
+ * `packReservation` makes, from `fulfillment.ts`, and every held reservation
+ * is re-ranked against its pool's true physical count through the identical
+ * check the webhook route itself runs after every booking.
  */
 
 export interface ReconcileSummary {
@@ -54,6 +65,9 @@ export interface ReconcileSummary {
   fulfillments: {
     retried: number;
     stillFailing: { reservationId: string; sku: string; error: string }[];
+  };
+  oversold: {
+    released: { channelId: string; externalOrderName: string | null; batchId: string; qty: number }[];
   };
 }
 
@@ -165,10 +179,35 @@ export async function runReconciliation(db: Database): Promise<ReconcileSummary>
     }
   }
 
+  const heldBatches = await db.execute<{ batchId: string }>(sql`
+    select distinct batch_id as "batchId" from reservation where status = 'held'
+  `);
+
+  const oversold = await demoteOversoldHolds(
+    db,
+    heldBatches.map((r) => r.batchId),
+  );
+
+  for (const loser of oversold) {
+    console.error(
+      `[oversell] released ${loser.qty} of batch ${loser.batchId} held by ` +
+        `channel ${loser.channelId}, order ${loser.externalOrderName ?? loser.externalOrderId} — ` +
+        `already committed to an earlier order on the same shared stock.`,
+    );
+  }
+
   return {
     inventory: { colourways: linked.length, failures: inventoryFailures },
     events: { retried, stillFailing },
     fulfillments: { retried: fulfillmentsRetried, stillFailing: fulfillmentsStillFailing },
+    oversold: {
+      released: oversold.map((loser) => ({
+        channelId: loser.channelId,
+        externalOrderName: loser.externalOrderName,
+        batchId: loser.batchId,
+        qty: loser.qty,
+      })),
+    },
   };
 }
 
@@ -205,6 +244,13 @@ if (isMain) {
     );
     for (const f of summary.fulfillments.stillFailing) {
       console.log(`    ${f.sku} / ${f.reservationId}: ${f.error}`);
+    }
+
+    console.log(`  Oversold: released ${summary.oversold.released.length} hold(s).`);
+    for (const o of summary.oversold.released) {
+      console.log(
+        `    batch ${o.batchId}, channel ${o.channelId}, order ${o.externalOrderName ?? "(unnamed)"}, qty ${o.qty}`,
+      );
     }
     console.log("");
   } catch (error) {

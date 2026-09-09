@@ -49,7 +49,14 @@ interface ImageRow extends Record<string, unknown> {
  * they typed a code for.
  */
 function composedTitle(row: ProductRow): string {
-  return [row.colour, row.designName, row.productType].filter(Boolean).join(" ");
+  // The design name already carries the product type — "Kalamkari Cotton
+  // Saree" — so appending it again reads "… Saree Saree". Only added when the
+  // name does not already end in it.
+  const name = row.designName;
+  const type = row.productType;
+  const needsType =
+    type !== null && !name.toLowerCase().endsWith(type.toLowerCase());
+  return [row.colour, name, needsType ? type : null].filter(Boolean).join(" ");
 }
 
 export async function GET(request: Request): Promise<Response> {

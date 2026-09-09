@@ -330,6 +330,13 @@
       "when": 1788863194421,
       "tag": "0046_a_shared_shelf_shares_its_reservations",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1788941523881,
+      "tag": "0047_only_the_colours_slk_names",
+      "breakpoints": true
     }
   ]
 }

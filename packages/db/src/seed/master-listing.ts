@@ -355,14 +355,17 @@ export const MASTER_LISTING: SeedList[] = [
     code: "colour",
     label: "Colour",
     description:
-      "Swatches are resolved from the name, so a new colour gets one without anyone picking a hex. Four web-palette names are flagged NEEDS REVIEW.",
+      "The colours SLK names, from the workbook. Swatches are resolved from the name, so a new colour gets one without anyone picking a hex. Kept short on purpose — a colour is found by scanning for a word.",
     values: [
       { label: "beige" },
       { label: "black" },
       { label: "blue" },
       { label: "bottle green", meta: { hex: "#0B4F2C" } },
       { label: "brown" },
-      { label: "chartreuse", needsReview: true },
+      // The four the workbook flagged NEEDS REVIEW are web-palette names
+      // nobody says of cloth. Retired by migration 0047; seeded the same way
+      // so a fresh database and a migrated one agree.
+      { label: "chartreuse", retired: true },
       { label: "cream", meta: { hex: "#F0E4C8" } },
       { label: "dark blue" },
       { label: "dark gray" },
@@ -370,10 +373,10 @@ export const MASTER_LISTING: SeedList[] = [
       { label: "dark magenta" },
       { label: "dark olive green" },
       { label: "dark orange" },
-      { label: "dark sea green", needsReview: true },
-      { label: "dark slate blue", needsReview: true },
+      { label: "dark sea green", retired: true },
+      { label: "dark slate blue", retired: true },
       { label: "deep pink" },
-      { label: "ghost white", needsReview: true },
+      { label: "ghost white", retired: true },
       { label: "golden", meta: { hex: "#D4AF37" } },
       { label: "gray" },
       { label: "green" },

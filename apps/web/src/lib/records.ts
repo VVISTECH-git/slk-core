@@ -59,6 +59,18 @@ export type RecordRow = {
   pieces: number;
   /** Photographs actually uploaded — the images tab's own count, not slots ticked. */
   photos: number;
+  /** Every "sold" movement against this colourway, summed — the ledger, not Shopify's own count. */
+  sold: number;
+
+  /**
+   * Whether the same consignment named by `productCode` is listed on
+   * Shopify — not the colourway as a whole, because listing is a per-batch
+   * act (see `loadConsignments`). "none" is a batch nobody has ever tried
+   * to publish, on any channel; "pending" is tried on some channels but not
+   * all; "error" wins over "pending" because a broken push is worth seeing
+   * before a merely incomplete one. No consignment at all reads as "none".
+   */
+  syncStatus: "none" | "pending" | "synced" | "error";
 
   /**
    * Whether the design has been archived, or this colour of it retired.
@@ -143,6 +155,21 @@ export async function loadRecords(
       cw.mrp_minor::double precision                    as "mrpMinor",
       coalesce(pc.n, 0)::int                            as pieces,
       coalesce(ic.n, 0)::int                            as photos,
+      coalesce(sm.n, 0)::int                            as sold,
+      -- Keyed on the same batch productCode names above, not the colourway
+      -- as a whole — see loadConsignments, which treats listing as a
+      -- per-batch fact. error outranks pending: a broken push is worth
+      -- seeing before a merely incomplete one.
+      coalesce((
+        select case
+          when count(*) = 0 then 'none'
+          when bool_or(cl.last_push_error is not null) then 'error'
+          when bool_and(cl.shopify_product_id is not null) then 'synced'
+          else 'pending'
+        end
+        from channel_link cl
+        where cl.batch_id = latest.id
+      ), 'none')                                        as "syncStatus",
       (d.status = 'archived' or not cw.is_active)       as "isArchived"
     from colourway cw
     join design d                     on d.id = cw.design_id
@@ -171,7 +198,7 @@ export async function loadRecords(
     -- The most recent consignment of this colourway. A colourway can have
     -- many; the grid shows one row per colourway, so it shows the newest.
     left join lateral (
-      select b.code from batch b
+      select b.id, b.code from batch b
       where b.colourway_id = cw.id
       order by b.received_at desc, b.code desc limit 1
     ) latest on true
@@ -184,6 +211,11 @@ export async function loadRecords(
       where storage_key is not null
       group by colourway_id
     ) ic                                      on ic.colourway_id = cw.id
+    left join (
+      select colourway_id, sum(qty) as n from movement
+      where kind = 'sold'
+      group by colourway_id
+    ) sm                                      on sm.colourway_id = cw.id
     -- Both, not just the design: archiving one colour of a design that still
     -- has others leaves the design active, and only the colourway retired.
     where ${includeArchived} or (d.status <> 'archived' and cw.is_active)

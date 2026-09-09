@@ -87,8 +87,16 @@ async function resolveAttributes(
 
   const labels = new Map<string, string>();
   if (wanted.size > 0) {
+    // `in (…)` with one placeholder per id, not `= any($1::uuid[])`. Drizzle
+    // expands a JS array into a row constructor — ($1, $2, …) — rather than a
+    // Postgres array, and casting a row to uuid[] is a syntax error. Found by
+    // running the query, not by reading it.
+    const list = sql.join(
+      [...wanted].map((id) => sql`${id}::uuid`),
+      sql`, `,
+    );
     const rows = await db.execute<LabelRow>(sql`
-      select id, label from lookup_value where id = any(${[...wanted]}::uuid[])
+      select id, label from lookup_value where id in (${list})
     `);
     for (const row of rows) labels.set(row.id, row.label);
   }

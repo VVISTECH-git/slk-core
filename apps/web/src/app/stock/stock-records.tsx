@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { rupees } from "@slk/domain/money";
 
@@ -21,7 +22,7 @@ import {
   useColumnWidths,
   useVisibleColumns,
 } from "@/lib/column-widths";
-import type { PieceRow } from "@/lib/pieces";
+import type { PiecePage, PieceQuery, PieceRow } from "@/lib/pieces";
 
 /**
  * Stock, one physical piece at a time.
@@ -164,15 +165,35 @@ function sortValue(row: PieceRow, key: ColumnKey): string | number {
   }
 }
 
+type Kept = NonNullable<PieceQuery["kept"]>;
+
+/**
+ * The search box, the location and the status dropdown are answered by the
+ * database, not the browser.
+ *
+ * They used to filter a list of every piece ever minted, which the page had
+ * loaded in full. That was fine at two hundred pieces and never finished at
+ * thirty thousand. Now the three of them live in the URL, the server answers
+ * with the first hundred matches and the counts, and everything below that —
+ * column filters, sorting, the pager, the label sheet — works on those rows
+ * exactly as before.
+ */
 export function StockRecords({
-  pieces,
+  page: served,
   locations,
+  initial,
 }: {
-  pieces: PieceRow[];
+  page: PiecePage;
   locations: string[];
+  initial: Required<PieceQuery>;
 }) {
-  const [query, setQuery] = useState("");
-  const [location, setLocation] = useState("");
+  const pieces = served.rows;
+  const router = useRouter();
+  const pathname = usePathname();
+  const [pending, startTransition] = useTransition();
+
+  const [query, setQuery] = useState(initial.q);
+  const [location, setLocation] = useState(initial.location);
 
   /**
    * Which pieces the table is about, defaulting to the ones we still have.
@@ -183,7 +204,38 @@ export function StockRecords({
    * shelf — and the other two settings are there because the history is worth
    * being able to reach, not worth being counted.
    */
-  const [kept, setKept] = useState<"held" | "gone" | "all">("held");
+  const [kept, setKept] = useState<Kept>(initial.kept);
+
+  /*
+    Typing waits a beat before asking the server; the dropdowns do not need
+    to, but they go through the same door so there is one door. A barcode
+    scanner types a whole code in a few milliseconds and then presses Enter,
+    which is well inside the delay, so a scan is one request rather than six.
+  */
+  useEffect(() => {
+    const q = query.trim();
+    const wanted = new URLSearchParams();
+    if (q !== "") wanted.set("q", q);
+    if (location !== "") wanted.set("location", location);
+    if (kept !== "held") wanted.set("kept", kept);
+
+    const current = new URLSearchParams();
+    if (initial.q !== "") current.set("q", initial.q);
+    if (initial.location !== "") current.set("location", initial.location);
+    if (initial.kept !== "held") current.set("kept", initial.kept);
+
+    if (wanted.toString() === current.toString()) return;
+
+    const timer = setTimeout(() => {
+      const search = wanted.toString();
+      startTransition(() => {
+        router.replace(search === "" ? pathname : `${pathname}?${search}`);
+      });
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [query, location, kept, initial, pathname, router]);
+
   const [filters, setFilters] = useState<Filters<ColumnKey>>({});
   const [sort, setSort] = useState<{ key: ColumnKey; dir: 1 | -1 } | null>(null);
   const [page, setPage] = useState(1);
@@ -207,7 +259,10 @@ export function StockRecords({
    * paged away from — the mobile app's print flow works the same way, one
    * consignment ticked and printed together rather than page by page.
    */
-  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  // A Map of id to row rather than a Set of ids: the rows on screen change
+  // with every search now, and a tick made under one search has to survive
+  // the next one so a label sheet can be gathered from several.
+  const [chosen, setChosen] = useState<Map<string, PieceRow>>(new Map());
   /** The pieces currently on the print sheet, or null when it is closed. */
   const [printing, setPrinting] = useState<PieceRow[] | null>(null);
 
@@ -250,23 +305,15 @@ export function StockRecords({
   const widthOf = (c: { key: ColumnKey; width: number }) => widths[c.key] ?? c.width;
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-
+    // The search, the location and the status were answered by the server.
+    // What remains here is the column filter panel and the sort.
     let out = pieces.filter((p) => {
-      if (kept === "held" && !p.isHeld) return false;
-      if (kept === "gone" && p.isHeld) return false;
-      if (location !== "" && p.location !== location) return false;
-
       for (const [key, want] of Object.entries(filters)) {
         if (!Array.isArray(want) || want.length === 0) continue;
         if (!want.includes(cell(p, key as ColumnKey))) return false;
       }
 
-      if (q === "") return true;
-
-      return [p.itemCode, p.productCode, p.designCode, p.name, p.colour, p.motif]
-        .filter(Boolean)
-        .some((v) => v!.toLowerCase().includes(q));
+      return true;
     });
 
     if (sort !== null) {
@@ -281,10 +328,21 @@ export function StockRecords({
     }
 
     return out;
-  }, [pieces, query, location, filters, sort, kept]);
+  }, [pieces, filters, sort]);
 
   /** Pieces the ledger says are gone — the ones the default view leaves out. */
-  const departed = useMemo(() => pieces.filter((p) => !p.isHeld).length, [pieces]);
+  const departed = served.gone;
+
+  /** How many pieces match the search, location and status, on the server. */
+  const matching =
+    kept === "held" ? served.held : kept === "gone" ? served.gone : served.held + served.gone;
+
+  /** Whether the server had more matches than it sent. */
+  const truncated = matching > pieces.length;
+
+  /** No search, no location, and still nothing: there are no pieces at all. */
+  const nothingAtAll =
+    initial.q === "" && initial.location === "" && served.held + served.gone === 0;
 
   const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const current = Math.min(page, pages);
@@ -298,13 +356,8 @@ export function StockRecords({
    * from all of them — otherwise switching to In Stock leaves the panel
    * offering colours that only sold sarees had.
    */
-  const valuesFor = (key: ColumnKey): string[] => {
-    const pool = pieces.filter(
-      (p) => kept === "all" || (kept === "held") === p.isHeld,
-    );
-
-    return [...new Set(pool.map((p) => cell(p, key)).filter((v) => v !== ""))].sort();
-  };
+  const valuesFor = (key: ColumnKey): string[] =>
+    [...new Set(pieces.map((p) => cell(p, key)).filter((v) => v !== ""))].sort();
 
   const copy = async (what: string, value: string | null) => {
     if (value === null) {
@@ -347,7 +400,7 @@ export function StockRecords({
         <select
           value={kept}
           onChange={(e) => {
-            setKept(e.target.value as "held" | "gone" | "all");
+            setKept(e.target.value as Kept);
             setPage(1);
           }}
           aria-label="Filter by whether we still hold the piece"
@@ -388,7 +441,9 @@ export function StockRecords({
           // very fast and then presses Enter. If the field is not focused the
           // scan goes nowhere, which is a confusing way to discover it.
           autoFocus
-          className="w-56 rounded-lg border border-rule-2 bg-surface px-3 py-2 text-[13.5px] text-ink placeholder:text-faint"
+          className={`w-56 rounded-lg border border-rule-2 bg-surface px-3 py-2 text-[13.5px] text-ink placeholder:text-faint ${
+            pending ? "opacity-60" : ""
+          }`}
         />
 
         <FilterControl
@@ -450,12 +505,25 @@ export function StockRecords({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-rule bg-surface">
         <div className="flex flex-none items-center gap-3 border-b border-rule px-4 py-2.5">
           <span className="text-[12.5px] text-muted">
-            {filtered.length.toLocaleString("en-IN")} piece
-            {filtered.length === 1 ? "" : "s"}
-            {kept === "held" && " in stock"}
-            {kept === "gone" && " that have left"}
-            {location && ` at ${location}`}
-            {query.trim() !== "" && ` matching “${query.trim()}”`}
+            {pending
+              ? "Searching…"
+              : `${matching.toLocaleString("en-IN")} piece${matching === 1 ? "" : "s"}`}
+            {!pending && kept === "held" && " in stock"}
+            {!pending && kept === "gone" && " that have left"}
+            {!pending && location && ` at ${location}`}
+            {!pending && initial.q !== "" && ` matching “${initial.q}”`}
+            {/*
+              The server sends the newest hundred. Said plainly, so a count
+              of thirty thousand beside four pages of rows is not a puzzle,
+              and so the way to reach the rest — search — is named.
+            */}
+            {!pending && truncated && (
+              <>
+                {" — showing the newest "}
+                {pieces.length.toLocaleString("en-IN")}
+                {". Type a code or a word to find any piece."}
+              </>
+            )}
             {/*
               Said here rather than left to be discovered, because a count
               that quietly excludes things is the bug this screen had.
@@ -484,16 +552,14 @@ export function StockRecords({
               </span>
               <button
                 type="button"
-                onClick={() =>
-                  setPrinting(pieces.filter((p) => chosen.has(p.id)))
-                }
+                onClick={() => setPrinting([...chosen.values()])}
                 className="rounded-md border border-brick bg-brick-soft px-2.5 py-1 text-[12.5px] font-medium text-brick hover:opacity-80"
               >
                 Print labels
               </button>
               <button
                 type="button"
-                onClick={() => setChosen(new Set())}
+                onClick={() => setChosen(new Map())}
                 className="text-[12.5px] text-muted hover:text-ink"
               >
                 Clear
@@ -540,9 +606,9 @@ export function StockRecords({
                     }
                     onChange={(e) => {
                       setChosen((prev) => {
-                        const next = new Set(prev);
+                        const next = new Map(prev);
                         for (const p of pageRows) {
-                          if (e.target.checked) next.add(p.id);
+                          if (e.target.checked) next.set(p.id, p);
                           else next.delete(p.id);
                         }
                         return next;
@@ -587,12 +653,18 @@ export function StockRecords({
                 <tr>
                   <td colSpan={columns.length + 2} className="px-4 py-16 text-center">
                     <p className="mb-1 text-[15px] font-medium text-ink">
-                      {pieces.length === 0 ? "No pieces yet" : "No pieces match"}
+                      {pending
+                        ? "Searching…"
+                        : nothingAtAll
+                          ? "No pieces yet"
+                          : "No pieces match"}
                     </p>
                     <p className="mx-auto max-w-md text-[13.5px] leading-relaxed text-muted">
-                      {pieces.length === 0
-                        ? "A piece is minted when stock is received against a serialised design — sarees are tagged one by one, so each gets its own item code and QR."
-                        : "Clear the location filter or the search to see everything. Item codes, product codes, design codes, names, colours and motifs are all searchable."}
+                      {pending
+                        ? ""
+                        : nothingAtAll
+                          ? "A piece is minted when stock is received against a serialised design — sarees are tagged one by one, so each gets its own item code and QR."
+                          : "Clear the location filter, the status or the search to see everything. Item codes, product codes, design codes, names, colours and motifs are all searchable."}
                     </p>
                   </td>
                 </tr>
@@ -623,9 +695,9 @@ export function StockRecords({
                         checked={chosen.has(p.id)}
                         onChange={() =>
                           setChosen((prev) => {
-                            const next = new Set(prev);
+                            const next = new Map(prev);
                             if (next.has(p.id)) next.delete(p.id);
-                            else next.add(p.id);
+                            else next.set(p.id, p);
                             return next;
                           })
                         }

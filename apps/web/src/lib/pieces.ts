@@ -127,28 +127,78 @@ export async function findPieces(code: string): Promise<
   `);
 }
 
-export async function loadPieces(): Promise<PieceRow[]> {
-  const rows = await db.execute<Omit<PieceRow, "itemQr" | "productQr">>(sql`
-    select
-      p.id,
-      p.code                                    as "itemCode",
-      b.code                                    as "productCode",
-      p.serial,
-      d.code                                    as "designCode",
-      d.name,
-      colour.label                              as colour,
-      product_type.label                        as "productType",
-      motif_cat.label                           as "motifCategory",
-      motif.label                               as motif,
-      here.name                                 as location,
-      coalesce(pos.is_held, false)              as "isHeld",
-      arrived.name                              as "receivedInto",
-      to_char(b.received_at, 'DD Mon YYYY')     as "receivedAt",
-      to_char(b.received_at, 'YYYY-MM-DD')      as "receivedOn",
-      b.reference,
-      -- Cast, or bigint arrives as a string through db.execute and the type
-      -- above is a lie. Same as loadRecords and loadRecord.
-      cw.retail_minor::double precision         as "priceMinor"
+/** Which pieces the Stock Records screen is asking for. */
+export interface PieceQuery {
+  /** A code or a word. Matched against the codes, the name, the colour and the motif. */
+  q?: string;
+  /** A location name, as the dropdown shows it. */
+  location?: string;
+  /** In stock, left stock, or both. */
+  kept?: "held" | "gone" | "all";
+}
+
+export interface PiecePage {
+  /** The newest pieces that match, at most `limit` of them. */
+  rows: PieceRow[];
+  /** How many pieces match the search and location and are still held. */
+  held: number;
+  /** How many match and have left stock. */
+  gone: number;
+  limit: number;
+}
+
+/**
+ * How many rows a visit fetches.
+ *
+ * The screen used to load every piece ever minted and let the browser search
+ * them. At 200 pieces that was instant; at 31,000, each with two QR codes
+ * encoded on the server and shipped down as SVG, it was a page that never
+ * finished. A hundred is more than fits on four pages of the grid, and the
+ * search goes to the database, so a code finds its piece whether or not it
+ * was among the hundred.
+ */
+export const PIECE_LIMIT = 100;
+
+/** `%` and `_` mean something to LIKE; a code typed by a person does not. */
+function like(term: string): string {
+  return `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
+export async function loadPieces(query: PieceQuery = {}): Promise<PiecePage> {
+  const q = (query.q ?? "").trim();
+  const location = (query.location ?? "").trim();
+  const kept = query.kept ?? "held";
+
+  const conditions = [sql`true`];
+
+  if (q !== "") {
+    const pattern = like(q);
+    conditions.push(sql`(
+      p.code ilike ${pattern}
+      or b.code ilike ${pattern}
+      or d.code ilike ${pattern}
+      or d.name ilike ${pattern}
+      or colour.label ilike ${pattern}
+      or motif.label ilike ${pattern}
+    )`);
+  }
+
+  if (location !== "") {
+    conditions.push(sql`here.name = ${location}`);
+  }
+
+  const shared = sql.join(conditions, sql` and `);
+
+  const keptCondition =
+    kept === "held"
+      ? sql`coalesce(pos.is_held, false)`
+      : kept === "gone"
+        ? sql`not coalesce(pos.is_held, false)`
+        : sql`true`;
+
+  // The same joins for the rows and for the counts, so the two cannot
+  // disagree about what "matches" means.
+  const from = sql`
     from piece p
     join colourway cw on cw.id = p.colourway_id
     join design d     on d.id  = cw.design_id
@@ -162,16 +212,76 @@ export async function loadPieces(): Promise<PieceRow[]> {
     left join lookup_value product_type on product_type.id = d.product_type_id
     left join lookup_value motif_cat    on motif_cat.id = d.motif_category_id
     left join lookup_value motif        on motif.id = d.motif_id
-    order by p.code desc
-  `);
+  `;
+
+  const [rows, counts] = await Promise.all([
+    db.execute<Omit<PieceRow, "itemQr" | "productQr">>(sql`
+      select
+        p.id,
+        p.code                                    as "itemCode",
+        b.code                                    as "productCode",
+        p.serial,
+        d.code                                    as "designCode",
+        d.name,
+        colour.label                              as colour,
+        product_type.label                        as "productType",
+        motif_cat.label                           as "motifCategory",
+        motif.label                               as motif,
+        here.name                                 as location,
+        coalesce(pos.is_held, false)              as "isHeld",
+        arrived.name                              as "receivedInto",
+        to_char(b.received_at, 'DD Mon YYYY')     as "receivedAt",
+        to_char(b.received_at, 'YYYY-MM-DD')      as "receivedOn",
+        b.reference,
+        -- Cast, or bigint arrives as a string through db.execute and the type
+        -- above is a lie. Same as loadRecords and loadRecord.
+        cw.retail_minor::double precision         as "priceMinor"
+      ${from}
+      where ${shared} and ${keptCondition}
+      order by p.code desc
+      limit ${PIECE_LIMIT}
+    `),
+    db.execute<{ held: number; gone: number }>(sql`
+      select
+        count(*) filter (where coalesce(pos.is_held, false))::int     as held,
+        count(*) filter (where not coalesce(pos.is_held, false))::int as gone
+      ${from}
+      where ${shared}
+    `),
+  ]);
 
   // In parallel, because each is a few milliseconds of encoding and a page of
   // fifty pieces would otherwise spend a noticeable moment doing them in turn.
-  return Promise.all(
+  const withQr = await Promise.all(
     rows.map(async (row) => ({
       ...row,
       itemQr: await qr(row.itemCode),
       productQr: row.productCode === null ? null : await qr(row.productCode),
     })),
   );
+
+  return {
+    rows: withQr,
+    held: counts[0]?.held ?? 0,
+    gone: counts[0]?.gone ?? 0,
+    limit: PIECE_LIMIT,
+  };
+}
+
+/**
+ * The locations stock is actually in, rather than every location on file.
+ *
+ * A dropdown offering a warehouse that holds nothing is a way to make the
+ * table go empty and wonder what you broke.
+ */
+export async function loadStockLocations(): Promise<string[]> {
+  const rows = await db.execute<{ name: string }>(sql`
+    select distinct l.name
+    from piece_position pos
+    join location l on l.id = pos.location_id
+    where pos.is_held
+    order by 1
+  `);
+
+  return rows.map((r) => r.name);
 }

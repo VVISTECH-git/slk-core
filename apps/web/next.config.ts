@@ -37,6 +37,19 @@ const nextConfig: NextConfig = {
   // seeing it here. Next has to compile them itself.
   transpilePackages: ["@slk/contracts", "@slk/db", "@slk/domain"],
 
+  // Server Actions default to a 1 MB request body — fine for everything
+  // else in this app, but Import Consignments posts the whole spreadsheet
+  // as form data in one request, and a few thousand rows of real stock data
+  // clears 1 MB on its own (confirmed: a 1,932-row file came to 2.4 MB and
+  // was rejected with a 413 in production before this existed). Raised well
+  // past what today's bulk loads need rather than tuned to the exact file
+  // that triggered it — the next one will not be smaller.
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "15mb",
+    },
+  },
+
   // Next's floating dev overlay never ships to users, but it sits on top of
   // the app while the people it is being shown to are trying to judge it.
   // Compile and runtime errors still surface.

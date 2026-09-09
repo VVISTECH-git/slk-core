@@ -12,11 +12,14 @@ import { publicUrl } from "@/lib/storage";
  * Asking someone to download and re-upload the same four files is the kind of
  * step that quietly does not get done.
  *
- * `ADMIN_TASK_SECRET` gated, the same shape as the publish-one route: this is
- * for one machine calling another, not for a signed-in session, and it is
- * deliberately not reachable by floor/office/owner cookies.
+ * Gated by `TANTU_READ_SECRET`, not by `ADMIN_TASK_SECRET`, and the distinction
+ * is the point: that one also opens publish-one, which writes listings to a
+ * live storefront. This caller only needs to read four photographs, so it gets
+ * a credential that can only do that. If Tantu is ever compromised, the blast
+ * radius is a product lookup rather than a Shopify publish.
  *
- * Read-only. It writes nothing and takes no action.
+ * Machine to machine, not a signed-in session — deliberately unreachable by
+ * floor/office/owner cookies. Read-only: it writes nothing and takes no action.
  */
 
 interface ProductRow extends Record<string, unknown> {
@@ -60,7 +63,7 @@ function composedTitle(row: ProductRow): string {
 }
 
 export async function GET(request: Request): Promise<Response> {
-  const secret = process.env["ADMIN_TASK_SECRET"];
+  const secret = process.env["TANTU_READ_SECRET"];
   if (secret === undefined || secret === "") {
     return new Response("Not configured.", { status: 503 });
   }

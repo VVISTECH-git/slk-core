@@ -66,6 +66,7 @@ export const IMPORT_COLUMNS: ImportColumn[] = [
   { kind: "dropdown", header: "Secondary Colour", list: "colour", target: "secondaryColour" },
   { kind: "dropdown", header: "Fiber Type", list: "fibre_type", required: true, target: "fibreType" },
   { kind: "dropdown", header: "Craft Technique", list: "craft_technique", required: true, target: "craftTechnique" },
+  { kind: "dropdown", header: "Craft Sub Type", list: "craft_sub_type", target: "craftSubType" },
   { kind: "dropdown", header: "Weave Structure", list: "weave_structure", target: "weaveStructure" },
   { kind: "dropdown", header: "Textile Material", list: "textile_material", target: "textileMaterial" },
   { kind: "dropdown", header: "Fabric Type", list: "fabric_type", target: "fabricType" },

@@ -387,9 +387,12 @@ export function RecordsTable({
 
       if (q === "") return true;
 
-      return [row.name, row.code, row.colour, row.productType, row.craftTechnique]
-        .filter(Boolean)
-        .some((v) => v!.toLowerCase().includes(q));
+      // Every column the grid can show, not a hand-picked five. The list
+      // used to name the product, design code, colour, product type and
+      // craft technique — and nothing else — so typing a Product Code such
+      // as 300021 into the box found nothing, on the one screen where that
+      // number is printed on every row.
+      return COLUMNS.some((c) => cell(row, c.key).toLowerCase().includes(q));
     });
 
     if (sort !== null) {

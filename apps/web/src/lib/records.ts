@@ -57,6 +57,8 @@ export type RecordRow = {
   wholesaleMinor: number | null;
   mrpMinor: number | null;
   pieces: number;
+  /** Photographs actually uploaded — the images tab's own count, not slots ticked. */
+  photos: number;
 
   /**
    * Whether the design has been archived, or this colour of it retired.
@@ -140,6 +142,7 @@ export async function loadRecords(
       cw.wholesale_minor::double precision              as "wholesaleMinor",
       cw.mrp_minor::double precision                    as "mrpMinor",
       coalesce(pc.n, 0)::int                            as pieces,
+      coalesce(ic.n, 0)::int                            as photos,
       (d.status = 'archived' or not cw.is_active)       as "isArchived"
     from colourway cw
     join design d                     on d.id = cw.design_id
@@ -176,6 +179,11 @@ export async function loadRecords(
     left join (
       select colourway_id, count(*) as n from piece group by colourway_id
     ) pc                                      on pc.colourway_id = cw.id
+    left join (
+      select colourway_id, count(*) as n from image
+      where storage_key is not null
+      group by colourway_id
+    ) ic                                      on ic.colourway_id = cw.id
     -- Both, not just the design: archiving one colour of a design that still
     -- has others leaves the design active, and only the colourway retired.
     where ${includeArchived} or (d.status <> 'archived' and cw.is_active)

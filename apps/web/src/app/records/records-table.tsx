@@ -776,6 +776,7 @@ export function RecordsTable({
                       <RowActions
                         serialised={row.isSerialised}
                         pieces={row.pieces}
+                        photos={row.photos}
                         // Only this row, not the whole table. One click used
                         // to grey out every action on every row, which looks
                         // like the page has broken rather than like one thing
@@ -910,11 +911,13 @@ const ACTIONS: { key: RowAction; title: string; path: string }[] = [
 function RowActions({
   serialised,
   pieces,
+  photos,
   busy,
   onAction,
 }: {
   serialised: boolean;
   pieces: number;
+  photos: number;
   busy: RowAction | null;
   onAction: (action: RowAction) => void;
 }) {
@@ -935,21 +938,29 @@ function RowActions({
           {pieces} tagged
         </span>
       )}
-      {ACTIONS.map((a) => (
-        <button
-          key={a.key}
-          type="button"
-          title={a.title}
-          aria-label={a.title}
-          disabled={busy !== null}
-          onClick={(e) => {
-            e.stopPropagation();
-            onAction(a.key);
-          }}
-          className={`rounded p-1.5 text-faint hover:bg-surface-3 disabled:opacity-40 ${
-            a.key === "delete" ? "hover:text-brick" : "hover:text-ink"
-          }`}
-        >
+      {ACTIONS.map((a) => {
+        // The images action is the one row action worth telling apart at a
+        // glance: everything else opens the same editor regardless of what
+        // is already there, but "no photos yet" is a fact worth scanning a
+        // hundred rows for, and a grey camera icon looked identical whether
+        // a record had nine photos or none.
+        const hasPhotos = a.key === "images" && photos > 0;
+
+        return (
+          <button
+            key={a.key}
+            type="button"
+            title={a.key === "images" ? `${photos} photo${photos === 1 ? "" : "s"} — ${a.title}` : a.title}
+            aria-label={a.title}
+            disabled={busy !== null}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAction(a.key);
+            }}
+            className={`rounded p-1.5 hover:bg-surface-3 disabled:opacity-40 ${
+              hasPhotos ? "text-ok hover:text-ok" : "text-faint hover:text-ink"
+            } ${a.key === "delete" ? "hover:text-brick" : ""}`}
+          >
           {busy === a.key ? (
             <svg
               width="16"
@@ -978,8 +989,9 @@ function RowActions({
               <path d={a.path} />
             </svg>
           )}
-        </button>
-      ))}
+          </button>
+        );
+      })}
     </div>
   );
 }

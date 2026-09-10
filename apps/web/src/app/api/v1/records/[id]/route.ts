@@ -59,11 +59,14 @@ export const PATCH = guarded("floor", async (request) => {
     of that saree. The web editor says so on screen; the API says so in its
     answer, because a client that cannot tell will not warn anyone.
   */
+  // The action's own sentence rides along: "Saved." plainly, or "Saved.
+  // Stock adjusted by +3." when a count correction wrote a movement — the
+  // one effect of this call a client cannot otherwise see or repeat back.
   if (current.siblings.length > 1) {
-    return { id, alsoChanged: current.siblings.length - 1 };
+    return { id, alsoChanged: current.siblings.length - 1, message: result.message };
   }
 
-  return { id };
+  return { id, message: result.message };
 });
 
 /**

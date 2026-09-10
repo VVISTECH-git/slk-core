@@ -31,12 +31,15 @@ import {
   type ActionResult,
   type RecordDraft,
 } from "./actions";
+import { GuidedCapture } from "./guided-capture";
 import {
   confirmImage,
   presignImage,
   removeImage,
   storageStatus,
 } from "./image-actions";
+import { PhotoCheck } from "./photo-check";
+import { ruleFor } from "./photo-rules";
 import { publishBatchToChannel } from "./publish-actions";
 
 /**
@@ -3030,9 +3033,31 @@ function SlotTile({
   const [failed, setFailed] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
+  /*
+    Every photograph passes a check before it is sent — a guided camera on a
+    phone, or a look at a chosen file. The check owns the rules; this tile
+    only decides which door the photograph comes in by.
+  */
+  const [choosing, setChoosing] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [checking, setChecking] = useState<File | null>(null);
+  const rule = ruleFor(slot.label);
+  const hasCamera =
+    typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getUserMedia === "function";
+
   const has = photograph !== null;
   const wanted = on || has;
   const live = colourwayId !== null && canUpload;
+
+  /** The + or ⟳: offer the camera where there is one, else straight to files. */
+  const add = () => {
+    if (!live) {
+      onToggle();
+      return;
+    }
+    if (hasCamera) setChoosing(true);
+    else input.current?.click();
+  };
 
   /**
    * Sign, PUT, then tell the server it landed.
@@ -3112,7 +3137,7 @@ function SlotTile({
         e.preventDefault();
         setDragging(false);
         const file = e.dataTransfer.files[0];
-        if (file !== undefined) void send(file);
+        if (file !== undefined) setChecking(file);
       }}
       className={dragging ? "bg-brick-soft" : ""}
     >
@@ -3123,11 +3148,36 @@ function SlotTile({
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file !== undefined) void send(file);
+          if (file !== undefined) setChecking(file);
           // Cleared so choosing the same file twice still fires a change.
           e.target.value = "";
         }}
       />
+
+      {capturing && (
+        <GuidedCapture
+          slotLabel={slot.label}
+          rule={rule}
+          onClose={() => setCapturing(false)}
+          onUse={(file) => {
+            setCapturing(false);
+            void send(file);
+          }}
+        />
+      )}
+
+      {checking !== null && (
+        <PhotoCheck
+          file={checking}
+          slotLabel={slot.label}
+          rule={rule}
+          onCancel={() => setChecking(null)}
+          onUse={(file) => {
+            setChecking(null);
+            void send(file);
+          }}
+        />
+      )}
 
       {/*
         A tick, a state, a thumbnail and its actions — on one line.
@@ -3185,7 +3235,7 @@ function SlotTile({
         ) : (
           <button
             type="button"
-            onClick={() => (live ? input.current?.click() : onToggle())}
+            onClick={add}
             title={live ? `Add the ${slot.label} photograph` : undefined}
             className="grid h-11 w-9 flex-none place-items-center rounded border border-dashed border-rule-2 text-[15px] text-faint hover:border-brick hover:text-brick"
           >
@@ -3199,7 +3249,7 @@ function SlotTile({
               <IconAction
                 label={`Replace the ${slot.label} photograph`}
                 disabled={busy !== null}
-                onClick={() => input.current?.click()}
+                onClick={add}
               >
                 ⟳
               </IconAction>
@@ -3222,6 +3272,42 @@ function SlotTile({
           )}
         </span>
       </div>
+
+      {choosing && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-rule px-3 py-2">
+          <span className="text-[11.5px] text-muted">{rule.guide}</span>
+          <span className="ml-auto flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setChoosing(false);
+                setCapturing(true);
+              }}
+              className="rounded border border-brick bg-brick px-2.5 py-1 text-[12px] font-medium text-on-brick"
+            >
+              Take a photograph
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setChoosing(false);
+                input.current?.click();
+              }}
+              className="rounded border border-rule-2 px-2.5 py-1 text-[12px] text-ink hover:border-brick"
+            >
+              Choose a file
+            </button>
+            <button
+              type="button"
+              onClick={() => setChoosing(false)}
+              aria-label="Cancel"
+              className="rounded px-2 py-1 text-[12px] text-muted hover:text-ink"
+            >
+              ×
+            </button>
+          </span>
+        </div>
+      )}
 
       {failed !== null && (
         <p className="border-t border-rule px-2 py-1.5 text-[11px] leading-relaxed text-brick">

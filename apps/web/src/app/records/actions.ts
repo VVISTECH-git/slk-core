@@ -438,7 +438,25 @@ async function correctCount(
   if (difference === 0) return null;
 
   const locations = await db.select().from(location);
-  const warehouse = locations.find((l) => l.code === "WH-MAIN") ?? locations.find((l) => l.isInternal);
+
+  // The shelf the stock is actually on, when that is unambiguous. A count
+  // corrected from a phone standing at the shop should move shop stock, not
+  // WH-MAIN's; the same on-hand arithmetic loadByLocation uses. Two or more
+  // holding locations is a question this form does not ask, so it falls
+  // back to the main warehouse as before.
+  const holding = await db.execute<{ locationId: string }>(sql`
+    select l.id as "locationId"
+    from movement m
+    join location l on l.id in (m.to_location_id, m.from_location_id)
+    where m.colourway_id = ${colourwayId} and l.is_internal
+    group by l.id
+    having (sum(case when m.to_location_id = l.id then m.qty else 0 end)
+          - sum(case when m.from_location_id = l.id then m.qty else 0 end)) > 0
+  `);
+  const warehouse =
+    (holding.length === 1 ? locations.find((l) => l.id === holding[0]!.locationId) : undefined) ??
+    locations.find((l) => l.code === "WH-MAIN") ??
+    locations.find((l) => l.isInternal);
   const shrinkage = locations.find((l) => l.code === "SCRAP") ?? locations.find((l) => !l.isInternal);
 
   if (warehouse === undefined || shrinkage === undefined) {

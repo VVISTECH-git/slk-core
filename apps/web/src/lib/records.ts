@@ -97,6 +97,141 @@ export async function loadRecords(
   { includeArchived = false }: { includeArchived?: boolean } = {},
 ): Promise<RecordRow[]> {
   return db.execute<RecordRow>(sql`
+    ${SELECT}
+    ${FROM}
+    -- Both, not just the design: archiving one colour of a design that still
+    -- has others leaves the design active, and only the colourway retired.
+    where ${includeArchived} or (d.status <> 'archived' and cw.is_active)
+    order by d.seq, colour.sort_order
+  `);
+}
+
+/** What the Product Management grid is asking for. */
+export interface RecordQuery {
+  /** A code or a word. Matched against every column the grid can show. */
+  q?: string;
+  /** An industry label, as the dropdown shows it. */
+  industry?: string;
+  /** Whether archived records are wanted as well as the live ones. */
+  archived?: boolean;
+}
+
+export interface RecordPage {
+  /** The newest records that match, at most `limit` of them. */
+  rows: RecordRow[];
+  /** How many records match the search, the industry and the archived setting. */
+  total: number;
+  /** Archived records matching the search and industry, and the stock they hold. */
+  archived: { count: number; quantity: number };
+  limit: number;
+}
+
+/**
+ * How many rows a visit fetches.
+ *
+ * The grid used to load the whole catalogue and search it in the browser,
+ * which was fine at two hundred records and is slower with every import —
+ * Stock Records, on the same design, stopped loading at thirty thousand. A
+ * hundred is four pages of the grid; the search goes to the database, so a
+ * code or a word finds its record whether or not it was among the hundred.
+ */
+export const RECORD_LIMIT = 100;
+
+/** `%` and `_` mean something to LIKE; a code typed by a person does not. */
+function like(term: string): string {
+  return `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
+export async function loadRecordPage(query: RecordQuery = {}): Promise<RecordPage> {
+  const q = (query.q ?? "").trim();
+  const industry = (query.industry ?? "").trim();
+  const archived = query.archived ?? false;
+
+  const conditions = [sql`true`];
+
+  if (q !== "") {
+    const pattern = like(q);
+    // The same columns the grid shows, so what can be read can be searched.
+    conditions.push(sql`(
+      d.name ilike ${pattern}
+      or d.code ilike ${pattern}
+      or latest.code ilike ${pattern}
+      or colour.label ilike ${pattern}
+      or product_type.label ilike ${pattern}
+      or coalesce(garment_type.label, weaving.label) ilike ${pattern}
+      or production_method.label ilike ${pattern}
+      or fibre.label ilike ${pattern}
+      or craft.label ilike ${pattern}
+      or audience.label ilike ${pattern}
+      or coalesce(material.label, silk_sub.label, cotton_sub.label, fabric.label, region.label) ilike ${pattern}
+      or weave.label ilike ${pattern}
+      or craft_sub.label ilike ${pattern}
+      or motif_cat.label ilike ${pattern}
+      or motif.label ilike ${pattern}
+      or border.label ilike ${pattern}
+      or pallu.label ilike ${pattern}
+      or blouse.label ilike ${pattern}
+      or uom.label ilike ${pattern}
+    )`);
+  }
+
+  if (industry !== "") {
+    conditions.push(sql`industry.label = ${industry}`);
+  }
+
+  const shared = sql.join(conditions, sql` and `);
+  const live = sql`(d.status <> 'archived' and cw.is_active)`;
+  const wanted = archived ? sql`true` : live;
+
+  const [rows, counts] = await Promise.all([
+    db.execute<RecordRow>(sql`
+      ${SELECT}
+      ${FROM}
+      where ${shared} and ${wanted}
+      -- Newest first: with a hundred on screen, the ones just added are the
+      -- ones being looked for.
+      order by d.seq desc, colour.sort_order
+      limit ${RECORD_LIMIT}
+    `),
+    db.execute<{ total: number; archivedCount: number; archivedQuantity: number }>(sql`
+      select
+        count(*) filter (where ${wanted})::int                              as total,
+        count(*) filter (where not ${live})::int                            as "archivedCount",
+        coalesce(sum(coalesce(oh.qty, 0)) filter (where not ${live}), 0)::int as "archivedQuantity"
+      ${FROM}
+      where ${shared}
+    `),
+  ]);
+
+  return {
+    rows,
+    total: counts[0]?.total ?? 0,
+    archived: {
+      count: counts[0]?.archivedCount ?? 0,
+      quantity: counts[0]?.archivedQuantity ?? 0,
+    },
+    limit: RECORD_LIMIT,
+  };
+}
+
+/**
+ * The industries the dropdown offers: those on live records only. An
+ * industry that exists solely on something archived is not one to filter by.
+ */
+export async function loadIndustries(): Promise<string[]> {
+  const rows = await db.execute<{ name: string }>(sql`
+    select distinct industry.label as name
+    from colourway cw
+    join design d on d.id = cw.design_id
+    join lookup_value industry on industry.id = d.industry_id
+    where d.status <> 'archived' and cw.is_active
+    order by 1
+  `);
+
+  return rows.map((r) => r.name);
+}
+
+const SELECT = sql`
     select
       cw.id                                             as id,
       d.id                                              as "designId",
@@ -171,6 +306,9 @@ export async function loadRecords(
         where cl.batch_id = latest.id
       ), 'none')                                        as "syncStatus",
       (d.status = 'archived' or not cw.is_active)       as "isArchived"
+`;
+
+const FROM = sql`
     from colourway cw
     join design d                     on d.id = cw.design_id
     left join lookup_value industry           on industry.id = d.industry_id
@@ -216,9 +354,4 @@ export async function loadRecords(
       where kind = 'sold'
       group by colourway_id
     ) sm                                      on sm.colourway_id = cw.id
-    -- Both, not just the design: archiving one colour of a design that still
-    -- has others leaves the design active, and only the colourway retired.
-    where ${includeArchived} or (d.status <> 'archived' and cw.is_active)
-    order by d.seq, colour.sort_order
-  `);
-}
+`;

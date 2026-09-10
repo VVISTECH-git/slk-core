@@ -1,38 +1,43 @@
 import { requirePage } from "@/lib/session";
 import { loadOptions } from "@/lib/editor";
 import { loadPickableLocations } from "@/lib/locations";
-import { loadRecords } from "@/lib/records";
+import { loadIndustries, loadRecordPage } from "@/lib/records";
 
 import { RecordsTable } from "./records-table";
 
 export const dynamic = "force-dynamic";
 
-export default async function RecordsPage() {
+/**
+ * The search, the industry and whether archived records are wanted live in
+ * the URL — ?q=300021 — so the server can answer them. A visit fetches the
+ * newest hundred that match; a code typed into the box finds its record
+ * wherever it is in the catalogue.
+ */
+export default async function RecordsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; industry?: string; archived?: string }>;
+}) {
   const who = await requirePage();
 
-  const [rows, options, locations] = await Promise.all([
-    // Archived included, hidden by the grid until asked for. Stock against an
-    // archived record has to be reachable from somewhere, and this is the
-    // screen it belongs on.
-    loadRecords({ includeArchived: true }),
+  const params = await searchParams;
+  const initial = {
+    q: (params.q ?? "").trim(),
+    industry: (params.industry ?? "").trim(),
+    archived: params.archived === "1",
+  };
+
+  const [page, industries, options, locations] = await Promise.all([
+    loadRecordPage(initial),
+    loadIndustries(),
     loadOptions(),
     loadPickableLocations(),
   ]);
 
-  // Off the live records only: an industry that exists solely on something
-  // archived is not one the filter should offer.
-  const industries = [
-    ...new Set(
-      rows
-        .filter((r) => !r.isArchived)
-        .map((r) => r.industry)
-        .filter((i): i is string => i !== null),
-    ),
-  ].sort();
-
   return (
     <RecordsTable
-      rows={rows}
+      page={page}
+      initial={initial}
       industries={industries}
       options={options}
       locations={locations}

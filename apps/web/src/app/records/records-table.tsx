@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { colourSwatch, isPaleSwatch } from "@slk/domain/colour";
 import { rupees } from "@slk/domain/money";
@@ -25,7 +25,7 @@ import {
   type RecordDetail,
 } from "@/lib/attributes";
 import { useColumnOrder, useColumnWidths, useVisibleColumns } from "@/lib/column-widths";
-import type { RecordRow } from "@/lib/records";
+import type { RecordPage, RecordQuery, RecordRow } from "@/lib/records";
 
 import { setRecordField, type InlineField } from "./actions";
 import { InlineLookupCell } from "./inline-cell";
@@ -174,21 +174,36 @@ export const money = rupees;
 /** The tabs the editor can be opened straight onto from a row action. */
 type EditorTab = "basic" | "craft" | "prices" | "images" | "stock";
 
+/**
+ * The search box, the industry dropdown and the archived toggle are answered
+ * by the database, not the browser.
+ *
+ * They used to filter the whole catalogue, which the page had loaded in
+ * full. Now the three of them live in the URL, the server answers with the
+ * newest hundred matches and the counts, and everything below that — the
+ * column filter panel, sorting, the pager, inline edits — works on those
+ * rows exactly as before.
+ */
 export function RecordsTable({
-  rows,
+  page: served,
+  initial,
   industries,
   options,
   locations,
   role,
 }: {
-  rows: RecordRow[];
+  page: RecordPage;
+  initial: Required<RecordQuery>;
   industries: string[];
   options: Options;
   locations: PickableLocation[];
   /** Whose grid this is. Only an owner is offered a permanent delete. */
   role: string;
 }) {
+  const rows = served.rows;
   const router = useRouter();
+  const pathname = usePathname();
+  const [pending, startSearch] = useTransition();
   const [editing, setEditing] = useState<{
     record: RecordDetail | null;
     /** A copy: the source record, whose design the new colour joins. */
@@ -320,8 +335,8 @@ export function RecordsTable({
     })();
   };
 
-  const [query, setQuery] = useState("");
-  const [industry, setIndustry] = useState("");
+  const [query, setQuery] = useState(initial.q);
+  const [industry, setIndustry] = useState(initial.industry);
 
   /**
    * Whether archived records are in the table.
@@ -331,7 +346,37 @@ export function RecordsTable({
    * could not show it at all, that stock was counted on Locations and visible
    * nowhere, which is a hundred sarees nobody can account for.
    */
-  const [showArchived, setShowArchived] = useState(false);
+  const [showArchived, setShowArchived] = useState(initial.archived);
+
+  /*
+    Typing waits a beat before asking the server; the dropdown and the
+    archived toggle do not need to, but they go through the same door so
+    there is one door. `router.replace` re-runs the page with the new URL,
+    and the rows arrive as new props.
+  */
+  useEffect(() => {
+    const q = query.trim();
+    const wanted = new URLSearchParams();
+    if (q !== "") wanted.set("q", q);
+    if (industry !== "") wanted.set("industry", industry);
+    if (showArchived) wanted.set("archived", "1");
+
+    const current = new URLSearchParams();
+    if (initial.q !== "") current.set("q", initial.q);
+    if (initial.industry !== "") current.set("industry", initial.industry);
+    if (initial.archived) current.set("archived", "1");
+
+    if (wanted.toString() === current.toString()) return;
+
+    const timer = setTimeout(() => {
+      const search = wanted.toString();
+      startSearch(() => {
+        router.replace(search === "" ? pathname : `${pathname}?${search}`);
+      });
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [query, industry, showArchived, initial, pathname, router]);
   /**
    * Chosen values per column, rather than one value per column.
    *
@@ -374,25 +419,15 @@ export function RecordsTable({
     widths[c.key] ?? c.width;
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-
+    // The search, the industry and the archived setting were answered by
+    // the server. What remains here is the column filter panel and the sort.
     let out = rows.filter((row) => {
-      if (!showArchived && row.isArchived) return false;
-      if (industry !== "" && row.industry !== industry) return false;
-
       for (const [key, want] of Object.entries(filters)) {
         if (want === undefined || want.length === 0) continue;
         if (!want.includes(cell(row, key as ColumnKey))) return false;
       }
 
-      if (q === "") return true;
-
-      // Every column the grid can show, not a hand-picked five. The list
-      // used to name the product, design code, colour, product type and
-      // craft technique — and nothing else — so typing a Product Code such
-      // as 300021 into the box found nothing, on the one screen where that
-      // number is printed on every row.
-      return COLUMNS.some((c) => cell(row, c.key).toLowerCase().includes(q));
+      return true;
     });
 
     if (sort !== null) {
@@ -407,22 +442,19 @@ export function RecordsTable({
     }
 
     return out;
-  }, [rows, query, industry, filters, sort, showArchived]);
+  }, [rows, filters, sort]);
 
   /**
    * Archived records still holding stock.
    *
    * The number that made Locations and this screen disagree. Worth saying out
    * loud: stock against an archived record is stock nobody is looking at.
+   * Counted on the server across every match, not just the hundred sent.
    */
-  const archived = useMemo(() => {
-    const all = rows.filter((r) => r.isArchived);
+  const archived = served.archived;
 
-    return {
-      count: all.length,
-      quantity: all.reduce((sum, r) => sum + r.quantity, 0),
-    };
-  }, [rows]);
+  /** Whether the server had more matches than it sent. */
+  const truncated = served.total > rows.length;
 
   const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const current = Math.min(page, pages);
@@ -505,7 +537,9 @@ export function RecordsTable({
           }}
           placeholder="Search records…"
           aria-label="Search records"
-          className="w-56 rounded-lg border border-rule-2 bg-surface px-3 py-2 text-[13.5px] text-ink placeholder:text-faint"
+          className={`w-56 rounded-lg border border-rule-2 bg-surface px-3 py-2 text-[13.5px] text-ink placeholder:text-faint ${
+            pending ? "opacity-60" : ""
+          }`}
         />
 
         <FilterControl
@@ -552,10 +586,24 @@ export function RecordsTable({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-rule bg-surface">
         <div className="flex flex-none items-center gap-3 border-b border-rule px-4 py-2.5">
           <span className="text-[12.5px] text-muted">
-            {filtered.length.toLocaleString("en-IN")} record
-            {filtered.length === 1 ? "" : "s"}
-            {industry && ` in ${industry}`}
-            {showArchived && ", archived included"}
+            {pending
+              ? "Searching…"
+              : `${served.total.toLocaleString("en-IN")} record${served.total === 1 ? "" : "s"}`}
+            {!pending && industry && ` in ${industry}`}
+            {!pending && initial.q !== "" && ` matching “${initial.q}”`}
+            {!pending && showArchived && ", archived included"}
+            {/*
+              The server sends the newest hundred. Said plainly, so a count
+              of two thousand beside four pages of rows is not a puzzle, and
+              so the way to reach the rest — search — is named.
+            */}
+            {!pending && truncated && (
+              <>
+                {" — showing the newest "}
+                {rows.length.toLocaleString("en-IN")}
+                {". Type a code or a word to find any record."}
+              </>
+            )}
           </span>
 
           {/*
@@ -643,12 +691,14 @@ export function RecordsTable({
                 <tr>
                   <td colSpan={columns.length + 1} className="px-4 py-16 text-center">
                     <p className="mb-1 text-[15px] font-medium text-ink">
-                      No records match
+                      {pending ? "Searching…" : "No records match"}
                     </p>
                     <p className="text-[13.5px] text-muted">
-                      {industry || query || active.length
-                        ? "Clear the industry filter or the search to see everything."
-                        : "Add your first record to get started."}
+                      {pending
+                        ? ""
+                        : industry || initial.q || active.length
+                          ? "Clear the industry filter or the search to see everything."
+                          : "Add your first record to get started."}
                     </p>
                   </td>
                 </tr>

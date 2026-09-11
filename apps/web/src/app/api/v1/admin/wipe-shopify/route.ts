@@ -32,12 +32,14 @@ const PRODUCT_DELETE = `
 `;
 
 export async function GET(request: Request): Promise<Response> {
-  const secret = process.env["WIPE_TASK_SECRET"];
-  if (secret === undefined || secret === "") {
+  // Trimmed: a value piped into `vercel env add` arrives with the shell's
+  // trailing newline attached, and a Bearer token never has one.
+  const secret = (process.env["WIPE_TASK_SECRET"] ?? "").trim();
+  if (secret === "") {
     return new Response("Not configured.", { status: 503 });
   }
 
-  const auth = request.headers.get("authorization");
+  const auth = (request.headers.get("authorization") ?? "").trim();
   if (auth !== `Bearer ${secret}`) {
     return new Response("Unauthorized.", { status: 401 });
   }

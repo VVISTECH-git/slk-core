@@ -6,6 +6,7 @@ import {
   ATTRIBUTES,
   ATTRIBUTE_KEYS,
   type AttributeKey,
+  type DesignExtra,
   type Options,
   type RecordDetail,
 } from "@/lib/attributes";
@@ -91,6 +92,7 @@ export async function loadOptions(): Promise<Options> {
       isDefault: row.isDefault,
       hex: typeof meta["hex"] === "string" ? meta["hex"] : null,
       serialised: meta["serialised"] === true,
+      pieces: typeof meta["pieces"] === "string" ? meta["pieces"] : null,
     });
   }
 
@@ -132,7 +134,7 @@ export async function loadRecord(
       select
         cw.id as id, d.id as "designId", d.code, d.name,
         d.name_is_custom as "nameIsCustom", d.is_serialised as "isSerialised",
-        d.notes,
+        d.notes, d.extra,
         cw.colour_id as "colourId",
         cw.secondary_colour_id as "secondaryColourId",
         -- Cast for the same reason as loadRecords: bigint through db.execute
@@ -185,6 +187,7 @@ export async function loadRecord(
     nameIsCustom: row["nameIsCustom"] as boolean,
     isSerialised: row["isSerialised"] as boolean,
     notes: (row["notes"] as string | null) ?? null,
+    extra: (row["extra"] as DesignExtra | null) ?? {},
     colourId: (row["colourId"] as string | null) ?? null,
     secondaryColourId: (row["secondaryColourId"] as string | null) ?? null,
     costMinor: (row["costMinor"] as number | null) ?? null,

@@ -11,6 +11,8 @@ import {
   defaultAttributes,
   isHomeIndustry,
   type AttributeKey,
+  type DesignExtra,
+  type DesignExtraPiece,
   type Option,
   type Options,
   type RecordDetail,
@@ -212,6 +214,13 @@ export function RecordEditor({
   const [notes, setNotes] = useState(seed?.notes ?? "");
   const [name, setName] = useState(seed?.name ?? "");
   const [nameIsCustom, setNameIsCustom] = useState(seed?.nameIsCustom ?? false);
+  /**
+   * Dimension and construction facts — length, width, GSM, a matched set's
+   * named pieces. Held as one object rather than a field each, the same
+   * shape it is stored and sent in, since nothing here is a lookup id that
+   * `attributes` or a Combo could represent.
+   */
+  const [extra, setExtra] = useState<DesignExtra>(seed?.extra ?? {});
 
   const [tab, setTab] = useState<TabKey>(initialTab);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -271,6 +280,37 @@ export function RecordEditor({
    * choosing All Over must not start asking for a collar and a sleeve length.
    */
   const isGarment = hasSubTypes && !isSaree && Boolean(attributes.garmentType);
+
+  /**
+   * Which shape of dimension/construction fields this product type wants —
+   * the tab that used to be Saree-only, redesigned per type rather than left
+   * blank for everything else. By code, same reasoning as isSaree above.
+   *
+   * Dupatta, Scarves, Stolls and Bedsheets are one finished piece with a
+   * length and a width. Fabric is either plain — sold by the metre, so it
+   * gets construction specs instead of a length — or a matched, unstitched
+   * set (Product Sub Type is one of the five that carries a piece count),
+   * which is bought whole and described piece by piece instead. Grounded
+   * against real itokri listings for each shape before this was written,
+   * not guessed — see the 11 Sep conversation.
+   */
+  const productTypeCode = (options["product_type"] ?? []).find(
+    (o) => o.id === attributes.productType,
+  )?.code;
+
+  const isFabric = !isHome && productTypeCode === "fabric";
+  const isDupattaLike =
+    !isHome &&
+    ["dupatta", "scarves", "stolls", "bedsheets"].includes(productTypeCode ?? "");
+
+  const chosenSubType = subTypes.find((o) => o.id === attributes.garmentType);
+  const isFabricSet = isFabric && chosenSubType?.pieces != null;
+  const isFabricPlain = isFabric && !isFabricSet;
+
+  /** "2" -> 2 slots; "2 or 3" -> 3, the most the sub type could turn out to be. */
+  const pieceSlotCount = isFabricSet
+    ? Math.max(...(chosenSubType!.pieces!.match(/\d+/g) ?? ["1"]).map(Number))
+    : 0;
 
   /**
    * What a price is a price of.
@@ -594,6 +634,7 @@ export function RecordEditor({
       notes,
       name,
       nameIsCustom,
+      extra,
     };
 
     startTransition(async () => {
@@ -997,9 +1038,96 @@ export function RecordEditor({
               )}
 
               {/*
-                Outside both, because the adjectives describe the whole piece
-                rather than any part of it, they are what the product name is
-                built from, and a dupatta has them too.
+                Dupatta, Scarves, Stolls, Bedsheets — one finished piece, a
+                length and a width. Confirmed against real itokri listings
+                for each of these before this was written: the same two
+                numbers, nothing craft-specific, regardless of which of the
+                four it is.
+              */}
+              {isDupattaLike && (
+                <Section title="Dimensions">
+                  <NumberField label="Length" unit="cm"
+                    value={extra.lengthCm ?? null}
+                    onChange={(v) => setExtra((prev) => ({ ...prev, lengthCm: v }))} />
+                  <NumberField label="Width" unit="cm"
+                    value={extra.widthCm ?? null}
+                    onChange={(v) => setExtra((prev) => ({ ...prev, widthCm: v }))} />
+                </Section>
+              )}
+
+              {/*
+                Fabric, plain — sold by the metre, so it has no fixed length
+                (the stock count is the length) and instead needs the
+                construction specs a bolt of cloth is actually described by.
+                All five fields confirmed against three different real itokri
+                fabric listings — a dyed, a block-printed and a jacquard-woven
+                one — which show the identical field set regardless of craft.
+              */}
+              {isFabricPlain && (
+                <Section title="Fabric Specifications">
+                  <NumberField label="Width" unit="cm"
+                    value={extra.widthCm ?? null}
+                    onChange={(v) => setExtra((prev) => ({ ...prev, widthCm: v }))} />
+                  <NumberField label="GSM" unit="g/m²"
+                    value={extra.gsm ?? null}
+                    onChange={(v) => setExtra((prev) => ({ ...prev, gsm: v }))} />
+                  <TextField label="Yarn Count" placeholder="e.g. 20 Single x 20 Single"
+                    value={extra.yarnCount ?? ""}
+                    onChange={(v) => setExtra((prev) => ({ ...prev, yarnCount: v || null }))} />
+                  <TextField label="Shrinkage" placeholder="e.g. 1-2%"
+                    value={extra.shrinkage ?? ""}
+                    onChange={(v) => setExtra((prev) => ({ ...prev, shrinkage: v || null }))} />
+                  <TextField label="Transparency" placeholder="e.g. 0%"
+                    value={extra.transparency ?? ""}
+                    onChange={(v) => setExtra((prev) => ({ ...prev, transparency: v || null }))} />
+                </Section>
+              )}
+
+              {/*
+                Fabric bought as a matched set — a Product Sub Type is one of
+                the five that carries a piece count — is not sold by the
+                length at all. It is described piece by piece instead, the
+                same shape a real itokri 3pc dress-material listing actually
+                uses: a named component, each with its own length and width,
+                not one pair of numbers for the whole set. One slot per piece
+                the chosen sub type could turn out to be — "2 or 3" offers
+                three, the third stays optional.
+              */}
+              {isFabricSet && (
+                <Section title={`Set Pieces (${chosenSubType!.label})`}>
+                  {Array.from({ length: pieceSlotCount }, (_, i) => {
+                    const piece = extra.pieces?.[i];
+                    const setPiece = (patch: Partial<DesignExtraPiece>) =>
+                      setExtra((prev) => {
+                        const pieces = [...(prev.pieces ?? [])];
+                        while (pieces.length <= i) {
+                          pieces.push({ label: "", lengthCm: null, widthCm: null });
+                        }
+                        pieces[i] = { ...pieces[i]!, ...patch };
+                        return { ...prev, pieces };
+                      });
+
+                    return (
+                      <div key={i} className="col-span-2 grid grid-cols-3 gap-3">
+                        <TextField label={`Piece ${i + 1}`} placeholder="e.g. Top, Bottom, Dupatta"
+                          value={piece?.label ?? ""}
+                          onChange={(v) => setPiece({ label: v })} />
+                        <NumberField label="Length" unit="cm"
+                          value={piece?.lengthCm ?? null}
+                          onChange={(v) => setPiece({ lengthCm: v })} />
+                        <NumberField label="Width" unit="cm"
+                          value={piece?.widthCm ?? null}
+                          onChange={(v) => setPiece({ widthCm: v })} />
+                      </div>
+                    );
+                  })}
+                </Section>
+              )}
+
+              {/*
+                Outside all of them, because the adjectives describe the
+                whole piece rather than any part of it, they are what the
+                product name is built from, and a dupatta has them too.
               */}
               <Section title="Description">
                 <MultiCombo label="Descriptor" list="descriptor"
@@ -1258,6 +1386,69 @@ function Grid({ children }: { children: React.ReactNode }) {
 
 function Required() {
   return <span className="ml-1 text-brick">*</span>;
+}
+
+/**
+ * A plain number, for the dimension/construction fields nothing in Master
+ * Lists describes — a length in centimetres, a GSM. Null is "not entered",
+ * not zero; the input reads empty rather than "0" either way.
+ */
+function NumberField({
+  label,
+  unit,
+  value,
+  onChange,
+}: {
+  label: string;
+  unit?: string;
+  value: number | null;
+  onChange: (value: number | null) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[12.5px] text-ink-2">
+        {label}
+        {unit !== undefined && <span className="ml-1 text-muted">({unit})</span>}
+      </span>
+      <input
+        type="number"
+        step="any"
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
+        className="w-full rounded-md border border-rule-2 bg-surface px-3 py-2 text-right text-[14px] tabular-nums text-ink"
+      />
+    </label>
+  );
+}
+
+/**
+ * Free text for a construction field with no fixed format — a yarn count
+ * like "20 Single x 20 Single", a shrinkage range like "1-2%". Neither of
+ * those is a number a spinner or a unit label would help with.
+ */
+function TextField({
+  label,
+  placeholder,
+  value,
+  onChange,
+}: {
+  label: string;
+  placeholder?: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[12.5px] text-ink-2">{label}</span>
+      <input
+        type="text"
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-md border border-rule-2 bg-surface px-3 py-2 text-[14px] text-ink"
+      />
+    </label>
+  );
 }
 
 function Note({ children }: { children: React.ReactNode }) {

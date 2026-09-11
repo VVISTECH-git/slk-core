@@ -96,6 +96,57 @@ export interface Option {
   serialised: boolean;
   /** Pre-selected on a new record. At most one per list. */
   isDefault: boolean;
+  /**
+   * How many pieces a Product Sub Type set actually is — "2" or "2 or 3" —
+   * carried by the five Fabric set values (Suit Sets, Coord Sets, Patiala
+   * Sets, Lehanga Sets, Crop Tops Sets) and nothing else. Read here the same
+   * way `hex` and `serialised` are: a per-value fact kept in `meta` rather
+   * than its own column, because only a few values in one list ever have it.
+   */
+  pieces: string | null;
+}
+
+/**
+ * One named component of a matched set — "Top", "Bottom", "Dupatta" — each
+ * with its own length and width, the shape itokri's own dress-material
+ * listings actually use. Not every design has these; only a Fabric design
+ * whose Product Sub Type is one of the five set values does.
+ */
+export interface DesignExtraPiece {
+  label: string;
+  lengthCm: number | null;
+  widthCm: number | null;
+}
+
+/**
+ * The dimension and construction facts a design carries beyond the taxonomy
+ * — a fact about the cloth or the finished piece itself, not a classification
+ * from Master Lists, so it has no lookup list to point at. Stored in
+ * `design.extra`, a jsonb column that has carried this exact intent since
+ * before any of these fields existed — see its own comment on the schema.
+ *
+ * Which of these apply depends on product type, decided in the editor, not
+ * here: a Dupatta/Scarves/Stolls/Bedsheets design uses lengthCm/widthCm, a
+ * plain Fabric design (sold by the metre) uses widthCm plus the four
+ * construction fields, and a Fabric design bought as a matched set uses
+ * `pieces` instead of any of the others. Nothing stops a row from writing to
+ * a field its product type does not use; nothing reads it if so.
+ */
+export interface DesignExtra {
+  /** Finished length, in centimetres — a dupatta, a stole, a bedsheet. */
+  lengthCm?: number | null;
+  /** Width, in centimetres — a finished piece, or a bolt of plain Fabric. */
+  widthCm?: number | null;
+  /** Grams per square metre — Fabric only. Confirmed against itokri as the standard field, not invented. */
+  gsm?: number | null;
+  /** Free text: "20 Single x 20 Single", "92x88" — no fixed format, so no dropdown fits it. */
+  yarnCount?: string | null;
+  /** Free text: itokri shows these as ranges ("1-2%"), not single numbers. */
+  shrinkage?: string | null;
+  /** Free text, same reasoning as shrinkage. */
+  transparency?: string | null;
+  /** A matched Fabric set's named components. Absent for everything else. */
+  pieces?: DesignExtraPiece[];
 }
 
 export type Options = Record<string, Option[]>;
@@ -108,6 +159,7 @@ export interface RecordDetail {
   nameIsCustom: boolean;
   isSerialised: boolean;
   notes: string | null;
+  extra: DesignExtra;
   colourId: string | null;
   secondaryColourId: string | null;
   costMinor: number | null;

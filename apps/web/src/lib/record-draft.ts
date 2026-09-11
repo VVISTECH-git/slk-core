@@ -4,6 +4,7 @@ import { ApiError } from "@/lib/api";
 import {
   ATTRIBUTE_KEYS,
   type AttributeKey,
+  type DesignExtra,
   type RecordDetail,
 } from "@/lib/attributes";
 
@@ -59,6 +60,67 @@ function text(value: unknown, field: string): string {
   if (value === undefined || value === null) return "";
   if (typeof value !== "string") throw new ApiError(`${field} must be text.`, 400);
   return value;
+}
+
+/** A number, or null — accepting either JSON shape a client might send. */
+function optionalNumber(value: unknown, field: string): number | null {
+  if (value === undefined || value === null || value === "") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) throw new ApiError(`${field} is not a number.`, 400);
+  return n;
+}
+
+/** Free text, or null — same "blank means unanswered" rule as `id`. */
+function optionalText(value: unknown, field: string): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") throw new ApiError(`${field} must be text.`, 400);
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+/**
+ * The dimension/construction fields DesignExtra holds — see its own comment
+ * for what each one means and which product type uses it. Nothing here
+ * enforces that match; the same "structure only" rule as everywhere else in
+ * this module applies; `pieces` is the one shape genuinely worth refusing
+ * malformed, since a bad entry there would otherwise silently vanish into
+ * `.map`.
+ */
+function designExtra(value: unknown, field: string): DesignExtra {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new ApiError(`${field} must be an object.`, 400);
+  }
+
+  const given = value as Record<string, unknown>;
+  const extra: DesignExtra = {
+    lengthCm: optionalNumber(given["lengthCm"], `${field}.lengthCm`),
+    widthCm: optionalNumber(given["widthCm"], `${field}.widthCm`),
+    gsm: optionalNumber(given["gsm"], `${field}.gsm`),
+    yarnCount: optionalText(given["yarnCount"], `${field}.yarnCount`),
+    shrinkage: optionalText(given["shrinkage"], `${field}.shrinkage`),
+    transparency: optionalText(given["transparency"], `${field}.transparency`),
+  };
+
+  if (given["pieces"] !== undefined) {
+    if (!Array.isArray(given["pieces"])) {
+      throw new ApiError(`${field}.pieces must be a list.`, 400);
+    }
+
+    extra.pieces = given["pieces"].map((piece, index) => {
+      if (typeof piece !== "object" || piece === null || Array.isArray(piece)) {
+        throw new ApiError(`${field}.pieces[${index}] must be an object.`, 400);
+      }
+      const one = piece as Record<string, unknown>;
+      return {
+        label: optionalText(one["label"], `${field}.pieces[${index}].label`) ?? "",
+        lengthCm: optionalNumber(one["lengthCm"], `${field}.pieces[${index}].lengthCm`),
+        widthCm: optionalNumber(one["widthCm"], `${field}.pieces[${index}].widthCm`),
+      };
+    });
+  }
+
+  return extra;
 }
 
 /**
@@ -118,6 +180,7 @@ export function draftFromRecord(record: RecordDetail): RecordDraft {
     notes: record.notes ?? "",
     name: record.nameIsCustom ? record.name : "",
     nameIsCustom: record.nameIsCustom,
+    extra: { ...record.extra },
   };
 }
 
@@ -212,6 +275,8 @@ export function applyToDraft(
 
   if ("nameIsCustom" in fields) draft.nameIsCustom = fields["nameIsCustom"] === true;
 
+  if ("extra" in fields) draft.extra = designExtra(fields["extra"], "extra");
+
   /*
     Opening stock is refused rather than ignored.
 
@@ -300,5 +365,6 @@ export function toRecordDraft(fields: Record<string, unknown>): RecordDraft {
     notes: text(fields["notes"], "notes"),
     name: text(fields["name"], "name"),
     nameIsCustom: fields["nameIsCustom"] === true,
+    extra: designExtra(fields["extra"], "extra"),
   };
 }

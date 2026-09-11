@@ -395,6 +395,11 @@ async function parseRow(
       notes,
       name,
       nameIsCustom: name.trim() !== "",
+      // The spreadsheet doesn't collect Length/Width/GSM/yarn count/etc yet —
+      // a row created here has none of it, same as before DesignExtra
+      // existed, fixable in the editor afterward. Adding those columns to
+      // the template is its own piece of work, not folded in here.
+      extra: {},
     };
 
     return { rowNumber, mode: "new", draft, errors };

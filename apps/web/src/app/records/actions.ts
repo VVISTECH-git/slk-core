@@ -19,6 +19,7 @@ import {
   ATTRIBUTE_KEYS,
   isHomeIndustry,
   type AttributeKey,
+  type DesignExtra,
 } from "@/lib/attributes";
 import { MOVEMENT_KINDS, type MovementDraft } from "@/lib/movements";
 
@@ -177,6 +178,14 @@ export interface RecordDraft {
   notes: string;
   name: string;
   nameIsCustom: boolean;
+
+  /**
+   * Dimension and construction facts — length, width, GSM, a matched set's
+   * named pieces — that have no lookup list to point at. See DesignExtra's
+   * own comment for which fields apply to which product type; the form
+   * decides that, this just carries whatever it collected.
+   */
+  extra: DesignExtra;
 }
 
 const REQUIRED: { key: string; label: string }[] = [
@@ -418,6 +427,7 @@ export async function saveRecord(draft: RecordDraft): Promise<ActionResult> {
         name = ${draft.nameIsCustom ? draft.name : composed},
         name_is_custom = ${draft.nameIsCustom},
         notes = ${draft.notes.trim() === "" ? null : draft.notes},
+        extra = ${JSON.stringify(draft.extra ?? {})}::jsonb,
         updated_at = now()
       where id = ${cw.designId}
     `);
@@ -884,11 +894,12 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
   });
 
   const [created] = await db.execute<{ id: string }>(sql`
-    insert into design (code, seq, name, name_is_custom, is_serialised, notes, ${sql.join(columns, sql`, `)})
+    insert into design (code, seq, name, name_is_custom, is_serialised, notes, extra, ${sql.join(columns, sql`, `)})
     values (
       ${code}, ${seq}, ${draft.nameIsCustom ? draft.name : name},
       ${draft.nameIsCustom}, ${serialised},
       ${draft.notes.trim() === "" ? null : draft.notes},
+      ${JSON.stringify(draft.extra ?? {})}::jsonb,
       ${sql.join(values, sql`, `)}
     )
     returning id

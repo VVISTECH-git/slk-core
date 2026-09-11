@@ -50,7 +50,7 @@ const NAV = [
     href: "/staff",
     label: "Staff",
     icon: "M7 9a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z M2.5 16c0-2.5 2-4.2 4.5-4.2s4.5 1.7 4.5 4.2 M13 5.2a2.2 2.2 0 0 1 0 4.3 M14 11.6c1.9.4 3.2 1.8 3.2 3.9",
-    owner: true,
+    minRole: "owner",
   },
   {
     // Every storefront, every consignment on it, and the buttons that put
@@ -58,9 +58,23 @@ const NAV = [
     href: "/channels",
     label: "Channels",
     icon: "M4 6l1-3h10l1 3 M4 6h12v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6z M8 9v2a2 2 0 0 0 4 0V9",
-    owner: true,
+    minRole: "owner",
+  },
+  {
+    // What the photograph bucket costs. Not floor work — nobody photographing
+    // a saree needs the bill — but not owner-only either, the way Staff and
+    // Channels are: nothing here is money moving or who can sign in.
+    href: "/storage",
+    label: "Storage",
+    icon: "M4 5h12v4H4z M4 11h12v4H4z M6.5 7h.01 M6.5 13h.01",
+    minRole: "office",
   },
 ] as const;
+
+/** Matches ROLE_RANK in @/lib/auth — duplicated so this client bundle never
+ * has to import that module, which pulls in node:crypto for the token
+ * helpers that live beside the ranking. */
+const ROLE_RANK: Record<string, number> = { floor: 0, office: 1, owner: 2 };
 
 const RAIL_KEY = "slk.sidebar.rail";
 
@@ -180,7 +194,8 @@ export function Sidebar({ actor }: { actor: SidebarActor }) {
       !HIDDEN.has(item.href) &&
       // Hidden rather than shown-and-refused: a link that always says no is
       // a worse way of saying "not for you" than not being there.
-      (!("owner" in item && item.owner) || actor.role === "owner"),
+      (!("minRole" in item) ||
+        (ROLE_RANK[actor.role] ?? 0) >= ROLE_RANK[item.minRole]),
   );
 
   return (

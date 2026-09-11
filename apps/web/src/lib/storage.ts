@@ -103,6 +103,55 @@ export async function remove(key: string): Promise<void> {
   await client.fetch(url, { method: "DELETE" });
 }
 
+export interface StorageObject {
+  key: string;
+  /** Bytes. */
+  size: number;
+  lastModified: string;
+}
+
+/**
+ * Every object under a prefix, however many pages that takes.
+ *
+ * S3's List Objects V2 caps a page at 1000 keys and hands back a token for
+ * the next one rather than an offset — the storage-usage screen has to walk
+ * that itself, because R2 has nothing that answers "how big is this bucket"
+ * in one call.
+ */
+export async function listObjects(prefix = "products/"): Promise<StorageObject[]> {
+  const out: StorageObject[] = [];
+  let token: string | null = null;
+
+  do {
+    const url = new URL(`https://${ACCOUNT}.r2.cloudflarestorage.com/${BUCKET}/`);
+    url.searchParams.set("list-type", "2");
+    url.searchParams.set("prefix", prefix);
+    url.searchParams.set("max-keys", "1000");
+    if (token !== null) url.searchParams.set("continuation-token", token);
+
+    const res = await client.fetch(url);
+    const xml = await res.text();
+
+    if (!res.ok) {
+      throw new Error(`R2 list ${res.status}: ${xml.slice(0, 300)}`);
+    }
+
+    for (const block of xml.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
+      const key = block[1].match(/<Key>([^<]+)<\/Key>/)?.[1];
+      const size = block[1].match(/<Size>(\d+)<\/Size>/)?.[1];
+      const modified = block[1].match(/<LastModified>([^<]+)<\/LastModified>/)?.[1];
+
+      if (key !== undefined && size !== undefined) {
+        out.push({ key, size: Number(size), lastModified: modified ?? "" });
+      }
+    }
+
+    token = xml.match(/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/)?.[1] ?? null;
+  } while (token !== null);
+
+  return out;
+}
+
 /**
  * Where a photograph lives.
  *

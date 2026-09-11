@@ -78,6 +78,23 @@ function optionalText(value: unknown, field: string): string | null {
   return trimmed === "" ? null : trimmed;
 }
 
+/** A boolean, or null — same "blank means unanswered" rule as `id`. */
+function optionalBoolean(value: unknown, field: string): boolean | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "boolean") throw new ApiError(`${field} must be a boolean.`, 400);
+  return value;
+}
+
+const MEASUREMENT_UNITS = new Set(["cm", "in", "m"]);
+
+/** One of the fixed measurement-unit codes, or null. */
+function optionalMeasurementUnit(value: unknown, field: string): "cm" | "in" | "m" | null {
+  const text = optionalText(value, field);
+  if (text === null) return null;
+  if (!MEASUREMENT_UNITS.has(text)) throw new ApiError(`${field} must be one of cm, in, m.`, 400);
+  return text as "cm" | "in" | "m";
+}
+
 /**
  * The dimension/construction fields DesignExtra holds — see its own comment
  * for what each one means and which product type uses it. Nothing here
@@ -100,6 +117,29 @@ function designExtra(value: unknown, field: string): DesignExtra {
     yarnCount: optionalText(given["yarnCount"], `${field}.yarnCount`),
     shrinkage: optionalText(given["shrinkage"], `${field}.shrinkage`),
     transparency: optionalText(given["transparency"], `${field}.transparency`),
+
+    heightCm: optionalNumber(given["heightCm"], `${field}.heightCm`),
+    thicknessMm: optionalNumber(given["thicknessMm"], `${field}.thicknessMm`),
+    diameterCm: optionalNumber(given["diameterCm"], `${field}.diameterCm`),
+    measurementUnit: optionalMeasurementUnit(given["measurementUnit"], `${field}.measurementUnit`),
+
+    sareeLengthCm: optionalNumber(given["sareeLengthCm"], `${field}.sareeLengthCm`),
+    sareeWidthCm: optionalNumber(given["sareeWidthCm"], `${field}.sareeWidthCm`),
+    blouseLengthCm: optionalNumber(given["blouseLengthCm"], `${field}.blouseLengthCm`),
+    borderWidthCm: optionalNumber(given["borderWidthCm"], `${field}.borderWidthCm`),
+    palluLengthCm: optionalNumber(given["palluLengthCm"], `${field}.palluLengthCm`),
+    fallPicoDone: optionalBoolean(given["fallPicoDone"], `${field}.fallPicoDone`),
+
+    pillowCoverCount: optionalNumber(given["pillowCoverCount"], `${field}.pillowCoverCount`),
+    pillowLengthCm: optionalNumber(given["pillowLengthCm"], `${field}.pillowLengthCm`),
+    pillowWidthCm: optionalNumber(given["pillowWidthCm"], `${field}.pillowWidthCm`),
+    threadCount: optionalNumber(given["threadCount"], `${field}.threadCount`),
+
+    chestCm: optionalNumber(given["chestCm"], `${field}.chestCm`),
+    garmentLengthCm: optionalNumber(given["garmentLengthCm"], `${field}.garmentLengthCm`),
+    sleeveLengthCm: optionalNumber(given["sleeveLengthCm"], `${field}.sleeveLengthCm`),
+
+    fringeLengthCm: optionalNumber(given["fringeLengthCm"], `${field}.fringeLengthCm`),
   };
 
   if (given["pieces"] !== undefined) {

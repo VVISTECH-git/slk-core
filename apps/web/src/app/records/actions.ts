@@ -186,6 +186,64 @@ export interface RecordDraft {
    * decides that, this just carries whatever it collected.
    */
   extra: DesignExtra;
+
+  /*
+    Everything below is optional and applied only when present — the same
+    PATCH-style overlay applyToDraft already uses. The Basic/Craft & Design/
+    Sales Story/Care/SEO tabs that actually collect these do not exist yet
+    (Phases 4-7), so today's editor never sends them, and an update that
+    unconditionally overwrote a not-yet-existing field with null on every
+    save would erase it the moment a later phase's tab did start sending it,
+    for anyone whose browser cached an older bundle. `undefined` means
+    "this submission said nothing about it", not "clear it".
+  */
+  shortName?: string;
+  sourceUrl?: string;
+  sourceSku?: string;
+  sourceAttributes?: Record<string, string>;
+  hsnCode?: string;
+  seoTitle?: string;
+  seoDescription?: string;
+  handleBase?: string;
+  extraTags?: string[];
+
+  /** Craft claims — Handmade, Natural Dyed, and the rest. Replaced wholesale, same as descriptors. */
+  claims?: string[];
+
+  isTaxable?: boolean;
+  tracksInventory?: boolean;
+  continueSellingOos?: boolean;
+
+  story?: {
+    qSpecial: string;
+    qFeel: string;
+    qOccasions: string;
+    qRecommendTo: string;
+    qStyling: string;
+    qIncluded: string;
+    qBeforeBuying: string;
+    qWhyBuy: string;
+    shortDescription: string;
+    fullDescription: string;
+    whyLove: string;
+    craftStory: string;
+    stylingSuggestions: string;
+    productDetails: string;
+    customerNotes: string;
+  };
+
+  care?: {
+    washMethodId: string | null;
+    waterTempId: string | null;
+    detergentId: string | null;
+    dryingId: string | null;
+    ironingId: string | null;
+    dryCleanRequired: boolean;
+    colourBleedWarning: boolean;
+    shrinkageWarning: boolean;
+    storageNote: string;
+    specialNotes: string;
+  };
 }
 
 const REQUIRED: { key: string; label: string }[] = [
@@ -414,10 +472,15 @@ export async function saveRecord(draft: RecordDraft): Promise<ActionResult> {
     productType: label("productType") ?? label("homeProductType"),
   });
 
-  const assignments = ATTRIBUTE_KEYS.map((key) => {
-    const value = draft.attributes[key];
-    return sql`${sql.identifier(ATTRIBUTES[key].column)} = ${value === "" ? null : (value ?? null)}`;
-  });
+  const assignments = [
+    ...ATTRIBUTE_KEYS.map((key) => {
+      const value = draft.attributes[key];
+      return sql`${sql.identifier(ATTRIBUTES[key].column)} = ${value === "" ? null : (value ?? null)}`;
+    }),
+    ...extraDesignAssignments(draft),
+  ];
+
+  const actorId = await actingId();
 
   await db.transaction(async (tx) => {
     // Attributes live on the design, so this reaches every colour under it.
@@ -442,16 +505,22 @@ export async function saveRecord(draft: RecordDraft): Promise<ActionResult> {
         wholesaleMinor: toMinor(draft.prices.wholesale),
         retailMinor: toMinor(draft.prices.retail),
         mrpMinor: toMinor(draft.prices.mrp),
+        ...(draft.isTaxable !== undefined && { isTaxable: draft.isTaxable }),
+        ...(draft.tracksInventory !== undefined && { tracksInventory: draft.tracksInventory }),
+        ...(draft.continueSellingOos !== undefined && { continueSellingOos: draft.continueSellingOos }),
+        updatedBy: actorId,
         updatedAt: new Date(),
       })
       .where(eq(colourway.id, cw.id));
 
     await setDescriptors(tx, cw.designId, draft.descriptors);
+    if (draft.claims !== undefined) await setClaims(tx, cw.designId, draft.claims);
+    await upsertStoryAndCare(tx, cw.id, draft, actorId);
   });
 
   await setImageSlots(cw.id, draft.imageSlots);
 
-  const adjustment = await correctCount(cw.id, draft.quantity, await actingId());
+  const adjustment = await correctCount(cw.id, draft.quantity, actorId);
 
   scheduleListingPush(cw.id);
   revalidatePath("/records");
@@ -788,10 +857,15 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
       garmentType: label("garmentType"),
       productType,
     });
-    const assignments = ATTRIBUTE_KEYS.map((key) => {
-      const value = draft.attributes[key];
-      return sql`${sql.identifier(ATTRIBUTES[key].column)} = ${value === "" ? null : (value ?? null)}`;
-    });
+    const assignments = [
+      ...ATTRIBUTE_KEYS.map((key) => {
+        const value = draft.attributes[key];
+        return sql`${sql.identifier(ATTRIBUTES[key].column)} = ${value === "" ? null : (value ?? null)}`;
+      }),
+      ...extraDesignAssignments(draft),
+    ];
+
+    const actorId = await actingId();
 
     const made = await db.transaction(async (tx) => {
       await tx.execute(sql`
@@ -804,6 +878,7 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
         where id = ${parent.id}
       `);
       await setDescriptors(tx, parent.id, draft.descriptors);
+      if (draft.claims !== undefined) await setClaims(tx, parent.id, draft.claims);
       const [row] = await tx
         .insert(colourway)
         .values({
@@ -815,8 +890,14 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
           wholesaleMinor: toMinor(draft.prices.wholesale),
           retailMinor: toMinor(draft.prices.retail),
           mrpMinor: toMinor(draft.prices.mrp),
+          ...(draft.isTaxable !== undefined && { isTaxable: draft.isTaxable }),
+          ...(draft.tracksInventory !== undefined && { tracksInventory: draft.tracksInventory }),
+          ...(draft.continueSellingOos !== undefined && { continueSellingOos: draft.continueSellingOos }),
+          createdBy: actorId,
+          updatedBy: actorId,
         })
         .returning({ id: colourway.id });
+      if (row !== undefined) await upsertStoryAndCare(tx, row.id, draft, actorId);
       return row;
     });
 
@@ -893,6 +974,9 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
     return sql`${value === "" ? null : (value ?? null)}`;
   });
 
+  const extraColumnAssignments = extraDesignAssignments(draft);
+  const actorId = await actingId();
+
   const [created] = await db.execute<{ id: string }>(sql`
     insert into design (code, seq, name, name_is_custom, is_serialised, notes, extra, ${sql.join(columns, sql`, `)})
     values (
@@ -907,7 +991,18 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
 
   if (created === undefined) return { ok: false, message: "Could not create the record." };
 
+  // Set separately rather than folded into the insert above: the insert's
+  // column list is built once, statically, from ATTRIBUTE_KEYS, and mixing
+  // a dynamic conditional list into the same VALUES tuple would have to
+  // track two independent orderings by hand.
+  if (extraColumnAssignments.length > 0) {
+    await db.execute(sql`
+      update design set ${sql.join(extraColumnAssignments, sql`, `)} where id = ${created.id}
+    `);
+  }
+
   await setDescriptors(db, created.id, draft.descriptors);
+  if (draft.claims !== undefined) await setClaims(db, created.id, draft.claims);
 
   const [cw] = await db
     .insert(colourway)
@@ -920,10 +1015,18 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
       wholesaleMinor: toMinor(draft.prices.wholesale),
       retailMinor: toMinor(draft.prices.retail),
       mrpMinor: toMinor(draft.prices.mrp),
+      ...(draft.isTaxable !== undefined && { isTaxable: draft.isTaxable }),
+      ...(draft.tracksInventory !== undefined && { tracksInventory: draft.tracksInventory }),
+      ...(draft.continueSellingOos !== undefined && { continueSellingOos: draft.continueSellingOos }),
+      createdBy: actorId,
+      updatedBy: actorId,
     })
     .returning({ id: colourway.id });
 
-  if (cw !== undefined) await setImageSlots(cw.id, draft.imageSlots);
+  if (cw !== undefined) {
+    await setImageSlots(cw.id, draft.imageSlots);
+    await upsertStoryAndCare(db, cw.id, draft, actorId);
+  }
 
   const opening =
     cw === undefined
@@ -1715,6 +1818,127 @@ async function setDescriptors(
       )})
     on conflict do nothing
   `);
+}
+
+/** Same shape as setDescriptors, for design_claim — Handmade, Natural Dyed, and the rest. */
+async function setClaims(
+  tx: { execute: (query: SQL) => Promise<unknown> },
+  designId: string,
+  ids: string[],
+): Promise<void> {
+  const wanted = [...new Set(ids)];
+
+  await tx.execute(sql`delete from design_claim where design_id = ${designId}`);
+
+  if (wanted.length === 0) return;
+
+  await tx.execute(sql`
+    insert into design_claim (design_id, claim_id)
+    select ${designId}, v.id
+    from lookup_value v
+    join lookup_list l on l.id = v.list_id
+    where l.code = 'craft_claim'
+      and v.status = 'active'
+      and v.id in (${sql.join(
+        wanted.map((id) => sql`${id}`),
+        sql`, `,
+      )})
+    on conflict do nothing
+  `);
+}
+
+/**
+ * The design-column assignments `RecordDraft`'s optional identity/SEO fields
+ * turn into — empty when the caller sent none of them, so a save from a
+ * browser that has not loaded the tabs collecting these yet changes nothing
+ * about them. See RecordDraft's own comment on why these are conditional
+ * where every other assignment in the same UPDATE is not.
+ */
+function extraDesignAssignments(draft: RecordDraft): SQL[] {
+  const out: SQL[] = [];
+  const text = (column: string, value: string | undefined) => {
+    if (value !== undefined) out.push(sql`${sql.identifier(column)} = ${value.trim() === "" ? null : value}`);
+  };
+
+  text("short_name", draft.shortName);
+  text("source_url", draft.sourceUrl);
+  text("source_sku", draft.sourceSku);
+  text("hsn_code", draft.hsnCode);
+  text("seo_title", draft.seoTitle);
+  text("seo_description", draft.seoDescription);
+  text("handle_base", draft.handleBase);
+
+  if (draft.sourceAttributes !== undefined) {
+    out.push(sql`source_attributes = ${JSON.stringify(draft.sourceAttributes)}::jsonb`);
+  }
+  if (draft.extraTags !== undefined) {
+    out.push(sql`extra_tags = ${JSON.stringify(draft.extraTags)}::jsonb`);
+  }
+
+  return out;
+}
+
+/**
+ * Upserts colourway_story/colourway_care when the draft carries them — one
+ * row each, created the first time either tab is saved. `actorId` stamps
+ * `edited_by_id` on the story row; care carries no such column, since it is
+ * lookup/boolean facts rather than prose somebody wrote.
+ */
+async function upsertStoryAndCare(
+  tx: { execute: (query: SQL) => Promise<unknown> },
+  colourwayId: string,
+  draft: RecordDraft,
+  actorId: string | null,
+): Promise<void> {
+  if (draft.story !== undefined) {
+    const s = draft.story;
+    const text = (v: string) => (v.trim() === "" ? null : v);
+    await tx.execute(sql`
+      insert into colourway_story (
+        colourway_id, q_special, q_feel, q_occasions, q_recommend_to, q_styling,
+        q_included, q_before_buying, q_why_buy, short_description, full_description,
+        why_love, craft_story, styling_suggestions, product_details, customer_notes,
+        edited_by_id, updated_at
+      ) values (
+        ${colourwayId}, ${text(s.qSpecial)}, ${text(s.qFeel)}, ${text(s.qOccasions)},
+        ${text(s.qRecommendTo)}, ${text(s.qStyling)}, ${text(s.qIncluded)},
+        ${text(s.qBeforeBuying)}, ${text(s.qWhyBuy)}, ${text(s.shortDescription)},
+        ${text(s.fullDescription)}, ${text(s.whyLove)}, ${text(s.craftStory)},
+        ${text(s.stylingSuggestions)}, ${text(s.productDetails)}, ${text(s.customerNotes)},
+        ${actorId}, now()
+      )
+      on conflict (colourway_id) do update set
+        q_special = excluded.q_special, q_feel = excluded.q_feel,
+        q_occasions = excluded.q_occasions, q_recommend_to = excluded.q_recommend_to,
+        q_styling = excluded.q_styling, q_included = excluded.q_included,
+        q_before_buying = excluded.q_before_buying, q_why_buy = excluded.q_why_buy,
+        short_description = excluded.short_description, full_description = excluded.full_description,
+        why_love = excluded.why_love, craft_story = excluded.craft_story,
+        styling_suggestions = excluded.styling_suggestions, product_details = excluded.product_details,
+        customer_notes = excluded.customer_notes, edited_by_id = excluded.edited_by_id,
+        updated_at = now()
+    `);
+  }
+
+  if (draft.care !== undefined) {
+    const c = draft.care;
+    const text = (v: string) => (v.trim() === "" ? null : v);
+    await tx.execute(sql`
+      insert into colourway_care (
+        colourway_id, wash_method_id, water_temp_id, detergent_id, drying_id, ironing_id,
+        dry_clean_required, colour_bleed_warning, shrinkage_warning, storage_note, special_notes, updated_at
+      ) values (
+        ${colourwayId}, ${c.washMethodId}, ${c.waterTempId}, ${c.detergentId}, ${c.dryingId}, ${c.ironingId},
+        ${c.dryCleanRequired}, ${c.colourBleedWarning}, ${c.shrinkageWarning}, ${text(c.storageNote)}, ${text(c.specialNotes)}, now()
+      )
+      on conflict (colourway_id) do update set
+        wash_method_id = excluded.wash_method_id, water_temp_id = excluded.water_temp_id,
+        detergent_id = excluded.detergent_id, drying_id = excluded.drying_id, ironing_id = excluded.ironing_id,
+        dry_clean_required = excluded.dry_clean_required, colour_bleed_warning = excluded.colour_bleed_warning,
+        shrinkage_warning = excluded.shrinkage_warning, storage_note = excluded.storage_note,
+        special_notes = excluded.special_notes, updated_at = now()
+    `);
+  }
 }
 
 /**

@@ -65,6 +65,35 @@ export const ATTRIBUTES = {
   blouseAvailable: { list: "blouse_available", column: "blouse_available_id", label: "Blouse Availability" },
   blouseStatus: { list: "blouse_status", column: "blouse_status_id", label: "Blouse Status" },
   blouseMaterial: { list: "blouse_material", column: "blouse_material_id", label: "Blouse Material" },
+
+  // Identity and sourcing.
+  brand: { list: "brand", column: "brand_id", label: "Brand" },
+  collection: { list: "collection", column: "collection_id", label: "Collection" },
+  supplier: { list: "supplier", column: "supplier_id", label: "Supplier" },
+  countryOfOrigin: { list: "country", column: "country_of_origin_id", label: "Country of Origin" },
+
+  // Technique detail beyond Craft Technique/Craft Sub Type.
+  printTechnique: { list: "print_technique", column: "print_technique_id", label: "Print Technique" },
+  dyeTechnique: { list: "dye_technique", column: "dye_technique_id", label: "Dye Technique" },
+  embroideryTechnique: { list: "embroidery_technique", column: "embroidery_technique_id", label: "Embroidery Technique" },
+  artisanCluster: { list: "artisan_cluster", column: "artisan_cluster_id", label: "Artisan / Cluster" },
+
+  // Appearance facts that are not a colour or a motif.
+  pattern: { list: "pattern", column: "pattern_id", label: "Pattern" },
+  texture: { list: "texture", column: "texture_id", label: "Texture" },
+  finish: { list: "finish", column: "finish_id", label: "Finish" },
+  transparency: { list: "transparency", column: "transparency_id", label: "Transparency" },
+
+  // Category-specific classifications that are filterable, not just a measurement.
+  bedSize: { list: "bed_size", column: "bed_size_id", label: "Bed Size" },
+  ageGroup: { list: "age_group", column: "age_group_id", label: "Age Group" },
+  sleeveType: { list: "sleeve_type", column: "sleeve_type_id", label: "Sleeve Type" },
+  closureType: { list: "closure_type", column: "closure_type_id", label: "Closure Type" },
+  fitType: { list: "fit_type", column: "fit_type_id", label: "Fit Type" },
+  fringeType: { list: "fringe_type", column: "fringe_type_id", label: "Fringe Type" },
+  stylingType: { list: "styling_type", column: "styling_type_id", label: "Styling Type" },
+
+  taxCategory: { list: "tax_category", column: "tax_category_id", label: "Tax Category" },
 } as const;
 
 export type AttributeKey = keyof typeof ATTRIBUTES;
@@ -143,10 +172,49 @@ export interface DesignExtra {
   yarnCount?: string | null;
   /** Free text: itokri shows these as ranges ("1-2%"), not single numbers. */
   shrinkage?: string | null;
-  /** Free text, same reasoning as shrinkage. */
+  /**
+   * Free text. Superseded by `attributes.transparency` (a real lookup list,
+   * added once "Opaque/Semi-Sheer/Sheer" existed as values worth filtering
+   * on) for anything entered from here on — kept, and still read, only
+   * because existing Fabric records already carry it here.
+   */
   transparency?: string | null;
   /** A matched Fabric set's named components. Absent for everything else. */
   pieces?: DesignExtraPiece[];
+
+  // Generic measurements — every product type may use these; nothing
+  // enforces which do, the same "structure only" rule as every field above.
+  /** Centimetres — a box, a folded stack, anything a length/width pair does not describe. */
+  heightCm?: number | null;
+  /** Millimetres — a fabric's or a card's own thickness. */
+  thicknessMm?: number | null;
+  /** Centimetres — a round object with no honest length/width. */
+  diameterCm?: number | null;
+  /** Which unit the fields above were entered in, for display only — every value here still stores as cm/mm. */
+  measurementUnit?: "cm" | "in" | "m" | null;
+
+  // Saree — confirmed as the one product type with no dimension fields at
+  // all before this; see the 11 Sep investigation.
+  sareeLengthCm?: number | null;
+  sareeWidthCm?: number | null;
+  blouseLengthCm?: number | null;
+  borderWidthCm?: number | null;
+  palluLengthCm?: number | null;
+  fallPicoDone?: boolean | null;
+
+  // Bedsheet.
+  pillowCoverCount?: number | null;
+  pillowLengthCm?: number | null;
+  pillowWidthCm?: number | null;
+  threadCount?: number | null;
+
+  // Kids garment.
+  chestCm?: number | null;
+  garmentLengthCm?: number | null;
+  sleeveLengthCm?: number | null;
+
+  // Scarf / Stole.
+  fringeLengthCm?: number | null;
 }
 
 export type Options = Record<string, Option[]>;
@@ -167,6 +235,11 @@ export interface RecordDetail {
   wholesaleMinor: number | null;
   retailMinor: number | null;
   mrpMinor: number | null;
+  isTaxable: boolean;
+  tracksInventory: boolean;
+  continueSellingOos: boolean;
+  /** "draft" | "submitted" | "needs_changes" | "approved" — see the approval workflow. */
+  reviewStatus: string;
   attributes: Partial<Record<AttributeKey, string | null>>;
   /** Every colour under this design — a change to attributes hits all of them. */
   siblings: { id: string; colour: string | null }[];
@@ -226,6 +299,57 @@ export interface RecordDetail {
   images: { slotId: string | null; url: string | null }[];
   /** The adjectives on the design. A set, unlike every other attribute. */
   descriptors: string[];
+  /** Craft claims — Handmade, Natural Dyed, and the rest. Design-scoped; see design_claim's own comment for why. */
+  claims: string[];
+
+  /** The Sales Story tab — null until the colourway has one. */
+  story: {
+    qSpecial: string | null;
+    qFeel: string | null;
+    qOccasions: string | null;
+    qRecommendTo: string | null;
+    qStyling: string | null;
+    qIncluded: string | null;
+    qBeforeBuying: string | null;
+    qWhyBuy: string | null;
+    shortDescription: string | null;
+    fullDescription: string | null;
+    whyLove: string | null;
+    craftStory: string | null;
+    stylingSuggestions: string | null;
+    productDetails: string | null;
+    customerNotes: string | null;
+    generatedAt: string | null;
+    generatedFingerprint: string | null;
+  } | null;
+
+  /** The Care tab — null until the colourway has one. */
+  care: {
+    washMethodId: string | null;
+    waterTempId: string | null;
+    detergentId: string | null;
+    dryingId: string | null;
+    ironingId: string | null;
+    dryCleanRequired: boolean;
+    colourBleedWarning: boolean;
+    shrinkageWarning: boolean;
+    storageNote: string | null;
+    specialNotes: string | null;
+  } | null;
+
+  /** What a reference listing said, typed in by hand — for the admin review screen's gap chips. */
+  source: {
+    url: string | null;
+    sku: string | null;
+    attributes: Record<string, string>;
+  };
+
+  seo: {
+    title: string | null;
+    description: string | null;
+    handleBase: string | null;
+    extraTags: string[];
+  };
 
   movements: {
     id: number;

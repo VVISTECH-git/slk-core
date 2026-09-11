@@ -129,6 +129,9 @@ export async function loadRecord(
     consignments,
     images,
     descriptors,
+    claims,
+    storyRows,
+    careRows,
   ] = await Promise.all([
     db.execute<Record<string, unknown>>(sql`
       select
@@ -146,6 +149,17 @@ export async function loadRecord(
         cw.wholesale_minor::double precision as "wholesaleMinor",
         cw.retail_minor::double precision as "retailMinor",
         cw.mrp_minor::double precision as "mrpMinor",
+        cw.is_taxable as "isTaxable",
+        cw.tracks_inventory as "tracksInventory",
+        cw.continue_selling_oos as "continueSellingOos",
+        cw.review_status as "reviewStatus",
+        d.source_url as "sourceUrl",
+        d.source_sku as "sourceSku",
+        d.source_attributes as "sourceAttributes",
+        d.seo_title as "seoTitle",
+        d.seo_description as "seoDescription",
+        d.handle_base as "handleBase",
+        d.extra_tags as "extraTags",
         ${sql.join(selects, sql`, `)}
       from colourway cw join design d on d.id = cw.design_id
       where cw.id = ${colourwayId}
@@ -167,6 +181,9 @@ export async function loadRecord(
     loadConsignments(colourwayId),
     loadImages(colourwayId),
     loadDescriptors(colourwayId),
+    loadClaims(colourwayId),
+    loadStory(colourwayId),
+    loadCare(colourwayId),
   ]);
 
   const row = rows[0];
@@ -195,12 +212,63 @@ export async function loadRecord(
     wholesaleMinor: (row["wholesaleMinor"] as number | null) ?? null,
     retailMinor: (row["retailMinor"] as number | null) ?? null,
     mrpMinor: (row["mrpMinor"] as number | null) ?? null,
+    isTaxable: row["isTaxable"] as boolean,
+    tracksInventory: row["tracksInventory"] as boolean,
+    continueSellingOos: row["continueSellingOos"] as boolean,
+    reviewStatus: row["reviewStatus"] as string,
     attributes,
     siblings,
     stock: { ...totals!, byLocation },
     consignments,
     images,
     descriptors: descriptors.map((d) => d.id),
+    claims: claims.map((c) => c.id),
+    story: storyRows[0]
+      ? {
+          qSpecial: storyRows[0].qSpecial,
+          qFeel: storyRows[0].qFeel,
+          qOccasions: storyRows[0].qOccasions,
+          qRecommendTo: storyRows[0].qRecommendTo,
+          qStyling: storyRows[0].qStyling,
+          qIncluded: storyRows[0].qIncluded,
+          qBeforeBuying: storyRows[0].qBeforeBuying,
+          qWhyBuy: storyRows[0].qWhyBuy,
+          shortDescription: storyRows[0].shortDescription,
+          fullDescription: storyRows[0].fullDescription,
+          whyLove: storyRows[0].whyLove,
+          craftStory: storyRows[0].craftStory,
+          stylingSuggestions: storyRows[0].stylingSuggestions,
+          productDetails: storyRows[0].productDetails,
+          customerNotes: storyRows[0].customerNotes,
+          generatedAt: storyRows[0].generatedAt,
+          generatedFingerprint: storyRows[0].generatedFingerprint,
+        }
+      : null,
+    care: careRows[0]
+      ? {
+          washMethodId: careRows[0].washMethodId,
+          waterTempId: careRows[0].waterTempId,
+          detergentId: careRows[0].detergentId,
+          dryingId: careRows[0].dryingId,
+          ironingId: careRows[0].ironingId,
+          dryCleanRequired: careRows[0].dryCleanRequired,
+          colourBleedWarning: careRows[0].colourBleedWarning,
+          shrinkageWarning: careRows[0].shrinkageWarning,
+          storageNote: careRows[0].storageNote,
+          specialNotes: careRows[0].specialNotes,
+        }
+      : null,
+    source: {
+      url: (row["sourceUrl"] as string | null) ?? null,
+      sku: (row["sourceSku"] as string | null) ?? null,
+      attributes: (row["sourceAttributes"] as Record<string, string> | null) ?? {},
+    },
+    seo: {
+      title: (row["seoTitle"] as string | null) ?? null,
+      description: (row["seoDescription"] as string | null) ?? null,
+      handleBase: (row["handleBase"] as string | null) ?? null,
+      extraTags: (row["extraTags"] as string[] | null) ?? [],
+    },
     movements,
   };
 }
@@ -312,6 +380,77 @@ function loadDescriptors(colourwayId: string) {
       select design_id from colourway where id = ${colourwayId}
     )
     order by v.sort_order, v.label
+  `);
+}
+
+/** The craft claims on this design — Handmade, Natural Dyed, and the rest. Same shape as loadDescriptors. */
+function loadClaims(colourwayId: string) {
+  return db.execute<{ id: string }>(sql`
+    select dc.claim_id as id
+    from design_claim dc
+    join lookup_value v on v.id = dc.claim_id
+    where dc.design_id = (
+      select design_id from colourway where id = ${colourwayId}
+    )
+    order by v.sort_order, v.label
+  `);
+}
+
+/** The Sales Story row for this colourway — at most one, absent until the tab is first saved. */
+function loadStory(colourwayId: string) {
+  return db.execute<{
+    qSpecial: string | null;
+    qFeel: string | null;
+    qOccasions: string | null;
+    qRecommendTo: string | null;
+    qStyling: string | null;
+    qIncluded: string | null;
+    qBeforeBuying: string | null;
+    qWhyBuy: string | null;
+    shortDescription: string | null;
+    fullDescription: string | null;
+    whyLove: string | null;
+    craftStory: string | null;
+    stylingSuggestions: string | null;
+    productDetails: string | null;
+    customerNotes: string | null;
+    generatedAt: string | null;
+    generatedFingerprint: string | null;
+  }>(sql`
+    select
+      q_special as "qSpecial", q_feel as "qFeel", q_occasions as "qOccasions",
+      q_recommend_to as "qRecommendTo", q_styling as "qStyling", q_included as "qIncluded",
+      q_before_buying as "qBeforeBuying", q_why_buy as "qWhyBuy",
+      short_description as "shortDescription", full_description as "fullDescription",
+      why_love as "whyLove", craft_story as "craftStory",
+      styling_suggestions as "stylingSuggestions", product_details as "productDetails",
+      customer_notes as "customerNotes", generated_at as "generatedAt",
+      generated_fingerprint as "generatedFingerprint"
+    from colourway_story where colourway_id = ${colourwayId}
+  `);
+}
+
+/** The Care row for this colourway — at most one, absent until the tab is first saved. */
+function loadCare(colourwayId: string) {
+  return db.execute<{
+    washMethodId: string | null;
+    waterTempId: string | null;
+    detergentId: string | null;
+    dryingId: string | null;
+    ironingId: string | null;
+    dryCleanRequired: boolean;
+    colourBleedWarning: boolean;
+    shrinkageWarning: boolean;
+    storageNote: string | null;
+    specialNotes: string | null;
+  }>(sql`
+    select
+      wash_method_id as "washMethodId", water_temp_id as "waterTempId",
+      detergent_id as "detergentId", drying_id as "dryingId", ironing_id as "ironingId",
+      dry_clean_required as "dryCleanRequired", colour_bleed_warning as "colourBleedWarning",
+      shrinkage_warning as "shrinkageWarning", storage_note as "storageNote",
+      special_notes as "specialNotes"
+    from colourway_care where colourway_id = ${colourwayId}
   `);
 }
 

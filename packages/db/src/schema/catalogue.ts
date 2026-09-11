@@ -5,6 +5,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   text,
@@ -137,6 +138,62 @@ export const design = pgTable(
     uomId: attr("uom_id"),
 
     /**
+     * Identity and sourcing — who this is from, and where "what was actually
+     * asked for" is kept, apart from "what was actually entered", so a
+     * review screen can show the two side by side. `sourceAttributes` is
+     * deliberately unstructured: it holds whatever a reference listing
+     * said, typed in by hand, not a second copy of the taxonomy.
+     */
+    shortName: text("short_name"),
+    brandId: attr("brand_id"),
+    collectionId: attr("collection_id"),
+    supplierId: attr("supplier_id"),
+    sourceUrl: text("source_url"),
+    sourceSku: text("source_sku"),
+    sourceAttributes: jsonb("source_attributes").notNull().default({}),
+    countryOfOriginId: attr("country_of_origin_id"),
+
+    /**
+     * Technique detail beyond Craft Technique/Craft Sub Type — how the cloth
+     * was printed, dyed, woven or embroidered, and who made it, as distinct
+     * questions rather than folded into one. Region and weave structure are
+     * not repeated here: `regionalStyleId` and `weaveStructureId` above
+     * already answer Craft Region and Weaving technique.
+     */
+    printTechniqueId: attr("print_technique_id"),
+    dyeTechniqueId: attr("dye_technique_id"),
+    embroideryTechniqueId: attr("embroidery_technique_id"),
+    artisanClusterId: attr("artisan_cluster_id"),
+
+    /** Appearance facts a shopper asks about that are not a colour or a motif. */
+    patternId: attr("pattern_id"),
+    textureId: attr("texture_id"),
+    finishId: attr("finish_id"),
+    /** Promotes what used to be free text in `extra.transparency` to a filterable list. */
+    transparencyId: attr("transparency_id"),
+
+    /** Category-specific classifications that are filterable, not just a measurement. */
+    bedSizeId: attr("bed_size_id"),
+    ageGroupId: attr("age_group_id"),
+    sleeveTypeId: attr("sleeve_type_id"),
+    closureTypeId: attr("closure_type_id"),
+    fitTypeId: attr("fit_type_id"),
+    fringeTypeId: attr("fringe_type_id"),
+    stylingTypeId: attr("styling_type_id"),
+
+    /** GST rate lives in this value's own `meta`, the same place colour keeps its hex. */
+    taxCategoryId: attr("tax_category_id"),
+    /** The design-level default; `batch.hsnCode` stays the per-consignment override. */
+    hsnCode: text("hsn_code"),
+
+    /** Never sent to Shopify unless set — `vendorFor()`/composed title/description still apply. */
+    seoTitle: text("seo_title"),
+    seoDescription: text("seo_description"),
+    handleBase: text("handle_base"),
+    /** Manual tags on top of whatever `listingTags()` already composes. */
+    extraTags: jsonb("extra_tags").notNull().default([]),
+
+    /**
      * Sarees are tracked per physical piece; other product types use a pooled
      * quantity. Defaulted from the product type at creation and overridable
      * per design, exactly as the prototype allows.
@@ -198,6 +255,40 @@ export const designDescriptor = pgTable(
   (t) => [
     primaryKey({ columns: [t.designId, t.descriptorId] }),
     index("design_descriptor_value_idx").on(t.descriptorId),
+  ],
+);
+
+/**
+ * Handmade, Handloom, Hand block printed, Natural dyed, Artisan made, Hand
+ * embroidered, Minor handmade variations expected — the trust claims a
+ * listing makes about how a piece was made.
+ *
+ * Design-scoped, not colourway-scoped, on purpose: a claim like this
+ * describes the physical technique behind a weave or a print run, which
+ * does not change between one colourway of a design and the next. The
+ * review pipeline and the Sales Story/Care content that genuinely do differ
+ * per colour live on `colourway` instead — see migration 0053's own
+ * comment.
+ *
+ * Same shape as `designDescriptor` above, and the same reasoning: a design
+ * can honestly carry more than one of these, so it is a set, not a column.
+ */
+export const designClaim = pgTable(
+  "design_claim",
+  {
+    designId: uuid("design_id")
+      .notNull()
+      .references(() => design.id, { onDelete: "cascade" }),
+    claimId: uuid("claim_id")
+      .notNull()
+      .references(() => lookupValue.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.designId, t.claimId] }),
+    index("design_claim_value_idx").on(t.claimId),
   ],
 );
 
@@ -286,6 +377,85 @@ export const colourway = pgTable(
 );
 
 /**
+ * The merchandising copy behind one colourway — the answers a good
+ * salesperson would give in person, asked as structured questions instead
+ * of one description box, plus what those answers compose into.
+ *
+ * One row per colourway, not per design: two colours of the same weave can
+ * honestly read differently ("the indigo drapes darker, pairs with...").
+ * The eight `q*` columns are what was typed; the seven prose columns are
+ * generated from them by deterministic template composition (see
+ * `listingBody()` in @slk/domain) and then freely hand-edited — a record
+ * with no story still composes exactly the plain `listingDescription()`
+ * paragraph it always has, this is additive, never a replacement path.
+ * `generatedFingerprint` lets the UI say "the answers changed since this
+ * was last generated" without a second, separate change-tracking table.
+ */
+export const colourwayStory = pgTable("colourway_story", {
+  colourwayId: uuid("colourway_id")
+    .primaryKey()
+    .references(() => colourway.id, { onDelete: "cascade" }),
+
+  qSpecial: text("q_special"),
+  qFeel: text("q_feel"),
+  qOccasions: text("q_occasions"),
+  qRecommendTo: text("q_recommend_to"),
+  qStyling: text("q_styling"),
+  qIncluded: text("q_included"),
+  qBeforeBuying: text("q_before_buying"),
+  qWhyBuy: text("q_why_buy"),
+
+  shortDescription: text("short_description"),
+  fullDescription: text("full_description"),
+  whyLove: text("why_love"),
+  craftStory: text("craft_story"),
+  stylingSuggestions: text("styling_suggestions"),
+  productDetails: text("product_details"),
+  customerNotes: text("customer_notes"),
+
+  generatedAt: timestamp("generated_at", { withTimezone: true }),
+  generatedFingerprint: text("generated_fingerprint"),
+  editedBy: uuid("edited_by_id").references(() => actor.id, {
+    onDelete: "restrict",
+  }),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+/**
+ * The care instructions behind one colourway — structured, not buried in
+ * the internal Notes field the way care advice used to be typed. The
+ * wash/dry/iron methods are lookup-backed because "Dry clean only" is a
+ * fixed vocabulary a filter or a report can use; the three warnings are
+ * booleans because they are genuinely yes/no facts with no vocabulary to
+ * maintain.
+ */
+export const colourwayCare = pgTable("colourway_care", {
+  colourwayId: uuid("colourway_id")
+    .primaryKey()
+    .references(() => colourway.id, { onDelete: "cascade" }),
+
+  washMethodId: attr("wash_method_id"),
+  waterTempId: attr("water_temp_id"),
+  detergentId: attr("detergent_id"),
+  dryingId: attr("drying_id"),
+  ironingId: attr("ironing_id"),
+
+  dryCleanRequired: boolean("dry_clean_required").notNull().default(false),
+  colourBleedWarning: boolean("colour_bleed_warning").notNull().default(false),
+  shrinkageWarning: boolean("shrinkage_warning").notNull().default(false),
+
+  storageNote: text("storage_note"),
+  /** The customer-facing one — internal `notes` on `design` stays separate and unread by anyone but staff. */
+  specialNotes: text("special_notes"),
+
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+/**
  * One consignment of one colourway — what arrived, on a day, into a place.
  *
  * The design code describes what somebody entered and repeats; two people
@@ -365,6 +535,13 @@ export const batch = pgTable(
 
     /** Grams. Shipping is priced by weight, and a saree runs 400 to 900. */
     weightGrams: integer("weight_grams"),
+
+    /** Scanned, not typed twice — the code print-ready packaging reads. */
+    barcode: text("barcode"),
+    /** Centimetres, one decimal — what a shipping-rate calculation needs beyond weight. */
+    packageLengthCm: numeric("package_length_cm", { precision: 6, scale: 1 }),
+    packageWidthCm: numeric("package_width_cm", { precision: 6, scale: 1 }),
+    packageHeightCm: numeric("package_height_cm", { precision: 6, scale: 1 }),
 
     /**
      * The HSN code this consignment is invoiced under. Handloom is not all one
@@ -450,6 +627,17 @@ export const image = pgTable(
      */
     alt: text("alt"),
 
+    /**
+     * Which photograph is the main one — the tile shown in the catalogue
+     * table and the first image on Shopify. At most one per colourway; see
+     * the partial unique index below. A colourway with none picked falls
+     * back to whatever `sortOrder` already put first, same as before this
+     * column existed.
+     */
+    isPrimary: boolean("is_primary").notNull().default(false),
+    /** "Supplier image" / "In-house" / "Artisan photo" — not shown to a customer, for the catalogue's own records. */
+    sourceNote: text("source_note"),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -457,6 +645,9 @@ export const image = pgTable(
   (t) => [
     uniqueIndex("image_colourway_slot_key").on(t.colourwayId, t.slotId),
     index("image_colourway_idx").on(t.colourwayId),
+    uniqueIndex("image_one_primary_per_colourway")
+      .on(t.colourwayId)
+      .where(sql`${t.isPrimary}`),
   ],
 );
 
@@ -544,7 +735,10 @@ export const movement = pgTable(
 export type Location = typeof location.$inferSelect;
 export type Design = typeof design.$inferSelect;
 export type DesignDescriptor = typeof designDescriptor.$inferSelect;
+export type DesignClaim = typeof designClaim.$inferSelect;
 export type Colourway = typeof colourway.$inferSelect;
+export type ColourwayStory = typeof colourwayStory.$inferSelect;
+export type ColourwayCare = typeof colourwayCare.$inferSelect;
 export type Batch = typeof batch.$inferSelect;
 export type Piece = typeof piece.$inferSelect;
 export type Image = typeof image.$inferSelect;

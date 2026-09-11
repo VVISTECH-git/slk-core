@@ -60,6 +60,27 @@ export type ConsignmentRow = {
     shrinkage?: string | null;
     transparency?: string | null;
     pieces?: { label: string; lengthCm: number | null; widthCm: number | null }[] | null;
+    // Generic + category measurements — carried through for parity with
+    // `DesignExtra` (apps/web/src/lib/attributes.ts); nothing here reads
+    // them yet, same as `pieces` before it grew a reader.
+    heightCm?: number | null;
+    thicknessMm?: number | null;
+    diameterCm?: number | null;
+    measurementUnit?: "cm" | "in" | "m" | null;
+    sareeLengthCm?: number | null;
+    sareeWidthCm?: number | null;
+    blouseLengthCm?: number | null;
+    borderWidthCm?: number | null;
+    palluLengthCm?: number | null;
+    fallPicoDone?: boolean | null;
+    pillowCoverCount?: number | null;
+    pillowLengthCm?: number | null;
+    pillowWidthCm?: number | null;
+    threadCount?: number | null;
+    chestCm?: number | null;
+    garmentLengthCm?: number | null;
+    sleeveLengthCm?: number | null;
+    fringeLengthCm?: number | null;
   } | null;
   /**
    * True when `sellable` (below, passed separately) is a count of

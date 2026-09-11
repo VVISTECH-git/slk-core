@@ -372,6 +372,13 @@
       "when": 1789302000000,
       "tag": "0052_colourway_review_workflow",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1789388400000,
+      "tag": "0053_colourway_story_care_and_identity_fields",
+      "breakpoints": true
     }
   ]
 }

@@ -26,7 +26,10 @@ export interface DropdownColumn {
 export interface TextColumn {
   kind: "text";
   header: string;
-  target: "existingProductCode" | "descriptors" | "name" | "notes" | "reference";
+  target:
+    | "existingProductCode" | "descriptors" | "name" | "notes" | "reference"
+    | "yarnCount" | "shrinkage" | "transparency"
+    | "piece1Label" | "piece2Label" | "piece3Label";
   required?: boolean;
   hint?: string;
 }
@@ -34,7 +37,12 @@ export interface TextColumn {
 export interface NumberColumn {
   kind: "number";
   header: string;
-  target: "cost" | "making" | "wholesale" | "retail" | "mrp" | "openingQty";
+  target:
+    | "cost" | "making" | "wholesale" | "retail" | "mrp" | "openingQty"
+    | "lengthCm" | "widthCm" | "gsm"
+    | "piece1LengthCm" | "piece1WidthCm"
+    | "piece2LengthCm" | "piece2WidthCm"
+    | "piece3LengthCm" | "piece3WidthCm";
   required?: boolean;
 }
 
@@ -84,6 +92,35 @@ export const IMPORT_COLUMNS: ImportColumn[] = [
   { kind: "dropdown", header: "Blouse Status", list: "blouse_status", target: "blouseStatus" },
   { kind: "dropdown", header: "Blouse Material", list: "blouse_material", target: "blouseMaterial" },
   { kind: "dropdown", header: "Pallu Design", list: "pallu_design", target: "palluDesign" },
+
+  /*
+    The same fields the editor's "Additional Product Details" tab asks for,
+    once a row has stock left over to describe: Length/Width for a Dupatta,
+    Scarves, Stolls or Bedsheets row; Width/GSM/Yarn Count/Shrinkage/
+    Transparency for a plain (metre-sold) Fabric row; the three Set Piece
+    groups for a Fabric row whose Product Sub Type is a matched set. A row
+    outside all three shapes just leaves them blank, same as any column here.
+  */
+  { kind: "number", header: "Length (cm)", target: "lengthCm" },
+  { kind: "number", header: "Width (cm)", target: "widthCm" },
+  { kind: "number", header: "GSM (g/m²)", target: "gsm" },
+  { kind: "text", header: "Yarn Count", target: "yarnCount", hint: "Fabric only. Free text, e.g. \"20 Single x 20 Single\"." },
+  { kind: "text", header: "Shrinkage", target: "shrinkage", hint: "Fabric only. Free text, e.g. \"1-2%\"." },
+  { kind: "text", header: "Transparency", target: "transparency", hint: "Fabric only. Free text, e.g. \"0%\"." },
+  {
+    kind: "text",
+    header: "Set Piece 1 Label",
+    target: "piece1Label",
+    hint: "Matched Fabric sets only (Suit Sets, Coord Sets, Patiala Sets, Lehanga Sets, Crop Tops Sets), e.g. \"Top\".",
+  },
+  { kind: "number", header: "Set Piece 1 Length (cm)", target: "piece1LengthCm" },
+  { kind: "number", header: "Set Piece 1 Width (cm)", target: "piece1WidthCm" },
+  { kind: "text", header: "Set Piece 2 Label", target: "piece2Label", hint: "e.g. \"Bottom\"." },
+  { kind: "number", header: "Set Piece 2 Length (cm)", target: "piece2LengthCm" },
+  { kind: "number", header: "Set Piece 2 Width (cm)", target: "piece2WidthCm" },
+  { kind: "text", header: "Set Piece 3 Label", target: "piece3Label", hint: "e.g. \"Dupatta\" — only for a 3-piece set." },
+  { kind: "number", header: "Set Piece 3 Length (cm)", target: "piece3LengthCm" },
+  { kind: "number", header: "Set Piece 3 Width (cm)", target: "piece3WidthCm" },
 
   {
     kind: "text",

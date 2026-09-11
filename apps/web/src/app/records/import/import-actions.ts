@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { guard } from "@/lib/session";
 import { loadOptions } from "@/lib/editor";
 import { loadPickableLocations } from "@/lib/locations";
-import type { AttributeKey } from "@/lib/attributes";
+import type { AttributeKey, DesignExtra, DesignExtraPiece } from "@/lib/attributes";
 import type { MovementDraft } from "@/lib/movements";
 
 import { metresToUnits } from "@slk/domain";
@@ -81,7 +81,8 @@ function writeInstructionsSheet(workbook: ExcelJS.Workbook): void {
     "7. To add stock to a product that already exists: fill in Existing Product Code with its design code (e.g. SAR-SRI-SIL-0001) and Colour, plus Opening Stock Location and Quantity, and optionally Reference and Notes. Every other column is ignored for that row — the product's own details don't change, only its stock does.",
     "8. Descriptors is free text: comma-separated, matching labels from the Descriptor list (e.g. \"Soft, Pure\").",
     "9. For a Fabric row with no Product Sub Type filled in (not one of the matched-set sub-types), Retail Price and Opening Stock Quantity are both read per metre — a bolt of 34.5 metres is simply \"34.5\" in Opening Stock Quantity, the same way its price is already read per metre. A Fabric row with a matched-set sub-type (Suit Sets, Coord Sets, Patiala Sets, Lehanga Sets, Crop Tops Sets) is priced and counted per set instead, the same as any other product.",
-    "10. Save the file and upload it on the Import Consignments screen. Every row is imported on its own — one bad row does not stop the rest, and you'll see exactly which rows failed and why.",
+    "10. Length/Width/GSM/Yarn Count/Shrinkage/Transparency and the three Set Piece groups only apply to some product types — fill in the ones that match this row's Product Type and Product Sub Type (see the Additional Product Details tab in Product Management for which is which) and leave the rest blank.",
+    "11. Save the file and upload it on the Import Consignments screen. Every row is imported on its own — one bad row does not stop the rest, and you'll see exactly which rows failed and why.",
   ];
 
   lines.forEach((line, i) => {
@@ -309,6 +310,21 @@ async function parseRow(
   let name = "";
   let notes = "";
   let reference = "";
+  let lengthCm: number | null = null;
+  let widthCm: number | null = null;
+  let gsm: number | null = null;
+  let yarnCount = "";
+  let shrinkage = "";
+  let transparency = "";
+  let piece1Label = "";
+  let piece1LengthCm: number | null = null;
+  let piece1WidthCm: number | null = null;
+  let piece2Label = "";
+  let piece2LengthCm: number | null = null;
+  let piece2WidthCm: number | null = null;
+  let piece3Label = "";
+  let piece3LengthCm: number | null = null;
+  let piece3WidthCm: number | null = null;
 
   IMPORT_COLUMNS.forEach((column, index) => {
     const text = cellText(cells[index]);
@@ -338,11 +354,30 @@ async function parseRow(
     }
 
     if (column.kind === "number") {
-      if (column.target === "openingQty") {
+      const target = column.target;
+      if (target === "openingQty") {
         openingQty = text;
-      } else {
-        prices[column.target] = text;
+        return;
       }
+      if (target === "cost" || target === "making" || target === "wholesale" || target === "retail" || target === "mrp") {
+        prices[target] = text;
+        return;
+      }
+
+      const n = Number(text);
+      if (!Number.isFinite(n)) {
+        errors.push(`${column.header}: "${text}" is not a number.`);
+        return;
+      }
+      if (target === "lengthCm") lengthCm = n;
+      else if (target === "widthCm") widthCm = n;
+      else if (target === "gsm") gsm = n;
+      else if (target === "piece1LengthCm") piece1LengthCm = n;
+      else if (target === "piece1WidthCm") piece1WidthCm = n;
+      else if (target === "piece2LengthCm") piece2LengthCm = n;
+      else if (target === "piece2WidthCm") piece2WidthCm = n;
+      else if (target === "piece3LengthCm") piece3LengthCm = n;
+      else if (target === "piece3WidthCm") piece3WidthCm = n;
       return;
     }
 
@@ -367,8 +402,43 @@ async function parseRow(
       name = text;
     } else if (column.target === "notes") {
       notes = text;
+    } else if (column.target === "yarnCount") {
+      yarnCount = text;
+    } else if (column.target === "shrinkage") {
+      shrinkage = text;
+    } else if (column.target === "transparency") {
+      transparency = text;
+    } else if (column.target === "piece1Label") {
+      piece1Label = text;
+    } else if (column.target === "piece2Label") {
+      piece2Label = text;
+    } else if (column.target === "piece3Label") {
+      piece3Label = text;
     }
   });
+
+  // One entry per Set Piece group that actually has something in it — a row
+  // that never touches the Set Piece columns should not write three empty
+  // pieces, the same "blank means unanswered" rule as every other field here.
+  const pieces: DesignExtraPiece[] = [];
+  for (const [label, pieceLengthCm, pieceWidthCm] of [
+    [piece1Label, piece1LengthCm, piece1WidthCm],
+    [piece2Label, piece2LengthCm, piece2WidthCm],
+    [piece3Label, piece3LengthCm, piece3WidthCm],
+  ] as const) {
+    if (label.trim() === "" && pieceLengthCm === null && pieceWidthCm === null) continue;
+    pieces.push({ label: label.trim(), lengthCm: pieceLengthCm, widthCm: pieceWidthCm });
+  }
+
+  const extra: DesignExtra = {
+    lengthCm,
+    widthCm,
+    gsm,
+    yarnCount: yarnCount.trim() === "" ? null : yarnCount.trim(),
+    shrinkage: shrinkage.trim() === "" ? null : shrinkage.trim(),
+    transparency: transparency.trim() === "" ? null : transparency.trim(),
+    ...(pieces.length > 0 ? { pieces } : {}),
+  };
 
   if (existingProductCode.trim() === "") {
     // Same server-side resolution createRecord itself does, run early
@@ -395,11 +465,7 @@ async function parseRow(
       notes,
       name,
       nameIsCustom: name.trim() !== "",
-      // The spreadsheet doesn't collect Length/Width/GSM/yarn count/etc yet —
-      // a row created here has none of it, same as before DesignExtra
-      // existed, fixable in the editor afterward. Adding those columns to
-      // the template is its own piece of work, not folded in here.
-      extra: {},
+      extra,
     };
 
     return { rowNumber, mode: "new", draft, errors };

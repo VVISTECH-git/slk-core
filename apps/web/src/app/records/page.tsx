@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export default async function RecordsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; industry?: string; archived?: string }>;
+  searchParams: Promise<{ q?: string; industry?: string; archived?: string; status?: string }>;
 }) {
   const who = await requirePage();
 
@@ -25,6 +25,7 @@ export default async function RecordsPage({
     q: (params.q ?? "").trim(),
     industry: (params.industry ?? "").trim(),
     archived: params.archived === "1",
+    status: (params.status ?? "").trim(),
   };
 
   const [page, industries, options, locations] = await Promise.all([

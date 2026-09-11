@@ -29,7 +29,7 @@ import type { RecordPage, RecordQuery, RecordRow } from "@/lib/records";
 
 import { setRecordField, type InlineField } from "./actions";
 import { InlineLookupCell } from "./inline-cell";
-import { ArchiveDialog, RecordEditor, type PickableLocation } from "./record-editor";
+import { ArchiveDialog, RecordEditor, ReviewStatusBadge, type PickableLocation } from "./record-editor";
 
 /**
  * Product Management, as the prototype has it: twelve columns, each sortable and
@@ -55,6 +55,7 @@ const COLUMNS = [
   { key: "code", label: "Design Code", width: 150 },
   { key: "audienceType", label: "Audience", width: 96 },
   { key: "colour", label: "Colour", width: 150 },
+  { key: "reviewStatus", label: "Status", width: 130 },
 
   // Everything else the design carries. Available in the Columns menu rather
   // than shown by default — eighteen columns at once is not a table anyone
@@ -347,6 +348,8 @@ export function RecordsTable({
    * nowhere, which is a hundred sarees nobody can account for.
    */
   const [showArchived, setShowArchived] = useState(initial.archived);
+  /** The approval workflow's own status — "" means every status. */
+  const [status, setStatus] = useState(initial.status);
 
   /*
     Typing waits a beat before asking the server; the dropdown and the
@@ -360,11 +363,13 @@ export function RecordsTable({
     if (q !== "") wanted.set("q", q);
     if (industry !== "") wanted.set("industry", industry);
     if (showArchived) wanted.set("archived", "1");
+    if (status !== "") wanted.set("status", status);
 
     const current = new URLSearchParams();
     if (initial.q !== "") current.set("q", initial.q);
     if (initial.industry !== "") current.set("industry", initial.industry);
     if (initial.archived) current.set("archived", "1");
+    if (initial.status !== "") current.set("status", initial.status);
 
     if (wanted.toString() === current.toString()) return;
 
@@ -376,7 +381,7 @@ export function RecordsTable({
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [query, industry, showArchived, initial, pathname, router]);
+  }, [query, industry, showArchived, status, initial, pathname, router]);
   /**
    * Chosen values per column, rather than one value per column.
    *
@@ -527,6 +532,22 @@ export function RecordsTable({
               {i}
             </option>
           ))}
+        </select>
+
+        <select
+          value={status}
+          onChange={(e) => {
+            setStatus(e.target.value);
+            setPage(1);
+          }}
+          aria-label="Filter by review status"
+          className="rounded-lg border border-rule-2 bg-surface px-3 py-2 text-[13.5px] text-ink"
+        >
+          <option value="">Every Status</option>
+          <option value="draft">Draft</option>
+          <option value="submitted">Submitted for Review</option>
+          <option value="needs_changes">Needs Changes</option>
+          <option value="approved">Approved</option>
         </select>
 
         <input
@@ -794,6 +815,14 @@ export function RecordsTable({
                         );
                       }
 
+                      if (c.key === "reviewStatus") {
+                        return (
+                          <Cell key={c.key} title={value || "Not set"}>
+                            <ReviewStatusBadge status={row.reviewStatus} />
+                          </Cell>
+                        );
+                      }
+
                       if (c.key === "quantity") {
                         return (
                           <Cell key={c.key} numeric title={`${value}${row.uom === "Metre" ? " metres" : ""}`}>
@@ -928,6 +957,7 @@ export function RecordsTable({
           options={options}
           locations={locations}
           initialTab={editing.tab}
+          role={role}
           onClose={() => setEditing(null)}
           onSaved={done}
           onPhotoChanged={refreshEditingRecord}

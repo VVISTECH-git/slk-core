@@ -1,6 +1,7 @@
 "use server";
 
-import { actingId, guard } from "@/lib/session";
+import { allows } from "@/lib/roles";
+import { actingId, currentActor, guard } from "@/lib/session";
 import { eq, sql, type SQL } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
@@ -448,6 +449,17 @@ export async function saveRecord(draft: RecordDraft): Promise<ActionResult> {
 
   const cw = existing[0];
   if (cw === undefined) return { ok: false, message: "That record no longer exists." };
+
+  // A record with a reviewer is theirs to edit until they hand it back —
+  // see the approval workflow's state diagram. Floor is refused outright
+  // rather than allowed to save quietly underneath a review in progress;
+  // office may still edit, the same as while it is Approved.
+  if (cw.reviewStatus === "submitted") {
+    const who = await currentActor();
+    if (who === null || !allows(who.role, "office")) {
+      return { ok: false, message: "This record is with a reviewer." };
+    }
+  }
 
   const labels = await labelsFor([
     ...ATTRIBUTE_KEYS.map((k) => draft.attributes[k]),

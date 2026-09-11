@@ -82,6 +82,9 @@ export type RecordRow = {
    * show them, which is the difference between a tidy list and a missing one.
    */
   isArchived: boolean;
+
+  /** "draft" | "submitted" | "needs_changes" | "approved" — see the approval workflow. */
+  reviewStatus: string;
 };
 
 /**
@@ -114,6 +117,8 @@ export interface RecordQuery {
   industry?: string;
   /** Whether archived records are wanted as well as the live ones. */
   archived?: boolean;
+  /** "draft" | "submitted" | "needs_changes" | "approved" — the approval workflow's own status, not Shopify's. */
+  status?: string;
 }
 
 export interface RecordPage {
@@ -146,6 +151,7 @@ export async function loadRecordPage(query: RecordQuery = {}): Promise<RecordPag
   const q = (query.q ?? "").trim();
   const industry = (query.industry ?? "").trim();
   const archived = query.archived ?? false;
+  const status = (query.status ?? "").trim();
 
   const conditions = [sql`true`];
 
@@ -177,6 +183,10 @@ export async function loadRecordPage(query: RecordQuery = {}): Promise<RecordPag
 
   if (industry !== "") {
     conditions.push(sql`industry.label = ${industry}`);
+  }
+
+  if (status !== "") {
+    conditions.push(sql`cw.review_status = ${status}`);
   }
 
   const shared = sql.join(conditions, sql` and `);
@@ -305,7 +315,8 @@ const SELECT = sql`
         from channel_link cl
         where cl.batch_id = latest.id
       ), 'none')                                        as "syncStatus",
-      (d.status = 'archived' or not cw.is_active)       as "isArchived"
+      (d.status = 'archived' or not cw.is_active)       as "isArchived",
+      cw.review_status                                  as "reviewStatus"
 `;
 
 const FROM = sql`

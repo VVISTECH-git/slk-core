@@ -42,14 +42,7 @@ export { hashSecret, verifySecret, pinProblem, MIN_PIN_LENGTH } from "@slk/domai
  */
 const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-/** Roles, weakest first. A check asks for a floor and accepts an owner. */
-const ROLE_RANK = { floor: 0, office: 1, owner: 2 } as const;
-
-export type Role = keyof typeof ROLE_RANK;
-
-export function isRole(value: string): value is Role {
-  return value in ROLE_RANK;
-}
+export { ROLE_RANK, allows, isRole, type Role } from "@/lib/roles";
 
 // ── Tokens ──────────────────────────────────────────────────────────────────
 
@@ -177,10 +170,6 @@ export async function actorForToken(token: string): Promise<Actor | null> {
   }
 
   return found;
-}
-
-export function allows(role: string, needed: Role): boolean {
-  return isRole(role) && ROLE_RANK[role] >= ROLE_RANK[needed];
 }
 
 // ── Lockout ─────────────────────────────────────────────────────────────────

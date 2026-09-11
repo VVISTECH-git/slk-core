@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { colourSwatch, isPaleSwatch } from "@slk/domain/colour";
 import { composeStorySections, listingBody, listingDescription, listingTitle } from "@slk/domain/listing";
 import { assessReadiness, type ReadinessResult } from "@slk/domain/readiness";
+
+import { allows } from "@/lib/roles";
 import { rupees } from "@slk/domain/money";
 import { titleCase } from "@slk/domain/naming";
 
@@ -44,6 +46,7 @@ import {
 import { PhotoCheck } from "./photo-check";
 import { ruleFor } from "./photo-rules";
 import { publishBatchToChannel } from "./publish-actions";
+import { approve, requestChanges, submitForReview, unapprove } from "./review-actions";
 
 /**
  * One editor for a record, not four dialogs.
@@ -121,11 +124,14 @@ export function RecordEditor({
   options,
   locations,
   initialTab,
+  role,
   onClose,
   onSaved,
   onPhotoChanged,
 }: {
   record: RecordDetail | null;
+  /** The signed-in actor's own role — for gating which approval buttons render. Not a security boundary; the Server Actions re-check it. */
+  role: string;
   /**
    * For a copy: the record whose design this new colour joins. The form
    * opens filled from it, with the colour blank, and nothing is written
@@ -990,7 +996,10 @@ export function RecordEditor({
               {isNew ? (template ? `New colour of ${template.name}` : "New Product Record") : record.name}
             </h2>
             {!isNew && (
-              <span className="font-mono text-[12px] text-faint">{record.code}</span>
+              <>
+                <span className="font-mono text-[12px] text-faint">{record.code}</span>
+                <ReviewStatusBadge status={record.reviewStatus} />
+              </>
             )}
             {isNew && template && (
               <span className="font-mono text-[12px] text-faint">{template.code}</span>
@@ -1931,7 +1940,9 @@ export function RecordEditor({
             />
           )}
 
-          {activeTab === "publish" && <PublishTab record={record} />}
+          {activeTab === "publish" && (
+            <PublishTab record={record} role={role} onReviewed={onPhotoChanged} />
+          )}
 
           {activeTab === "basic" && (
             <label className="mt-4 block">
@@ -3806,7 +3817,16 @@ function Consignments({
  * price itself; everything else here is a listing that would go up looking
  * worse than it should, which is the owner's call to make with open eyes.
  */
-function PublishTab({ record }: { record: RecordDetail | null }) {
+function PublishTab({
+  record,
+  role,
+  onReviewed,
+}: {
+  record: RecordDetail | null;
+  role: string;
+  /** Refreshes the open record after a review transition — shares the exact refetch a photo upload already triggers, since both are "something changed server-side without a Save." */
+  onReviewed: (message: string) => void;
+}) {
   // Per-consignment channel state, so a Publish here flips to Republish
   // without waiting for the whole record to reload.
   const [channelsByBatch, setChannelsByBatch] = useState<
@@ -3844,6 +3864,12 @@ function PublishTab({ record }: { record: RecordDetail | null }) {
 
   return (
     <div className="flex flex-col gap-5">
+      <ApprovalCard record={record} role={role} onReviewed={onReviewed} />
+
+      {record.reviewStatus === "submitted" && allows(role, "office") && (
+        <ReviewComparison record={record} />
+      )}
+
       <PublishSection
         title="Ready to be seen?"
         lede={
@@ -3930,6 +3956,224 @@ function PublishSection({
       <p className="mt-2 mb-3 max-w-2xl text-[12.5px] leading-relaxed text-muted">{lede}</p>
       {children}
     </section>
+  );
+}
+
+const REVIEW_STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  submitted: "Submitted for Review",
+  needs_changes: "Needs Changes",
+  approved: "Approved",
+};
+
+/**
+ * The editorial status — separate from whether it is on Shopify, see
+ * review-actions.ts's own comment. Exported so the records grid can show
+ * the same badge in its Status column instead of a second copy of it.
+ */
+export function ReviewStatusBadge({ status }: { status: string }) {
+  const tone =
+    status === "approved"
+      ? "border-ok bg-ok-soft text-ok"
+      : status === "draft"
+        ? "border-rule-2 bg-surface-2 text-muted"
+        : "border-brick bg-brick-soft text-brick";
+
+  return (
+    <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${tone}`}>
+      {REVIEW_STATUS_LABEL[status] ?? status}
+    </span>
+  );
+}
+
+/**
+ * The approval workflow's buttons — which ones show depends on both the
+ * record's status and the viewer's role, mirroring `review-actions.ts`'s
+ * own edges exactly so a button never offers a transition the server would
+ * refuse. The server re-checks all of it regardless; this is about not
+ * showing a dead end, the same reasoning `missingOn` uses for Next.
+ */
+function ApprovalCard({
+  record,
+  role,
+  onReviewed,
+}: {
+  record: RecordDetail;
+  role: string;
+  onReviewed: (message: string) => void;
+}) {
+  const [pending, startTransition] = useTransition();
+  const [showComment, setShowComment] = useState(false);
+  const [comment, setComment] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const run = (action: () => Promise<ActionResult>) => {
+    setError(null);
+    startTransition(async () => {
+      const outcome = await action();
+      if (!outcome.ok) {
+        setError(outcome.message);
+        return;
+      }
+      setShowComment(false);
+      setComment("");
+      onReviewed(outcome.message);
+    });
+  };
+
+  const status = record.reviewStatus;
+  const isOffice = allows(role, "office");
+
+  return (
+    <PublishSection
+      title="Approval"
+      lede="Whether what is entered has been checked before it reaches Shopify — a separate question from whether it is published anywhere yet."
+    >
+      <div className="flex flex-wrap items-center gap-2.5">
+        <ReviewStatusBadge status={status} />
+
+        {(status === "draft" || status === "needs_changes") && (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => run(() => submitForReview(record.id))}
+            className="rounded-md border border-rule-2 px-2.5 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 disabled:opacity-50"
+          >
+            Submit for Review
+          </button>
+        )}
+
+        {status === "submitted" && isOffice && (
+          <>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => run(() => approve(record.id))}
+              className="rounded-md bg-ok px-2.5 py-1.5 text-[12.5px] font-medium text-surface hover:opacity-90 disabled:opacity-50"
+            >
+              Approve
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => setShowComment((s) => !s)}
+              className="rounded-md border border-rule-2 px-2.5 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 disabled:opacity-50"
+            >
+              Request Changes
+            </button>
+          </>
+        )}
+
+        {status === "approved" && isOffice && (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => run(() => unapprove(record.id))}
+            className="rounded-md border border-rule-2 px-2.5 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 disabled:opacity-50"
+          >
+            Unapprove
+          </button>
+        )}
+      </div>
+
+      {showComment && (
+        <div className="mt-3 flex max-w-lg flex-col gap-2">
+          <textarea
+            rows={2}
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="What needs to change? This is what the floor will see when they reopen the record."
+            className="w-full rounded-md border border-rule-2 bg-surface px-3 py-2 text-[13.5px] text-ink"
+          />
+          <button
+            type="button"
+            disabled={pending || comment.trim() === ""}
+            onClick={() => run(() => requestChanges(record.id, comment))}
+            className="self-start rounded-md bg-brick px-2.5 py-1.5 text-[12.5px] font-medium text-surface hover:opacity-90 disabled:opacity-50"
+          >
+            Send Back for Changes
+          </button>
+        </div>
+      )}
+
+      {error && <p className="mt-2 text-[12.5px] text-brick">{error}</p>}
+    </PublishSection>
+  );
+}
+
+/**
+ * Office+ only, and only while a record is Submitted — the moment a review
+ * actually has something to check. Three panes: what a reference listing
+ * said (typed in by hand on Basic — see the manual-reference-lookup
+ * decision), what got entered, and what a customer will actually read.
+ *
+ * Reads the *saved* record, not the editor's own in-progress state — a
+ * reviewer is judging what was submitted, not somebody else's unsaved
+ * keystrokes. `record.story.fullDescription` is exactly this: the
+ * `listingBody()` composition as of the last Save, kept in step with it in
+ * `submit()`.
+ */
+function ReviewComparison({ record }: { record: RecordDetail }) {
+  const sourceEntries = Object.entries(record.source.attributes);
+
+  return (
+    <PublishSection
+      title="Review: Source vs. Entered vs. Customer"
+      lede="Compare the reference listing against what was entered and what a customer will actually see before approving this."
+    >
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="rounded-lg border border-rule-2 p-3">
+          <h4 className="mb-2 text-[11px] font-semibold tracking-wide text-muted uppercase">Source Data</h4>
+          {record.source.url && (
+            <a
+              href={record.source.url}
+              target="_blank"
+              rel="noreferrer"
+              className="block truncate text-[12.5px] text-brick underline"
+            >
+              {record.source.url}
+            </a>
+          )}
+          {record.source.sku && (
+            <p className="mt-1 text-[12.5px] text-ink-2">SKU: {record.source.sku}</p>
+          )}
+          {sourceEntries.length === 0 ? (
+            <p className="mt-2 text-[12px] text-faint">
+              No reference facts recorded — the manual reference lookup found nothing worth typing in, or nobody has yet.
+            </p>
+          ) : (
+            <dl className="mt-2 flex flex-col gap-1">
+              {sourceEntries.map(([k, v]) => (
+                <div key={k} className="text-[12.5px] text-ink-2">
+                  <dt className="inline font-medium">{k}: </dt>
+                  <dd className="inline">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-rule-2 p-3">
+          <h4 className="mb-2 text-[11px] font-semibold tracking-wide text-muted uppercase">Entered Data</h4>
+          <p className="text-[12.5px] text-ink-2">{record.name}</p>
+          {record.shortName && <p className="text-[12.5px] text-muted">{record.shortName}</p>}
+          <p className="mt-1 text-[12.5px] text-ink-2">
+            {record.retailMinor !== null ? money(record.retailMinor) : "No price set"}
+          </p>
+          {record.notes && (
+            <p className="mt-2 whitespace-pre-line text-[12px] text-muted">{record.notes}</p>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-rule-2 p-3">
+          <h4 className="mb-2 text-[11px] font-semibold tracking-wide text-muted uppercase">Customer Preview</h4>
+          <p className="text-[13px] font-medium text-ink">{record.name}</p>
+          <p className="mt-1 whitespace-pre-line text-[12.5px] leading-relaxed text-ink-2">
+            {record.story?.fullDescription || "Nothing composes yet — fill in Sales Story and Save."}
+          </p>
+        </div>
+      </div>
+    </PublishSection>
   );
 }
 

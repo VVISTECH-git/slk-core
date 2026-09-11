@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { colourSwatch, isPaleSwatch } from "@slk/domain/colour";
-import { listingDescription, listingTitle } from "@slk/domain/listing";
+import { composeStorySections, listingBody, listingDescription, listingTitle } from "@slk/domain/listing";
 import { rupees } from "@slk/domain/money";
 import { titleCase } from "@slk/domain/naming";
 
@@ -57,6 +57,7 @@ type TabKey =
   | "craft"
   | "blouse"
   | "garment"
+  | "story"
   | "care"
   | "prices"
   | "images"
@@ -248,6 +249,28 @@ export function RecordEditor({
     storageNote: record?.care?.storageNote ?? "",
     specialNotes: record?.care?.specialNotes ?? "",
   }));
+  /**
+   * The Sales Story tab — eight Q&A answers plus the five sections "Generate"
+   * composes from them (Product Details and the final assembled body are
+   * never stored fields; they are always the live `listingDescription`/
+   * `listingBody` preview, so an edit to the taxonomy is never stale in the
+   * rail). Per colourway, seeded from `record` the same way Care is.
+   */
+  const [story, setStory] = useState(() => ({
+    qSpecial: record?.story?.qSpecial ?? "",
+    qFeel: record?.story?.qFeel ?? "",
+    qOccasions: record?.story?.qOccasions ?? "",
+    qRecommendTo: record?.story?.qRecommendTo ?? "",
+    qStyling: record?.story?.qStyling ?? "",
+    qIncluded: record?.story?.qIncluded ?? "",
+    qBeforeBuying: record?.story?.qBeforeBuying ?? "",
+    qWhyBuy: record?.story?.qWhyBuy ?? "",
+    shortDescription: record?.story?.shortDescription ?? "",
+    whyLove: record?.story?.whyLove ?? "",
+    craftStory: record?.story?.craftStory ?? "",
+    stylingSuggestions: record?.story?.stylingSuggestions ?? "",
+    customerNotes: record?.story?.customerNotes ?? "",
+  }));
 
   /*
     Client-only draft autosave.
@@ -305,6 +328,7 @@ export function RecordEditor({
         if (typeof snap["sourceSku"] === "string") setSourceSku(snap["sourceSku"]);
         if (snap["extra"]) setExtra(snap["extra"] as DesignExtra);
         if (snap["care"]) setCare(snap["care"] as typeof care);
+        if (snap["story"]) setStory(snap["story"] as typeof story);
       }
     } catch {
       // Nothing to apply if the snapshot does not parse.
@@ -352,6 +376,7 @@ export function RecordEditor({
             sourceSku,
             extra,
             care,
+            story,
           }),
         );
       } catch {
@@ -382,6 +407,7 @@ export function RecordEditor({
     sourceSku,
     extra,
     care,
+    story,
   ]);
 
   const [tab, setTab] = useState<TabKey>(initialTab);
@@ -524,7 +550,7 @@ export function RecordEditor({
     secondaryColour: labelOf("colour", secondaryColourId),
   });
 
-  const composedDescription = listingDescription({
+  const descriptionParts = {
     craftTechnique: craft,
     textileMaterial: labelOf("textile_material", attributes.textileMaterial),
     fibreType: labelOf("fibre_type", attributes.fibreType),
@@ -543,7 +569,68 @@ export function RecordEditor({
     blouseAvailable: labelOf("garment_type", attributes.garmentType),
     blouseStyle: labelOf("blouse_style", attributes.blouseStyle),
     blouseMaterial: labelOf("blouse_material", attributes.blouseMaterial),
+  };
+
+  const composedDescription = listingDescription(descriptionParts);
+
+  /**
+   * The Sales Story's live preview — Product Details and Care are always
+   * this composition, never the stored `productDetails`/`fullDescription`
+   * columns, so a taxonomy or Care-tab edit is reflected the moment this
+   * re-renders rather than waiting on the next "Generate".
+   */
+  const careParts = {
+    washMethod: labelOf("wash_method", care.washMethodId),
+    waterTemp: labelOf("water_temp", care.waterTempId),
+    detergent: labelOf("detergent", care.detergentId),
+    drying: labelOf("drying", care.dryingId),
+    ironing: labelOf("ironing", care.ironingId),
+    dryCleanRequired: care.dryCleanRequired,
+    colourBleedWarning: care.colourBleedWarning,
+    shrinkageWarning: care.shrinkageWarning,
+    storageNote: care.storageNote,
+  };
+
+  const composedBody = listingBody({
+    shortDescription: story.shortDescription,
+    whyLove: story.whyLove,
+    craftStory: story.craftStory,
+    stylingSuggestions: story.stylingSuggestions,
+    description: descriptionParts,
+    care: careParts,
+    customerNotes: story.customerNotes,
   });
+
+  /**
+   * "Generate" — deterministic template composition from the eight answers
+   * plus the craft taxonomy, never an LLM (confirmed with the stakeholder).
+   * Overwrites only the five generated sections, never the answers that
+   * produced them, so pressing it again after editing an answer is exactly
+   * "regenerate everything from what the tab currently says."
+   */
+  const generateStory = () => {
+    const generated = composeStorySections(
+      {
+        qSpecial: story.qSpecial,
+        qFeel: story.qFeel,
+        qOccasions: story.qOccasions,
+        qRecommendTo: story.qRecommendTo,
+        qStyling: story.qStyling,
+        qIncluded: story.qIncluded,
+        qBeforeBuying: story.qBeforeBuying,
+        qWhyBuy: story.qWhyBuy,
+      },
+      {
+        craftTechnique: craft,
+        craftSubType: labelOf("craft_sub_type", attributes.craftSubType),
+        artisanCluster: labelOf("artisan_cluster", attributes.artisanCluster),
+        claims: claims
+          .map((id) => labelOf("craft_claim", id))
+          .filter((label): label is string => label !== null),
+      },
+    );
+    setStory((prev) => ({ ...prev, ...generated }));
+  };
 
   const tabs = useMemo(() => {
     const list: { key: TabKey; label: string }[] = [
@@ -554,6 +641,7 @@ export function RecordEditor({
     // product. What is saree-only is the saree half of the tab, not the tab.
     list.push({ key: "blouse", label: "Additional Product Details" });
     if (isGarment) list.push({ key: "garment", label: "Garment" });
+    list.push({ key: "story", label: "Sales Story" });
     // Always offered, the same as Additional Product Details — every
     // finished product has wash instructions worth stating, not just the
     // ones with a category-specific tab of their own.
@@ -826,6 +914,7 @@ export function RecordEditor({
       sourceSku,
       extra,
       care,
+      story: { ...story, productDetails: composedDescription, fullDescription: composedBody },
     };
 
     startTransition(async () => {
@@ -1579,6 +1668,92 @@ export function RecordEditor({
                 options={options} value={attributes.fitType ?? null}
                 onPick={(v) => set("fitType", v)} />
             </Section>
+          )}
+
+          {/*
+            Sales Story — eight questions answered once, generating five
+            editable sections. Product Details and the full listing preview
+            are never their own text boxes: they are always the live
+            `listingDescription`/`listingBody` composition, the same
+            "composed on read" choice every other listing text in this app
+            already made, shown here so the sentence a taxonomy edit changes
+            is visible without leaving the tab.
+          */}
+          {activeTab === "story" && (
+            <>
+              <Section title="Tell Us About It" cols={2}>
+                <TextArea label="What's special about this piece?"
+                  value={story.qSpecial}
+                  onChange={(v) => setStory((prev) => ({ ...prev, qSpecial: v }))} />
+                <TextArea label="How does it feel to wear or use?"
+                  value={story.qFeel}
+                  onChange={(v) => setStory((prev) => ({ ...prev, qFeel: v }))} />
+                <TextArea label="What occasions is it best for?"
+                  value={story.qOccasions}
+                  onChange={(v) => setStory((prev) => ({ ...prev, qOccasions: v }))} />
+                <TextArea label="Who would you recommend it to?"
+                  value={story.qRecommendTo}
+                  onChange={(v) => setStory((prev) => ({ ...prev, qRecommendTo: v }))} />
+                <TextArea label="How should it be styled?"
+                  value={story.qStyling}
+                  onChange={(v) => setStory((prev) => ({ ...prev, qStyling: v }))} />
+                <TextArea label="What's included?"
+                  value={story.qIncluded}
+                  onChange={(v) => setStory((prev) => ({ ...prev, qIncluded: v }))} />
+                <TextArea label="What should a customer know before buying?"
+                  value={story.qBeforeBuying}
+                  onChange={(v) => setStory((prev) => ({ ...prev, qBeforeBuying: v }))} />
+                <TextArea label="Why should someone buy this?"
+                  value={story.qWhyBuy}
+                  onChange={(v) => setStory((prev) => ({ ...prev, qWhyBuy: v }))} />
+              </Section>
+
+              <div className="mt-6 flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={generateStory}
+                  className="rounded-md bg-ink px-3 py-2 text-[13px] font-medium text-surface hover:bg-ink-2"
+                >
+                  Generate
+                </button>
+                <span className="text-[12px] text-muted">
+                  Composes the sections below from the answers above. Safe to press again — it never touches the answers, and anything you have edited below is overwritten.
+                </span>
+              </div>
+
+              <Section title="Description Sections" cols={1}>
+                <TextArea label="Short Description"
+                  value={story.shortDescription}
+                  onChange={(v) => setStory((prev) => ({ ...prev, shortDescription: v }))} />
+                <TextArea label="Why You'll Love It"
+                  value={story.whyLove}
+                  onChange={(v) => setStory((prev) => ({ ...prev, whyLove: v }))} />
+                <TextArea label="Craft Story"
+                  value={story.craftStory}
+                  onChange={(v) => setStory((prev) => ({ ...prev, craftStory: v }))} />
+                <TextArea label="Styling Suggestions"
+                  value={story.stylingSuggestions}
+                  onChange={(v) => setStory((prev) => ({ ...prev, stylingSuggestions: v }))} />
+                <label className="block">
+                  <span className="mb-1 block text-[12.5px] text-ink-2">
+                    Product Details
+                    <span className="ml-1 text-muted">— composed live from Craft &amp; Design and Additional Product Details, not editable here</span>
+                  </span>
+                  <p className="w-full rounded-md border border-rule-2 bg-surface-2 px-3 py-2 text-[13.5px] leading-relaxed text-ink-2">
+                    {composedDescription || "Nothing composes yet — fill in Craft & Design."}
+                  </p>
+                </label>
+                <TextArea label="Customer Notes"
+                  value={story.customerNotes}
+                  onChange={(v) => setStory((prev) => ({ ...prev, customerNotes: v }))} />
+              </Section>
+
+              <Section title="Full Listing Preview" cols={1}>
+                <p className="whitespace-pre-line rounded-md border border-rule-2 bg-surface-2 px-3 py-2 text-[13.5px] leading-relaxed text-ink-2">
+                  {composedBody || "Nothing to preview yet."}
+                </p>
+              </Section>
+            </>
           )}
 
           {/*

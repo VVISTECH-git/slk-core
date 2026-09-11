@@ -396,6 +396,190 @@ export function listingTags(parts: ListingTagParts): string[] {
   return out;
 }
 
+export interface ListingCareParts {
+  washMethod?: string | null;
+  waterTemp?: string | null;
+  detergent?: string | null;
+  drying?: string | null;
+  ironing?: string | null;
+  dryCleanRequired?: boolean | null;
+  colourBleedWarning?: boolean | null;
+  shrinkageWarning?: boolean | null;
+  storageNote?: string | null;
+}
+
+/**
+ * The Care tab's facts as a paragraph, one sentence per fact carried — same
+ * "structure only, blank drops its sentence" rule as `listingDescription`.
+ * `null` when nothing on the tab has been answered, so a caller can tell
+ * "no care instructions" from "a paragraph of nothing."
+ */
+function careSummary(parts: ListingCareParts): string | null {
+  const sentences: string[] = [];
+
+  const wash = present(parts.washMethod);
+  if (wash) sentences.push(`${wash}.`);
+
+  const temp = present(parts.waterTemp);
+  if (temp) sentences.push(`Water temperature: ${temp}.`);
+
+  const detergent = present(parts.detergent);
+  if (detergent) sentences.push(`Use ${detergent.toLowerCase()}.`);
+
+  const drying = present(parts.drying);
+  if (drying) sentences.push(`${drying}.`);
+
+  const ironing = present(parts.ironing);
+  if (ironing) sentences.push(`${ironing}.`);
+
+  if (parts.dryCleanRequired) sentences.push("Dry clean only.");
+  if (parts.colourBleedWarning) sentences.push("Colours may bleed on first wash.");
+  if (parts.shrinkageWarning) sentences.push("Slight shrinkage is possible after the first wash.");
+
+  const storage = present(parts.storageNote);
+  if (storage) sentences.push(storage.endsWith(".") ? storage : `${storage}.`);
+
+  return sentences.length > 0 ? sentences.join(" ") : null;
+}
+
+export interface ListingBodyParts {
+  /** The four hand-written sections a "Generate" pass produces from the Sales Story Q&A — see `composeStorySections`. Each optional; a blank one drops out rather than leaving a gap. */
+  shortDescription?: string | null;
+  whyLove?: string | null;
+  craftStory?: string | null;
+  stylingSuggestions?: string | null;
+  /**
+   * The taxonomy facts `listingDescription` composes fresh from — never the
+   * `colourway_story.product_details` column, even if one exists. Product
+   * Details is "composed on read", the same choice every other listing text
+   * in this file already made, so a taxonomy correction reaches it with
+   * nothing to regenerate. The stored column is a preview only.
+   */
+  description: ListingDescriptionParts;
+  /** The Care tab's facts, composed fresh the same way — never a stored column. */
+  care?: ListingCareParts | null;
+  customerNotes?: string | null;
+}
+
+/**
+ * The full listing body: the Sales Story's hand-written sections, in order,
+ * around the taxonomy-composed Product Details and Care paragraphs that
+ * `listingDescription` and `careSummary` already produce. Blank sections
+ * drop out rather than leaving an empty paragraph — a colourway with no
+ * story at all produces exactly `listingDescription(parts.description)`,
+ * unchanged from what every listing said before this function existed.
+ */
+export function listingBody(parts: ListingBodyParts): string {
+  const sections: string[] = [];
+
+  const short = present(parts.shortDescription);
+  if (short) sections.push(short);
+
+  const why = present(parts.whyLove);
+  if (why) sections.push(why);
+
+  const craft = present(parts.craftStory);
+  if (craft) sections.push(craft);
+
+  const styling = present(parts.stylingSuggestions);
+  if (styling) sections.push(styling);
+
+  const details = present(listingDescription(parts.description));
+  if (details) sections.push(details);
+
+  const care = parts.care ? careSummary(parts.care) : null;
+  if (care) sections.push(care);
+
+  const notes = present(parts.customerNotes);
+  if (notes) sections.push(notes);
+
+  return sections.join("\n\n");
+}
+
+export interface StoryAnswers {
+  qSpecial?: string | null;
+  qFeel?: string | null;
+  qOccasions?: string | null;
+  qRecommendTo?: string | null;
+  qStyling?: string | null;
+  qIncluded?: string | null;
+  qBeforeBuying?: string | null;
+  qWhyBuy?: string | null;
+}
+
+export interface StoryCraftParts {
+  craftTechnique?: string | null;
+  craftSubType?: string | null;
+  artisanCluster?: string | null;
+  /** Craft Claims — Handmade, Natural Dyed, and the rest. */
+  claims?: string[] | null;
+}
+
+export interface GeneratedStorySections {
+  shortDescription: string;
+  whyLove: string;
+  craftStory: string;
+  stylingSuggestions: string;
+  customerNotes: string;
+}
+
+/**
+ * Turns the Sales Story's eight answers into the five hand-written sections
+ * `listingBody` assembles — deterministic template composition, not an LLM
+ * (confirmed with the stakeholder: instant, free, and always hand-editable
+ * afterward, the same trade-off `listingDescription` already made).
+ *
+ * Craft Story is the one section that does not come from an answer at all —
+ * there is no "tell us about the craft" question, because that fact already
+ * lives on the taxonomy (Craft Technique, Artisan/Cluster, Craft Claims) the
+ * same way Product Details does. Asking for it twice would risk the two
+ * disagreeing; composing it from the same source as the label on the tin
+ * cannot.
+ *
+ * Every field of the result is always a string, never null — "Generate"
+ * fills a text box, and an empty box reads better than the literal word
+ * "null" in it. A question left blank simply contributes no sentence.
+ */
+export function composeStorySections(
+  answers: StoryAnswers,
+  craft: StoryCraftParts = {},
+): GeneratedStorySections {
+  const shortDescription = present(answers.qSpecial) ?? "";
+
+  const whySentences: string[] = [];
+  const feel = present(answers.qFeel);
+  if (feel) whySentences.push(feel.endsWith(".") ? feel : `${feel}.`);
+  const recommend = present(answers.qRecommendTo);
+  if (recommend) whySentences.push(`Perfect for ${recommend.charAt(0).toLowerCase()}${recommend.slice(1)}.`);
+  const occasions = present(answers.qOccasions);
+  if (occasions) whySentences.push(`Wear it for ${occasions.charAt(0).toLowerCase()}${occasions.slice(1)}.`);
+  const whyLove = whySentences.join(" ");
+
+  const craftSentences: string[] = [];
+  const technique = present(craft.craftTechnique);
+  const subType = present(craft.craftSubType);
+  const techniqueLabel = technique && subType ? `${subType} ${technique}` : (technique ?? subType);
+  if (techniqueLabel) craftSentences.push(`Made using ${techniqueLabel}.`);
+  const cluster = present(craft.artisanCluster);
+  if (cluster) craftSentences.push(`Crafted by artisans from ${cluster}.`);
+  const claims = (craft.claims ?? []).map((c) => present(c)).filter((c): c is string => c !== null);
+  if (claims.length > 0) craftSentences.push(`${claims.join(", ")}.`);
+  const craftStory = craftSentences.join(" ");
+
+  const stylingSuggestions = present(answers.qStyling) ?? "";
+
+  const noteSentences: string[] = [];
+  const included = present(answers.qIncluded);
+  if (included) noteSentences.push(`What's included: ${included.charAt(0).toLowerCase()}${included.slice(1)}.`);
+  const before = present(answers.qBeforeBuying);
+  if (before) noteSentences.push(before.endsWith(".") ? before : `${before}.`);
+  const why = present(answers.qWhyBuy);
+  if (why) noteSentences.push(why.endsWith(".") ? why : `${why}.`);
+  const customerNotes = noteSentences.join(" ");
+
+  return { shortDescription, whyLove, craftStory, stylingSuggestions, customerNotes };
+}
+
 export interface ListingAltParts {
   colour?: string | null;
   designName: string;

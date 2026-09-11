@@ -3,7 +3,9 @@ import { test } from "node:test";
 
 import {
   AARTISANZ_TITLE_STYLE,
+  composeStorySections,
   listingAlt,
+  listingBody,
   listingDescription,
   listingMetafields,
   listingTags,
@@ -304,4 +306,116 @@ test("vendorFor: aartisanz trades as Sai Sarees, everything else as the works", 
   assert.equal(vendorFor("slk"), "Sree Lakshmi Kalamkari");
   assert.equal(vendorFor(null), "Sree Lakshmi Kalamkari");
   assert.equal(vendorFor(undefined), "Sree Lakshmi Kalamkari");
+});
+
+test("listingBody with no story is exactly listingDescription's paragraph", () => {
+  const description = { craftTechnique: "Kalamkari", textileMaterial: "Mul Mul" };
+  assert.equal(
+    listingBody({ description }),
+    listingDescription(description),
+  );
+  assert.equal(listingBody({ description: {} }), "");
+});
+
+test("listingBody assembles every section it has, in order, blank lines between", () => {
+  const body = listingBody({
+    shortDescription: "A saree that starts every conversation.",
+    whyLove: "Soft against the skin.",
+    craftStory: "Hand block printed by artisans from Bagru.",
+    stylingSuggestions: "Pair with silver jewellery for a festive look.",
+    description: { craftTechnique: "Kalamkari", textileMaterial: "Mul Mul" },
+    care: { washMethod: "Hand Wash", dryCleanRequired: false },
+    customerNotes: "Comes with a matching potli bag.",
+  });
+
+  assert.equal(
+    body,
+    [
+      "A saree that starts every conversation.",
+      "Soft against the skin.",
+      "Hand block printed by artisans from Bagru.",
+      "Pair with silver jewellery for a festive look.",
+      "Kalamkari on Mul Mul.",
+      "Hand Wash.",
+      "Comes with a matching potli bag.",
+    ].join("\n\n"),
+  );
+});
+
+test("listingBody drops a section it has nothing for", () => {
+  assert.equal(
+    listingBody({
+      whyLove: "Soft against the skin.",
+      description: {},
+    }),
+    "Soft against the skin.",
+  );
+});
+
+test("careSummary facts fold into listingBody, one sentence per fact, blank when there are none", () => {
+  const withCare = listingBody({
+    description: {},
+    care: {
+      washMethod: "Hand Wash",
+      waterTemp: "Cold",
+      detergent: "Mild Liquid Detergent",
+      drying: "Dry in Shade",
+      ironing: "Low Heat",
+      dryCleanRequired: false,
+      colourBleedWarning: true,
+      shrinkageWarning: false,
+      storageNote: "Store away from direct sunlight",
+    },
+  });
+
+  assert.equal(
+    withCare,
+    "Hand Wash. Water temperature: Cold. Use mild liquid detergent. Dry in Shade. Low Heat. " +
+      "Colours may bleed on first wash. Store away from direct sunlight.",
+  );
+
+  assert.equal(listingBody({ description: {}, care: {} }), "");
+  assert.equal(listingBody({ description: {}, care: null }), "");
+});
+
+test("composeStorySections turns answers into sentences, one per answer given", () => {
+  const sections = composeStorySections(
+    {
+      qSpecial: "Hand-painted Kalamkari storytelling motifs.",
+      qFeel: "Soft, lightweight cotton that drapes easily",
+      qOccasions: "festive mornings and temple visits",
+      qRecommendTo: "someone who loves traditional prints",
+      qStyling: "Pair with a contrast blouse and minimal gold jewellery.",
+      qIncluded: "one saree and one unstitched blouse piece",
+      qBeforeBuying: "Colours may vary slightly from the photo",
+      qWhyBuy: "each piece is hand block printed and never mass-produced",
+    },
+    { craftTechnique: "Kalamkari", artisanCluster: "Bagru", claims: ["Handmade", "Natural Dyed"] },
+  );
+
+  assert.equal(sections.shortDescription, "Hand-painted Kalamkari storytelling motifs.");
+  assert.equal(
+    sections.whyLove,
+    "Soft, lightweight cotton that drapes easily. Perfect for someone who loves traditional prints. " +
+      "Wear it for festive mornings and temple visits.",
+  );
+  assert.equal(
+    sections.craftStory,
+    "Made using Kalamkari. Crafted by artisans from Bagru. Handmade, Natural Dyed.",
+  );
+  assert.equal(sections.stylingSuggestions, "Pair with a contrast blouse and minimal gold jewellery.");
+  assert.equal(
+    sections.customerNotes,
+    "What's included: one saree and one unstitched blouse piece. Colours may vary slightly from the photo. " +
+      "each piece is hand block printed and never mass-produced.",
+  );
+});
+
+test("composeStorySections leaves a section blank when nothing answers it", () => {
+  const sections = composeStorySections({});
+  assert.equal(sections.shortDescription, "");
+  assert.equal(sections.whyLove, "");
+  assert.equal(sections.craftStory, "");
+  assert.equal(sections.stylingSuggestions, "");
+  assert.equal(sections.customerNotes, "");
 });

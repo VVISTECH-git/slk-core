@@ -32,7 +32,9 @@ export {
 export { colourSwatch, isPaleSwatch } from "./colour";
 
 export {
+  composeStorySections,
   listingAlt,
+  listingBody,
   listingDescription,
   listingMetafields,
   listingTags,
@@ -45,12 +47,17 @@ export {
   SLK_METAFIELD_NAMESPACE,
   type ListingTitleStyle,
   WITH_BLOUSE_TAG,
+  type GeneratedStorySections,
   type ListingAltParts,
+  type ListingBodyParts,
+  type ListingCareParts,
   type ListingDescriptionParts,
   type ListingMetafield,
   type ListingMetafieldParts,
   type ListingTagParts,
   type ListingTitleParts,
+  type StoryAnswers,
+  type StoryCraftParts,
 } from "./listing";
 
 export {

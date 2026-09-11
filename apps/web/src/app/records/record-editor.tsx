@@ -3822,13 +3822,15 @@ function Consignments({
             <ChannelsPanel
               batchId={c.id}
               channels={c.channels}
-              onPublished={(code) =>
+              onPublished={(code, status) =>
                 setSaved((prev) => ({
                   ...prev,
                   [c.id]: {
                     ...prev[c.id],
                     channels: c.channels.map((ch) =>
-                      ch.code === code ? { ...ch, shopifyProductId: ch.shopifyProductId ?? "pending" } : ch,
+                      ch.code === code
+                        ? { ...ch, shopifyProductId: ch.shopifyProductId ?? "pending", shopifyStatus: status }
+                        : ch,
                     ),
                   },
                 }))
@@ -3969,12 +3971,12 @@ function PublishTab({
                   <ChannelsPanel
                     batchId={c.id}
                     channels={channels}
-                    onPublished={(code) =>
+                    onPublished={(code, status) =>
                       setChannelsByBatch((prev) => ({
                         ...prev,
                         [c.id]: channels.map((ch) =>
                           ch.code === code
-                            ? { ...ch, shopifyProductId: ch.shopifyProductId ?? "pending" }
+                            ? { ...ch, shopifyProductId: ch.shopifyProductId ?? "pending", shopifyStatus: status }
                             : ch,
                         ),
                       }))
@@ -4246,19 +4248,24 @@ function ChannelsPanel({
 }: {
   batchId: string;
   channels: RecordDetail["consignments"][number]["channels"];
-  onPublished: (channelCode: string) => void;
+  /** `status` is what was just requested, so the caller can patch its own copy without waiting on a refetch. */
+  onPublished: (channelCode: string, status: "draft" | "active") => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [busyCode, setBusyCode] = useState<string | null>(null);
   const [result, setResult] = useState<{ code: string; outcome: ActionResult } | null>(null);
 
-  const run = (code: string, action: (batchId: string, code: string) => Promise<ActionResult>) => {
+  const run = (
+    code: string,
+    status: "draft" | "active",
+    action: (batchId: string, code: string) => Promise<ActionResult>,
+  ) => {
     setBusyCode(code);
     startTransition(async () => {
       const outcome = await action(batchId, code);
       setResult({ code, outcome });
       setBusyCode(null);
-      if (outcome.ok) onPublished(code);
+      if (outcome.ok) onPublished(code, status);
     });
   };
 
@@ -4290,7 +4297,7 @@ function ChannelsPanel({
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => run(ch.code, createShopifyDraft)}
+                    onClick={() => run(ch.code, "draft", createShopifyDraft)}
                     className="rounded-md border border-rule-2 px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {busy ? "Working…" : "Create Draft"}
@@ -4299,7 +4306,7 @@ function ChannelsPanel({
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => run(ch.code, publishBatchToChannel)}
+                  onClick={() => run(ch.code, "active", publishBatchToChannel)}
                   className="rounded-md border border-rule-2 px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {busy ? "Working…" : isDraft ? "Publish" : linked ? "Republish" : "Publish"}

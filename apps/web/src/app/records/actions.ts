@@ -326,7 +326,7 @@ export async function resolveUom(
     `);
     if (isMatchedSet !== undefined) {
       const [pieceUom] = await db.execute<{ id: string }>(sql`
-        select id from lookup_value lv join lookup_list ll on ll.id = lv.list_id
+        select lv.id from lookup_value lv join lookup_list ll on ll.id = lv.list_id
         where ll.code = 'uom' and lv.code = 'piece'
       `);
       return pieceUom?.id ?? productType.soldById;

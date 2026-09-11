@@ -410,13 +410,20 @@ export function RecordEditor({
   const hasSubTypes = !isHome && subTypes.length > 0;
 
   /**
-   * The Garment tab is for garments, and a saree is not one.
+   * The Garment tab is for the Garments industry — compared by label, the
+   * same way isHome above decides Home & Lifestyle, since industry has no
+   * per-value code check anywhere else in this form to be consistent with.
    *
-   * Having a sub type used to be the same thing as being a garment, because
-   * only garment kinds were parented. Now a saree has sub types too, and
-   * choosing All Over must not start asking for a collar and a sleeve length.
+   * Having a Product Sub Type used to be treated as the same thing as being
+   * a garment, because only garment kinds were parented to one. Two things
+   * broke that: a saree gained sub types of its own, and Garments (0050)
+   * became its own industry with its own Product Type list, parenting
+   * nothing to Product Sub Type at all — "what cut of it" is still Saree
+   * and Fabric's question alone, per 0050's own comment. Sub types were
+   * always a proxy for "is this a garment", and a proxy that had stopped
+   * matching what it stood in for is worse than asking the real question.
    */
-  const isGarment = hasSubTypes && !isSaree && Boolean(attributes.garmentType);
+  const isGarment = industry === "Garments";
 
   /**
    * Which shape of dimension/construction fields this product type wants —

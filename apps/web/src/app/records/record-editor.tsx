@@ -436,9 +436,15 @@ export function RecordEditor({
   )?.code;
 
   const isFabric = !isHome && productTypeCode === "fabric";
-  const isDupattaLike =
-    !isHome &&
-    ["dupatta", "scarves", "stolls", "bedsheets"].includes(productTypeCode ?? "");
+  /**
+   * Dupatta only, now — Bedsheets and Scarves/Stolls grew fields of their
+   * own (bed size and pillow facts; fringe and styling) that a dupatta does
+   * not have, so each gets its own flag and its own section. Dupatta still
+   * gets the plain Length/Width it always had; nothing else distinguishes it.
+   */
+  const isDupattaLike = !isHome && productTypeCode === "dupatta";
+  const isBedsheet = !isHome && productTypeCode === "bedsheets";
+  const isScarfLike = !isHome && ["scarves", "stolls"].includes(productTypeCode ?? "");
 
   const chosenSubType = subTypes.find((o) => o.id === attributes.garmentType);
   const isFabricSet = isFabric && chosenSubType?.pieces != null;
@@ -1240,6 +1246,28 @@ export function RecordEditor({
                     of the cloth were the hardest three to read together. Each
                     section now holds one part, and the eye stops travelling.
                   */}
+                  {/*
+                    Confirmed as the one product type with no dimension
+                    fields at all before this — the 11 Sep investigation.
+                    Pallu Length sits here rather than Border, since the
+                    pallu is asked about above; Fall & Pico is a finishing
+                    fact about the whole piece, not the border specifically.
+                  */}
+                  <Section title="Dimensions">
+                    <NumberField label="Saree Length" unit="cm"
+                      value={extra.sareeLengthCm ?? null}
+                      onChange={(v) => setExtra((prev) => ({ ...prev, sareeLengthCm: v }))} />
+                    <NumberField label="Saree Width" unit="cm"
+                      value={extra.sareeWidthCm ?? null}
+                      onChange={(v) => setExtra((prev) => ({ ...prev, sareeWidthCm: v }))} />
+                    <NumberField label="Pallu Length" unit="cm"
+                      value={extra.palluLengthCm ?? null}
+                      onChange={(v) => setExtra((prev) => ({ ...prev, palluLengthCm: v }))} />
+                    <BoolField label="Fall & Pico Done"
+                      value={extra.fallPicoDone ?? false}
+                      onChange={(v) => setExtra((prev) => ({ ...prev, fallPicoDone: v }))} />
+                  </Section>
+
                   <Section title="Saree & Pallu">
                     <Combo label="Saree Style" list="saree_style"
                       options={options} value={attributes.sareeStyle ?? null}
@@ -1262,6 +1290,9 @@ export function RecordEditor({
                     <Combo label="Border Motif" list="motif"
                       options={options} value={attributes.borderMotif ?? null}
                       onPick={(v) => set("borderMotif", v)} />
+                    <NumberField label="Border Width" unit="cm"
+                      value={extra.borderWidthCm ?? null}
+                      onChange={(v) => setExtra((prev) => ({ ...prev, borderWidthCm: v }))} />
                   </Section>
 
                   {withBlouse && (
@@ -1281,17 +1312,20 @@ export function RecordEditor({
                       <Combo label="Blouse Motif" list="motif"
                         options={options} value={attributes.blouseMotif ?? null}
                         onPick={(v) => set("blouseMotif", v)} />
+                      <NumberField label="Blouse Length" unit="cm"
+                        value={extra.blouseLengthCm ?? null}
+                        onChange={(v) => setExtra((prev) => ({ ...prev, blouseLengthCm: v }))} />
                     </Section>
                   )}
                 </>
               )}
 
               {/*
-                Dupatta, Scarves, Stolls, Bedsheets — one finished piece, a
-                length and a width. Confirmed against real itokri listings
-                for each of these before this was written: the same two
-                numbers, nothing craft-specific, regardless of which of the
-                four it is.
+                Dupatta — one finished piece, a length and a width, and
+                nothing else distinguishes it. Confirmed against real itokri
+                listings before this was written. Bedsheets and Scarves/
+                Stolls used to share this section; each grew fields of its
+                own and got a section of its own below.
               */}
               {isDupattaLike && (
                 <Section title="Dimensions">
@@ -1301,6 +1335,65 @@ export function RecordEditor({
                   <NumberField label="Width" unit="cm"
                     value={extra.widthCm ?? null}
                     onChange={(v) => setExtra((prev) => ({ ...prev, widthCm: v }))} />
+                </Section>
+              )}
+
+              {/*
+                Bedsheet — still one finished piece with a length and width,
+                plus the facts a real itokri bedsheet listing actually
+                carries: which bed size it is cut for, how many pillow
+                covers come with it and their own dimensions, and the
+                thread count the cotton is woven to.
+              */}
+              {isBedsheet && (
+                <Section title="Dimensions">
+                  <NumberField label="Length" unit="cm"
+                    value={extra.lengthCm ?? null}
+                    onChange={(v) => setExtra((prev) => ({ ...prev, lengthCm: v }))} />
+                  <NumberField label="Width" unit="cm"
+                    value={extra.widthCm ?? null}
+                    onChange={(v) => setExtra((prev) => ({ ...prev, widthCm: v }))} />
+                  <Combo label="Bed Size" list="bed_size"
+                    options={options} value={attributes.bedSize ?? null}
+                    onPick={(v) => set("bedSize", v)} />
+                  <NumberField label="Thread Count"
+                    value={extra.threadCount ?? null}
+                    onChange={(v) => setExtra((prev) => ({ ...prev, threadCount: v }))} />
+                  <NumberField label="Pillow Covers Included"
+                    value={extra.pillowCoverCount ?? null}
+                    onChange={(v) => setExtra((prev) => ({ ...prev, pillowCoverCount: v }))} />
+                  <NumberField label="Pillow Length" unit="cm"
+                    value={extra.pillowLengthCm ?? null}
+                    onChange={(v) => setExtra((prev) => ({ ...prev, pillowLengthCm: v }))} />
+                  <NumberField label="Pillow Width" unit="cm"
+                    value={extra.pillowWidthCm ?? null}
+                    onChange={(v) => setExtra((prev) => ({ ...prev, pillowWidthCm: v }))} />
+                </Section>
+              )}
+
+              {/*
+                Scarves and Stolls — the same length/width every finished
+                piece gets, plus how the ends are finished (fringe) and what
+                it is styled as (a scarf worn as a scarf reads differently
+                from one sold as a headscarf or a wrap).
+              */}
+              {isScarfLike && (
+                <Section title="Dimensions">
+                  <NumberField label="Length" unit="cm"
+                    value={extra.lengthCm ?? null}
+                    onChange={(v) => setExtra((prev) => ({ ...prev, lengthCm: v }))} />
+                  <NumberField label="Width" unit="cm"
+                    value={extra.widthCm ?? null}
+                    onChange={(v) => setExtra((prev) => ({ ...prev, widthCm: v }))} />
+                  <Combo label="Fringe Type" list="fringe_type"
+                    options={options} value={attributes.fringeType ?? null}
+                    onPick={(v) => set("fringeType", v)} />
+                  <NumberField label="Fringe Length" unit="cm"
+                    value={extra.fringeLengthCm ?? null}
+                    onChange={(v) => setExtra((prev) => ({ ...prev, fringeLengthCm: v }))} />
+                  <Combo label="Styling Type" list="styling_type"
+                    options={options} value={attributes.stylingType ?? null}
+                    onPick={(v) => set("stylingType", v)} />
                 </Section>
               )}
 
@@ -1374,6 +1467,45 @@ export function RecordEditor({
               )}
 
               {/*
+                Outside every category flag, the same as Descriptor below —
+                a box, a folded stack, a round object, anything none of the
+                shapes above already asks a length/width pair for. Every
+                product type may use these; nothing enforces which do.
+              */}
+              <Section title="Measurements">
+                <NumberField label="Height" unit="cm"
+                  value={extra.heightCm ?? null}
+                  onChange={(v) => setExtra((prev) => ({ ...prev, heightCm: v }))} />
+                <NumberField label="Thickness" unit="mm"
+                  value={extra.thicknessMm ?? null}
+                  onChange={(v) => setExtra((prev) => ({ ...prev, thicknessMm: v }))} />
+                <NumberField label="Diameter" unit="cm"
+                  value={extra.diameterCm ?? null}
+                  onChange={(v) => setExtra((prev) => ({ ...prev, diameterCm: v }))} />
+                <label className="block">
+                  <span className="mb-1 block text-[12.5px] text-ink-2">
+                    Entered In
+                    <span className="ml-1 text-muted">— display only, stored as cm/mm</span>
+                  </span>
+                  <select
+                    value={extra.measurementUnit ?? ""}
+                    onChange={(e) =>
+                      setExtra((prev) => ({
+                        ...prev,
+                        measurementUnit: e.target.value === "" ? null : (e.target.value as "cm" | "in" | "m"),
+                      }))
+                    }
+                    className="w-full rounded-md border border-rule-2 bg-surface px-3 py-2 text-[14px] text-ink"
+                  >
+                    <option value="">Choose…</option>
+                    <option value="cm">Centimetres</option>
+                    <option value="in">Inches</option>
+                    <option value="m">Metres</option>
+                  </select>
+                </label>
+              </Section>
+
+              {/*
                 Outside all of them, because the adjectives describe the
                 whole piece rather than any part of it, they are what the
                 product name is built from, and a dupatta has them too.
@@ -1387,12 +1519,29 @@ export function RecordEditor({
           )}
 
           {activeTab === "garment" && (
-            <Note>
-              The Garments sheet defines eleven more columns — Size, Colors, Sleeve
-              Length and the rest — but every one of them arrived empty in the
-              workbook. Give them values on Master Lists and they appear
-              here as dropdowns, with no change to this screen.
-            </Note>
+            <Section title="Garment Details">
+              <Combo label="Age Group" list="age_group"
+                options={options} value={attributes.ageGroup ?? null}
+                onPick={(v) => set("ageGroup", v)} />
+              <NumberField label="Chest" unit="cm"
+                value={extra.chestCm ?? null}
+                onChange={(v) => setExtra((prev) => ({ ...prev, chestCm: v }))} />
+              <NumberField label="Garment Length" unit="cm"
+                value={extra.garmentLengthCm ?? null}
+                onChange={(v) => setExtra((prev) => ({ ...prev, garmentLengthCm: v }))} />
+              <NumberField label="Sleeve Length" unit="cm"
+                value={extra.sleeveLengthCm ?? null}
+                onChange={(v) => setExtra((prev) => ({ ...prev, sleeveLengthCm: v }))} />
+              <Combo label="Sleeve Type" list="sleeve_type"
+                options={options} value={attributes.sleeveType ?? null}
+                onPick={(v) => set("sleeveType", v)} />
+              <Combo label="Closure Type" list="closure_type"
+                options={options} value={attributes.closureType ?? null}
+                onPick={(v) => set("closureType", v)} />
+              <Combo label="Fit Type" list="fit_type"
+                options={options} value={attributes.fitType ?? null}
+                onPick={(v) => set("fitType", v)} />
+            </Section>
           )}
 
           {activeTab === "prices" && (

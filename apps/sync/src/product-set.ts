@@ -324,9 +324,14 @@ export async function sendProductSet(
     channels a product *could* appear on, and status is what actually gates
     storefront visibility within that scope. A DRAFT product published to
     Online Store should still 404 there until its status becomes ACTIVE —
-    Shopify's documented behaviour, confirmed live on this store's own
-    theme the same way ACTIVE-without-publish was confirmed above, the
-    first time DRAFT was actually sent.
+    Shopify's documented behaviour for this mutation. Not re-confirmed
+    against this store's own live theme the way ACTIVE-without-publish was
+    above: the agent session that wrote this could reach the Admin API (the
+    live test below used it — gid://shopify/Product/16001845657969 on the
+    slk channel, real product, status DRAFT) but could not read the store's
+    own domain to load the storefront URL, since it is masked as a secret
+    by this environment's own guardrails. Worth a human spot-check before
+    trusting this in a channel that matters.
   */
   const { publications } = await client.graphql<{
     publications: { nodes: { id: string; name: string }[] };

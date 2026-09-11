@@ -1,6 +1,7 @@
 import {
   listingAlt,
   listingDescription,
+  listingMetafields,
   listingTags,
   listingTitle,
   shopifyPriceForMetreMinor,
@@ -138,6 +139,19 @@ export async function sendProductSet(
     blouseMaterial: row.blouse_material,
   });
 
+  // The same dimension/construction facts again, structured this time —
+  // see listingMetafields' own comment for why these travel separately from
+  // the prose description rather than being parsed back out of it.
+  const metafields = listingMetafields({
+    lengthCm: row.extra?.lengthCm ?? null,
+    widthCm: row.extra?.widthCm ?? null,
+    gsm: row.extra?.gsm ?? null,
+    yarnCount: row.extra?.yarnCount ?? null,
+    shrinkage: row.extra?.shrinkage ?? null,
+    transparency: row.extra?.transparency ?? null,
+    pieces: row.extra?.pieces ?? null,
+  });
+
   const { locations } = await client.graphql<{ locations: { nodes: { id: string }[] } }>(
     `query { locations(first: 1) { nodes { id } } }`,
   );
@@ -208,6 +222,10 @@ export async function sendProductSet(
         productionMethod: row.production_method,
         blouseAvailable: row.blouse_available,
       }),
+      // Structured, not prose — see listingMetafields. Omitted entirely
+      // when a design carries none of design.extra, same reasoning as
+      // `category` above: nothing to say beats an empty array of facts.
+      ...(metafields.length > 0 && { metafields }),
       productOptions: [{ name: "Title", values: [{ name: "Default Title" }] }],
       variants: [
         {

@@ -266,6 +266,68 @@ export function listingDescription(parts: ListingDescriptionParts): string {
   return sentences.join(" ");
 }
 
+export interface ListingMetafield {
+  namespace: string;
+  key: string;
+  type: string;
+  value: string;
+}
+
+export interface ListingMetafieldParts {
+  lengthCm?: number | null;
+  widthCm?: number | null;
+  gsm?: number | null;
+  yarnCount?: string | null;
+  shrinkage?: string | null;
+  transparency?: string | null;
+  pieces?: { label: string; lengthCm: number | null; widthCm: number | null }[] | null;
+}
+
+/** The namespace every metafield this codebase writes lives under. */
+export const SLK_METAFIELD_NAMESPACE = "slk";
+
+/**
+ * The dimension/construction facts as Shopify metafields, structured rather
+ * than folded into one prose paragraph — so the theme can put "214 cm" in
+ * its own Specifications row instead of asking a shopper to find it in a
+ * sentence. `listingDescription` already says these facts in words; this is
+ * the same facts again, in the one shape a theme can read without parsing
+ * text: `product.metafields.slk.length_cm` and so on.
+ *
+ * Not sent as tags — see listingTags' own comment on why: a tag is a filter
+ * option, and no shopper filters a collection by "214 cm" specifically. A
+ * metafield carries the same fact without cluttering the filter sidebar.
+ */
+export function listingMetafields(parts: ListingMetafieldParts): ListingMetafield[] {
+  const out: ListingMetafield[] = [];
+  const num = (key: string, value: number | null | undefined) => {
+    if (value != null) out.push({ namespace: SLK_METAFIELD_NAMESPACE, key, type: "number_decimal", value: String(value) });
+  };
+  const text = (key: string, value: string | null | undefined) => {
+    const v = present(value);
+    if (v !== null) out.push({ namespace: SLK_METAFIELD_NAMESPACE, key, type: "single_line_text_field", value: v });
+  };
+
+  num("length_cm", parts.lengthCm);
+  num("width_cm", parts.widthCm);
+  num("gsm", parts.gsm);
+  text("yarn_count", parts.yarnCount);
+  text("shrinkage", parts.shrinkage);
+  text("transparency", parts.transparency);
+
+  const pieces = (parts.pieces ?? []).filter((p) => present(p.label) !== null);
+  if (pieces.length > 0) {
+    out.push({
+      namespace: SLK_METAFIELD_NAMESPACE,
+      key: "pieces",
+      type: "json",
+      value: JSON.stringify(pieces.map((p) => ({ label: p.label.trim(), lengthCm: p.lengthCm, widthCm: p.widthCm }))),
+    });
+  }
+
+  return out;
+}
+
 export interface ListingTagParts {
   colour?: string | null;
   fibreType?: string | null;

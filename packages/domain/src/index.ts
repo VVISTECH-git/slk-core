@@ -34,6 +34,7 @@ export { colourSwatch, isPaleSwatch } from "./colour";
 export {
   listingAlt,
   listingDescription,
+  listingMetafields,
   listingTags,
   listingTitle,
   styledTitle,
@@ -41,10 +42,13 @@ export {
   vendorFor,
   AARTISANZ_TITLE_STYLE,
   DEFAULT_TITLE_STYLE,
+  SLK_METAFIELD_NAMESPACE,
   type ListingTitleStyle,
   WITH_BLOUSE_TAG,
   type ListingAltParts,
   type ListingDescriptionParts,
+  type ListingMetafield,
+  type ListingMetafieldParts,
   type ListingTagParts,
   type ListingTitleParts,
 } from "./listing";

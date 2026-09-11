@@ -5,6 +5,7 @@ import {
   AARTISANZ_TITLE_STYLE,
   listingAlt,
   listingDescription,
+  listingMetafields,
   listingTags,
   listingTitle,
   styledTitle,
@@ -204,6 +205,49 @@ test("listingDescription describes a matched set piece by piece", () => {
   );
   // A slot nobody filled in (no label) does not count as a piece.
   assert.equal(listingDescription({ pieces: [{ label: "", lengthCm: null, widthCm: null }] }), "");
+});
+
+test("listingMetafields writes one structured fact per field it has", () => {
+  assert.deepEqual(
+    listingMetafields({ lengthCm: 214, widthCm: 60 }),
+    [
+      { namespace: "slk", key: "length_cm", type: "number_decimal", value: "214" },
+      { namespace: "slk", key: "width_cm", type: "number_decimal", value: "60" },
+    ],
+  );
+  assert.deepEqual(
+    listingMetafields({ gsm: 140, yarnCount: "20 Single x 20 Single", shrinkage: "1-2%", transparency: "0%" }),
+    [
+      { namespace: "slk", key: "gsm", type: "number_decimal", value: "140" },
+      { namespace: "slk", key: "yarn_count", type: "single_line_text_field", value: "20 Single x 20 Single" },
+      { namespace: "slk", key: "shrinkage", type: "single_line_text_field", value: "1-2%" },
+      { namespace: "slk", key: "transparency", type: "single_line_text_field", value: "0%" },
+    ],
+  );
+  assert.deepEqual(listingMetafields({}), []);
+});
+
+test("listingMetafields writes the matched set as one JSON metafield, dropping unlabelled slots", () => {
+  assert.deepEqual(
+    listingMetafields({
+      pieces: [
+        { label: "Top", lengthCm: 250, widthCm: 117 },
+        { label: "", lengthCm: null, widthCm: null },
+        { label: "Bottom", lengthCm: 200, widthCm: 117 },
+      ],
+    }),
+    [
+      {
+        namespace: "slk",
+        key: "pieces",
+        type: "json",
+        value: JSON.stringify([
+          { label: "Top", lengthCm: 250, widthCm: 117 },
+          { label: "Bottom", lengthCm: 200, widthCm: 117 },
+        ]),
+      },
+    ],
+  );
 });
 
 test("listingAlt leads with the colour and trails with the slot", () => {

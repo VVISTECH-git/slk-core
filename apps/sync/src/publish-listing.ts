@@ -64,6 +64,7 @@ export async function pushListingForColourway(
       cbs.sellable,
       d.name                 as design_name,
       product_type.label     as product_type,
+      d.extra,
       b.title                 as title_override,
       b.description           as description_override,
       b.weight_grams,

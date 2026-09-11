@@ -45,6 +45,22 @@ export type ConsignmentRow = {
   weight_grams: number | null;
   hsn_code: string | null;
   /**
+   * The dimension/construction facts `design.extra` carries — see its own
+   * comment on the schema for what each field means and which product type
+   * uses it. Read straight off `d.extra`'s jsonb, same shape the editor and
+   * bulk import already write; description_override still wins over this,
+   * same as every other fact it can already override.
+   */
+  extra: {
+    lengthCm?: number | null;
+    widthCm?: number | null;
+    gsm?: number | null;
+    yarnCount?: string | null;
+    shrinkage?: string | null;
+    transparency?: string | null;
+    pieces?: { label: string; lengthCm: number | null; widthCm: number | null }[] | null;
+  } | null;
+  /**
    * True when `sellable` (below, passed separately) is a count of
    * half-metre units rather than pieces — channel_batch_sellable's own
    * `sold_by_metre` column, read straight through rather than re-derived
@@ -103,6 +119,13 @@ export async function sendProductSet(
     textileMaterial: row.textile_material,
     fibreType: row.fibre_type,
     weaveStructure: row.weave_structure,
+    lengthCm: row.extra?.lengthCm ?? null,
+    widthCm: row.extra?.widthCm ?? null,
+    gsm: row.extra?.gsm ?? null,
+    yarnCount: row.extra?.yarnCount ?? null,
+    shrinkage: row.extra?.shrinkage ?? null,
+    transparency: row.extra?.transparency ?? null,
+    pieces: row.extra?.pieces ?? null,
     motif: row.motif,
     motifCategory: row.motif_category,
     sareeStyle: row.saree_style,

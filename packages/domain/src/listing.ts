@@ -120,6 +120,20 @@ export interface ListingDescriptionParts {
   fibreType?: string | null;
   /** Plain Weave, Jacquard. */
   weaveStructure?: string | null;
+  /** Finished length, in centimetres — a dupatta, a stole, a bedsheet. */
+  lengthCm?: number | null;
+  /** Width, in centimetres — a finished piece, or a bolt of plain Fabric. */
+  widthCm?: number | null;
+  /** Grams per square metre — Fabric only. */
+  gsm?: number | null;
+  /** Free text: "20 Single x 20 Single" — Fabric only. */
+  yarnCount?: string | null;
+  /** Free text: itokri shows these as ranges ("1-2%") — Fabric only. */
+  shrinkage?: string | null;
+  /** Free text, same reasoning as shrinkage. */
+  transparency?: string | null;
+  /** A matched Fabric set's named components, each with its own length and width. */
+  pieces?: { label: string; lengthCm: number | null; widthCm: number | null }[] | null;
   motif?: string | null;
   motifCategory?: string | null;
   /** How the design sits on the cloth — All Over, Scattered Buta, Half and Half. */
@@ -168,6 +182,47 @@ export function listingDescription(parts: ListingDescriptionParts): string {
 
   const weave = present(parts.weaveStructure);
   if (weave) sentences.push(`${weave} structure.`);
+
+  // Dimensions read as one sentence when both are known — "214 × 60 cm."
+  // rather than two half-facts — and fall back to whichever one is not.
+  if (parts.lengthCm != null && parts.widthCm != null) {
+    sentences.push(`${parts.lengthCm} × ${parts.widthCm} cm.`);
+  } else if (parts.lengthCm != null) {
+    sentences.push(`${parts.lengthCm} cm long.`);
+  } else if (parts.widthCm != null) {
+    sentences.push(`${parts.widthCm} cm wide.`);
+  }
+
+  if (parts.gsm != null) sentences.push(`${parts.gsm} GSM.`);
+
+  const yarnCount = present(parts.yarnCount);
+  if (yarnCount) sentences.push(`Yarn count ${yarnCount}.`);
+
+  const shrinkage = present(parts.shrinkage);
+  if (shrinkage) sentences.push(`Shrinkage ${shrinkage}.`);
+
+  const transparency = present(parts.transparency);
+  if (transparency) sentences.push(`Transparency ${transparency}.`);
+
+  // A matched set is described piece by piece instead of by one pair of
+  // numbers for the whole thing — see DesignExtraPiece's own comment for why.
+  const pieces = (parts.pieces ?? []).filter((p) => present(p.label) !== null);
+  if (pieces.length > 0) {
+    const listed = pieces
+      .map((p) => {
+        const dims =
+          p.lengthCm != null && p.widthCm != null
+            ? ` ${p.lengthCm} × ${p.widthCm} cm`
+            : p.lengthCm != null
+              ? ` ${p.lengthCm} cm`
+              : p.widthCm != null
+                ? ` ${p.widthCm} cm`
+                : "";
+        return `${p.label.trim()}${dims}`;
+      })
+      .join(", ");
+    sentences.push(`${pieces.length}-piece set: ${listed}.`);
+  }
 
   const sareeStyle = present(parts.sareeStyle);
   if (sareeStyle) sentences.push(`${sareeStyle} layout.`);

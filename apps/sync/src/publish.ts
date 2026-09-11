@@ -71,6 +71,15 @@ async function main(): Promise<void> {
     design_name: string;
     product_type: string | null;
     is_serialised: boolean;
+    extra: {
+      lengthCm?: number | null;
+      widthCm?: number | null;
+      gsm?: number | null;
+      yarnCount?: string | null;
+      shrinkage?: string | null;
+      transparency?: string | null;
+      pieces?: { label: string; lengthCm: number | null; widthCm: number | null }[] | null;
+    } | null;
     sold_by_metre: boolean;
     sellable: number | null;
     retail_minor: number | null;
@@ -105,6 +114,7 @@ async function main(): Promise<void> {
       d.name              as design_name,
       product_type.label  as product_type,
       d.is_serialised,
+      d.extra,
       cbs.sold_by_metre,
       cbs.sellable,
       bp.retail_minor,

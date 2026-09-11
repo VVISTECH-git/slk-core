@@ -165,6 +165,47 @@ test("listingDescription states machine production instead of claiming handmade"
   );
 });
 
+test("listingDescription writes one dimension sentence when both are known, otherwise falls back to the one it has", () => {
+  assert.equal(
+    listingDescription({ craftTechnique: "Bandhani", lengthCm: 214, widthCm: 60 }),
+    "Bandhani work. 214 × 60 cm.",
+  );
+  assert.equal(listingDescription({ lengthCm: 214 }), "214 cm long.");
+  assert.equal(listingDescription({ widthCm: 60 }), "60 cm wide.");
+});
+
+test("listingDescription writes a sentence per Fabric construction fact it has", () => {
+  assert.equal(
+    listingDescription({
+      widthCm: 112,
+      gsm: 140,
+      yarnCount: "20 Single x 20 Single",
+      shrinkage: "1-2%",
+      transparency: "0%",
+    }),
+    "112 cm wide. 140 GSM. Yarn count 20 Single x 20 Single. Shrinkage 1-2%. Transparency 0%.",
+  );
+});
+
+test("listingDescription describes a matched set piece by piece", () => {
+  assert.equal(
+    listingDescription({
+      pieces: [
+        { label: "Top", lengthCm: 250, widthCm: 117 },
+        { label: "Bottom", lengthCm: 200, widthCm: 117 },
+      ],
+    }),
+    "2-piece set: Top 250 × 117 cm, Bottom 200 × 117 cm.",
+  );
+  // A piece missing one dimension still lists by whichever it has.
+  assert.equal(
+    listingDescription({ pieces: [{ label: "Dupatta", lengthCm: 230, widthCm: null }] }),
+    "1-piece set: Dupatta 230 cm.",
+  );
+  // A slot nobody filled in (no label) does not count as a piece.
+  assert.equal(listingDescription({ pieces: [{ label: "", lengthCm: null, widthCm: null }] }), "");
+});
+
 test("listingAlt leads with the colour and trails with the slot", () => {
   assert.equal(
     listingAlt({ colour: "Teal", designName: "Kalamkari Cotton Saree", slot: "Pallu" }),

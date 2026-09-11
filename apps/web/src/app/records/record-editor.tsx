@@ -57,6 +57,7 @@ type TabKey =
   | "craft"
   | "blouse"
   | "garment"
+  | "care"
   | "prices"
   | "images"
   | "stock"
@@ -226,6 +227,27 @@ export function RecordEditor({
    * `attributes` or a Combo could represent.
    */
   const [extra, setExtra] = useState<DesignExtra>(seed?.extra ?? {});
+  /**
+   * Wash and storage facts — per colourway, not per design, the same as
+   * Sales Story: a hand-dyed colour can bleed where an undyed one does not,
+   * so care is not a fact every colour of a design shares.
+   *
+   * Seeded from `record`, not `seed` — a new colour of an existing design
+   * starts its Care tab blank rather than inheriting the template colour's,
+   * matching the confirmed "per colourway" scope Story shares with it.
+   */
+  const [care, setCare] = useState(() => ({
+    washMethodId: record?.care?.washMethodId ?? null,
+    waterTempId: record?.care?.waterTempId ?? null,
+    detergentId: record?.care?.detergentId ?? null,
+    dryingId: record?.care?.dryingId ?? null,
+    ironingId: record?.care?.ironingId ?? null,
+    dryCleanRequired: record?.care?.dryCleanRequired ?? false,
+    colourBleedWarning: record?.care?.colourBleedWarning ?? false,
+    shrinkageWarning: record?.care?.shrinkageWarning ?? false,
+    storageNote: record?.care?.storageNote ?? "",
+    specialNotes: record?.care?.specialNotes ?? "",
+  }));
 
   /*
     Client-only draft autosave.
@@ -282,6 +304,7 @@ export function RecordEditor({
         if (typeof snap["sourceUrl"] === "string") setSourceUrl(snap["sourceUrl"]);
         if (typeof snap["sourceSku"] === "string") setSourceSku(snap["sourceSku"]);
         if (snap["extra"]) setExtra(snap["extra"] as DesignExtra);
+        if (snap["care"]) setCare(snap["care"] as typeof care);
       }
     } catch {
       // Nothing to apply if the snapshot does not parse.
@@ -328,6 +351,7 @@ export function RecordEditor({
             sourceUrl,
             sourceSku,
             extra,
+            care,
           }),
         );
       } catch {
@@ -357,6 +381,7 @@ export function RecordEditor({
     sourceUrl,
     sourceSku,
     extra,
+    care,
   ]);
 
   const [tab, setTab] = useState<TabKey>(initialTab);
@@ -529,6 +554,10 @@ export function RecordEditor({
     // product. What is saree-only is the saree half of the tab, not the tab.
     list.push({ key: "blouse", label: "Additional Product Details" });
     if (isGarment) list.push({ key: "garment", label: "Garment" });
+    // Always offered, the same as Additional Product Details — every
+    // finished product has wash instructions worth stating, not just the
+    // ones with a category-specific tab of their own.
+    list.push({ key: "care", label: "Care" });
     list.push({ key: "prices", label: "Prices" });
     // Which photographs the product needs can be decided while creating it —
     // the rows are written once the colourway exists.
@@ -796,6 +825,7 @@ export function RecordEditor({
       sourceUrl,
       sourceSku,
       extra,
+      care,
     };
 
     startTransition(async () => {
@@ -1549,6 +1579,56 @@ export function RecordEditor({
                 options={options} value={attributes.fitType ?? null}
                 onPick={(v) => set("fitType", v)} />
             </Section>
+          )}
+
+          {/*
+            Care — per colourway, not per design (see the `care` state's own
+            comment). Existing `notes` stays the internal free-text field it
+            always was; `specialNotes` here is the new customer-facing one,
+            same distinction Sales Story draws between an internal record and
+            something meant to be read by a buyer.
+          */}
+          {activeTab === "care" && (
+            <>
+              <Section title="Washing">
+                <Combo label="Wash Method" list="wash_method"
+                  options={options} value={care.washMethodId}
+                  onPick={(v) => setCare((prev) => ({ ...prev, washMethodId: v }))} />
+                <Combo label="Water Temperature" list="water_temp"
+                  options={options} value={care.waterTempId}
+                  onPick={(v) => setCare((prev) => ({ ...prev, waterTempId: v }))} />
+                <Combo label="Detergent" list="detergent"
+                  options={options} value={care.detergentId}
+                  onPick={(v) => setCare((prev) => ({ ...prev, detergentId: v }))} />
+                <Combo label="Drying" list="drying"
+                  options={options} value={care.dryingId}
+                  onPick={(v) => setCare((prev) => ({ ...prev, dryingId: v }))} />
+                <Combo label="Ironing" list="ironing"
+                  options={options} value={care.ironingId}
+                  onPick={(v) => setCare((prev) => ({ ...prev, ironingId: v }))} />
+              </Section>
+
+              <Section title="Warnings">
+                <BoolField label="Dry Clean Required"
+                  value={care.dryCleanRequired}
+                  onChange={(v) => setCare((prev) => ({ ...prev, dryCleanRequired: v }))} />
+                <BoolField label="Colour Bleed Warning"
+                  value={care.colourBleedWarning}
+                  onChange={(v) => setCare((prev) => ({ ...prev, colourBleedWarning: v }))} />
+                <BoolField label="Shrinkage Warning"
+                  value={care.shrinkageWarning}
+                  onChange={(v) => setCare((prev) => ({ ...prev, shrinkageWarning: v }))} />
+              </Section>
+
+              <Section title="Notes" cols={1}>
+                <TextArea label="Storage Note" placeholder="e.g. Store away from direct sunlight"
+                  value={care.storageNote}
+                  onChange={(v) => setCare((prev) => ({ ...prev, storageNote: v }))} />
+                <TextArea label="Special Notes" placeholder="Anything else a customer should know before washing this"
+                  value={care.specialNotes}
+                  onChange={(v) => setCare((prev) => ({ ...prev, specialNotes: v }))} />
+              </Section>
+            </>
           )}
 
           {activeTab === "prices" && (

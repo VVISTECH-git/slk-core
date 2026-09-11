@@ -1626,16 +1626,22 @@ async function openConsignment(
     throw new Error("could not open a consignment");
   }
 
-  // Item codes only for designs tagged piece by piece. For everything else a
-  // quantity is the whole truth and minting rows to represent identical
-  // metres of cloth would be inventing distinctions that do not exist.
-  const [design] = await tx.execute<{ isSerialised: boolean }>(sql`
-    select d.is_serialised as "isSerialised"
-    from colourway cw join design d on d.id = cw.design_id
+  // Item codes only for a design tagged piece by piece. Serialised alone
+  // is not enough any more: a metre-tracked design is serialised too (it
+  // still gets one Shopify listing per batch), but it is not piece-tracked
+  // — batch_measured_qty reads the movement this function also writes, not
+  // a piece count, and minting one item code per half-metre unit would tag
+  // continuous cloth as though it were discrete objects, exactly the
+  // distinction resolveUom's uom override exists to avoid.
+  const [design] = await tx.execute<{ isSerialised: boolean; soldByMetre: boolean }>(sql`
+    select d.is_serialised as "isSerialised", uom.code = 'metre' as "soldByMetre"
+    from colourway cw
+    join design d on d.id = cw.design_id
+    left join lookup_value uom on uom.id = d.uom_id
     where cw.id = ${colourwayId}
   `);
 
-  if (design?.isSerialised !== true) {
+  if (design?.isSerialised !== true || design.soldByMetre) {
     return { id: batch.id, code: batch.code, items: [] };
   }
 

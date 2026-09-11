@@ -10,7 +10,8 @@
     "./stock": "./src/stock.ts",
     "./vocabulary": "./src/vocabulary.ts",
     "./money": "./src/money.ts",
-    "./listing": "./src/listing.ts"
+    "./listing": "./src/listing.ts",
+    "./readiness": "./src/readiness.ts"
   },
   "scripts": {
     "test": "node --experimental-strip-types --test \"src/**/*.test.ts\"",

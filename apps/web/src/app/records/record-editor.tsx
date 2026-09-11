@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import { colourSwatch, isPaleSwatch } from "@slk/domain/colour";
 import { composeStorySections, listingBody, listingDescription, listingTitle } from "@slk/domain/listing";
+import { assessReadiness, type ReadinessResult } from "@slk/domain/readiness";
 import { rupees } from "@slk/domain/money";
 import { titleCase } from "@slk/domain/naming";
 
@@ -599,6 +600,30 @@ export function RecordEditor({
     description: descriptionParts,
     care: careParts,
     customerNotes: story.customerNotes,
+  });
+
+  /**
+   * The rail's Readiness meter and Customer Questions checklist — one
+   * `assessReadiness` call, read twice, so the two cards can never disagree
+   * about what "ready" means. Photo count reads real, taken photographs
+   * (`record.images`), not merely-wanted slots — a new record has none yet,
+   * which is correct: nothing can be photographed before the colourway
+   * exists to attach the image to.
+   */
+  const readiness = assessReadiness({
+    hasIndustry: Boolean(attributes.industry),
+    hasProductType: Boolean(isHome ? attributes.homeProductType : attributes.productType),
+    hasFibreType: Boolean(attributes.fibreType),
+    hasColour: Boolean(colourId),
+    hasCraftTechnique: Boolean(attributes.craftTechnique),
+    hasRetailPrice: prices.retail.trim() !== "",
+    imageCount: record?.images.filter((i) => i.url !== null).length ?? 0,
+    hasShortDescription: story.shortDescription.trim() !== "",
+    hasWhyLove: story.whyLove.trim() !== "",
+    hasStylingSuggestions: story.stylingSuggestions.trim() !== "",
+    hasCareInstructions: care.washMethodId !== null,
+    isNew,
+    hasOpeningStock: openingStock.some((l) => Number(l.qty) > 0),
   });
 
   /**
@@ -1924,16 +1949,15 @@ export function RecordEditor({
 
         {/*
           The sticky rail. Hidden below `xl` — there is no room for a second
-          column at that width, and the readiness/checklist/preview it will
-          hold are a supplement to the form, not a replacement for seeing all
-          of it. Placeholder cards for now; Phases 8 and 11 fill them with
-          the readiness score, the customer-questions checklist and the live
-          preview, all reading the same in-progress state this component
-          already holds — nothing here needs its own data fetch.
+          column at that width, and the readiness/checklist/preview it holds
+          are a supplement to the form, not a replacement for seeing all of
+          it. Readiness and Customer Questions read the same `readiness`
+          value computed above, so the two cards never disagree; Preview
+          stays a placeholder for Phase 11.
         */}
         <aside className="hidden w-[300px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-rule bg-surface px-4 py-5 xl:flex">
-          <RailPlaceholder title="Readiness" />
-          <RailPlaceholder title="Customer questions" />
+          <RailReadiness readiness={readiness} onJump={(t) => setTab(t as TabKey)} />
+          <RailChecklist readiness={readiness} onJump={(t) => setTab(t as TabKey)} />
           <RailPlaceholder title="Preview" />
         </aside>
         </div>
@@ -2084,6 +2108,77 @@ function RailPlaceholder({ title }: { title: string }) {
         {title}
       </h4>
       <p className="text-[12px] text-faint">Coming soon.</p>
+    </div>
+  );
+}
+
+/** The rail's completeness meter — one number and a bar, read from the same `assessReadiness` result the checklist below it reads. */
+function RailReadiness({
+  readiness,
+  onJump,
+}: {
+  readiness: ReadinessResult;
+  onJump: (tab: string) => void;
+}) {
+  const firstMissing = readiness.missing[0];
+
+  return (
+    <div className="rounded-lg border border-rule bg-surface-2 p-3">
+      <div className="mb-1 flex items-baseline justify-between">
+        <h4 className="text-[11px] font-semibold tracking-wide text-muted uppercase">Readiness</h4>
+        <span className="text-[13px] font-semibold tabular-nums text-ink">{readiness.percent}%</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-rule-2">
+        <div
+          className={`h-full rounded-full ${readiness.percent === 100 ? "bg-ok" : "bg-brick"}`}
+          style={{ width: `${readiness.percent}%` }}
+        />
+      </div>
+      {firstMissing ? (
+        <button
+          type="button"
+          onClick={() => onJump(firstMissing.tab)}
+          className="mt-2 block text-left text-[12px] text-muted hover:text-brick hover:underline"
+        >
+          Next: {firstMissing.label}
+        </button>
+      ) : (
+        <p className="mt-2 text-[12px] text-ok">Ready to sell itself.</p>
+      )}
+    </div>
+  );
+}
+
+/** The rail's customer-questions checklist — every item `assessReadiness` scored, not just what's missing, so a floor user can see what already answers itself. */
+function RailChecklist({
+  readiness,
+  onJump,
+}: {
+  readiness: ReadinessResult;
+  onJump: (tab: string) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-rule bg-surface-2 p-3">
+      <h4 className="mb-2 text-[11px] font-semibold tracking-wide text-muted uppercase">Customer Questions</h4>
+      <ul className="flex flex-col gap-1.5">
+        {readiness.items.map((item) => (
+          <li key={item.key}>
+            <button
+              type="button"
+              onClick={() => onJump(item.tab)}
+              className="flex w-full items-start gap-2 text-left text-[12.5px] hover:text-brick"
+            >
+              <span
+                aria-hidden
+                className={`mt-0.5 inline-block size-3.5 shrink-0 rounded-full border ${
+                  item.done ? "border-ok bg-ok" : "border-rule-2"
+                }`}
+              />
+              <span className={item.done ? "text-muted line-through" : "text-ink-2"}>{item.label}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

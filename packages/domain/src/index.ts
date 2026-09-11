@@ -61,6 +61,13 @@ export {
 } from "./listing";
 
 export {
+  assessReadiness,
+  type ReadinessFacts,
+  type ReadinessItem,
+  type ReadinessResult,
+} from "./readiness";
+
+export {
   stockAt,
   type LocationPosition,
   FABRIC_UNIT_METRES,

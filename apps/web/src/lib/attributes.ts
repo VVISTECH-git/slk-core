@@ -225,6 +225,8 @@ export interface RecordDetail {
   code: string;
   name: string;
   nameIsCustom: boolean;
+  /** A short, customer-facing label — distinct from `name`, which composes from the taxonomy. */
+  shortName: string | null;
   isSerialised: boolean;
   notes: string | null;
   extra: DesignExtra;

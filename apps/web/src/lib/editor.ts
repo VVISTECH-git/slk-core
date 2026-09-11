@@ -137,6 +137,7 @@ export async function loadRecord(
       select
         cw.id as id, d.id as "designId", d.code, d.name,
         d.name_is_custom as "nameIsCustom", d.is_serialised as "isSerialised",
+        d.short_name as "shortName",
         d.notes, d.extra,
         cw.colour_id as "colourId",
         cw.secondary_colour_id as "secondaryColourId",
@@ -203,6 +204,7 @@ export async function loadRecord(
     name: row["name"] as string,
     nameIsCustom: row["nameIsCustom"] as boolean,
     isSerialised: row["isSerialised"] as boolean,
+    shortName: (row["shortName"] as string | null) ?? null,
     notes: (row["notes"] as string | null) ?? null,
     extra: (row["extra"] as DesignExtra | null) ?? {},
     colourId: (row["colourId"] as string | null) ?? null,

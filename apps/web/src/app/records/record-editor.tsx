@@ -211,9 +211,14 @@ export function RecordEditor({
   const [descriptors, setDescriptors] = useState<string[]>(
     () => seed?.descriptors ?? [],
   );
+  /** Craft claims — Handmade, Natural Dyed, and the rest. Design-scoped, same shape as `descriptors`. */
+  const [claims, setClaims] = useState<string[]>(() => seed?.claims ?? []);
   const [notes, setNotes] = useState(seed?.notes ?? "");
   const [name, setName] = useState(seed?.name ?? "");
   const [nameIsCustom, setNameIsCustom] = useState(seed?.nameIsCustom ?? false);
+  const [shortName, setShortName] = useState(seed?.shortName ?? "");
+  const [sourceUrl, setSourceUrl] = useState(seed?.source.url ?? "");
+  const [sourceSku, setSourceSku] = useState(seed?.source.sku ?? "");
   /**
    * Dimension and construction facts — length, width, GSM, a matched set's
    * named pieces. Held as one object rather than a field each, the same
@@ -269,9 +274,13 @@ export function RecordEditor({
         if (snap["openingStock"]) setOpeningStock(snap["openingStock"] as OpeningLine[]);
         if (snap["imageSlots"]) setImageSlots(snap["imageSlots"] as string[]);
         if (snap["descriptors"]) setDescriptors(snap["descriptors"] as string[]);
+        if (snap["claims"]) setClaims(snap["claims"] as string[]);
         if (typeof snap["notes"] === "string") setNotes(snap["notes"]);
         if (typeof snap["name"] === "string") setName(snap["name"]);
         if (typeof snap["nameIsCustom"] === "boolean") setNameIsCustom(snap["nameIsCustom"]);
+        if (typeof snap["shortName"] === "string") setShortName(snap["shortName"]);
+        if (typeof snap["sourceUrl"] === "string") setSourceUrl(snap["sourceUrl"]);
+        if (typeof snap["sourceSku"] === "string") setSourceSku(snap["sourceSku"]);
         if (snap["extra"]) setExtra(snap["extra"] as DesignExtra);
       }
     } catch {
@@ -311,9 +320,13 @@ export function RecordEditor({
             openingStock,
             imageSlots,
             descriptors,
+            claims,
             notes,
             name,
             nameIsCustom,
+            shortName,
+            sourceUrl,
+            sourceSku,
             extra,
           }),
         );
@@ -336,9 +349,13 @@ export function RecordEditor({
     openingStock,
     imageSlots,
     descriptors,
+    claims,
     notes,
     name,
     nameIsCustom,
+    shortName,
+    sourceUrl,
+    sourceSku,
     extra,
   ]);
 
@@ -752,6 +769,7 @@ export function RecordEditor({
       designId: record === null ? template?.designId : undefined,
       attributes,
       descriptors,
+      claims,
       colourId,
       secondaryColourId,
       prices,
@@ -761,6 +779,9 @@ export function RecordEditor({
       notes,
       name,
       nameIsCustom,
+      shortName,
+      sourceUrl,
+      sourceSku,
       extra,
     };
 
@@ -989,6 +1010,37 @@ export function RecordEditor({
               </Grid>
 
               {/*
+                Identity and sourcing — who this is filed under, and where the
+                facts on this record came from. Brand/Collection/Supplier stay
+                hidden until Master Lists has values for them, same as every
+                other Combo; Source URL/SKU are the manual-reference-lookup
+                fields the review screen's gap chips will read against.
+              */}
+              <Section title="Identity & Sourcing">
+                <TextField label="Short Name" placeholder="A short, customer-facing label"
+                  value={shortName}
+                  onChange={setShortName} />
+                <Combo label="Brand" list="brand"
+                  options={options} value={attributes.brand ?? null}
+                  onPick={(v) => set("brand", v)} />
+                <Combo label="Collection" list="collection"
+                  options={options} value={attributes.collection ?? null}
+                  onPick={(v) => set("collection", v)} />
+                <Combo label="Supplier" list="supplier"
+                  options={options} value={attributes.supplier ?? null}
+                  onPick={(v) => set("supplier", v)} />
+                <Combo label="Country of Origin" list="country"
+                  options={options} value={attributes.countryOfOrigin ?? null}
+                  onPick={(v) => set("countryOfOrigin", v)} />
+                <TextField label="Source URL" placeholder="https://…"
+                  value={sourceUrl}
+                  onChange={setSourceUrl} />
+                <TextField label="Source SKU"
+                  value={sourceSku}
+                  onChange={setSourceSku} />
+              </Section>
+
+              {/*
                 Where the stock is, asked while the record is being created.
 
                 It was a step of its own at the end of the wizard, which put
@@ -1113,6 +1165,45 @@ export function RecordEditor({
                 placeholder={attributes.motifCategory ? "Choose…" : "Pick a category first"}
                 onPick={(v) => set("motif", v)} />
             </Grid>
+          )}
+
+          {activeTab === "craft" && (
+            <Section title="Technique & Appearance">
+              <Combo label="Print Technique" list="print_technique"
+                options={options} value={attributes.printTechnique ?? null}
+                onPick={(v) => set("printTechnique", v)} />
+              <Combo label="Dye Technique" list="dye_technique"
+                options={options} value={attributes.dyeTechnique ?? null}
+                onPick={(v) => set("dyeTechnique", v)} />
+              <Combo label="Embroidery Technique" list="embroidery_technique"
+                options={options} value={attributes.embroideryTechnique ?? null}
+                onPick={(v) => set("embroideryTechnique", v)} />
+              {/*
+                Not parented to Region Style — that column is dead going
+                forward (see the Textile Material comment above: it was
+                folded in and nothing sets it any more), so gating Artisan /
+                Cluster on it would hide the field forever once Master Lists
+                gets values. A plain Combo, like Brand/Collection/Supplier.
+              */}
+              <Combo label="Artisan / Cluster" list="artisan_cluster"
+                options={options} value={attributes.artisanCluster ?? null}
+                onPick={(v) => set("artisanCluster", v)} />
+              <Combo label="Pattern" list="pattern"
+                options={options} value={attributes.pattern ?? null}
+                onPick={(v) => set("pattern", v)} />
+              <Combo label="Texture" list="texture"
+                options={options} value={attributes.texture ?? null}
+                onPick={(v) => set("texture", v)} />
+              <Combo label="Finish" list="finish"
+                options={options} value={attributes.finish ?? null}
+                onPick={(v) => set("finish", v)} />
+              <Combo label="Transparency" list="transparency"
+                options={options} value={attributes.transparency ?? null}
+                onPick={(v) => set("transparency", v)} />
+              <MultiCombo label="Craft Claims" list="craft_claim"
+                options={options} values={claims}
+                onChange={setClaims} />
+            </Section>
           )}
 
           {/*

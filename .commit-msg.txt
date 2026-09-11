@@ -1,0 +1,3 @@
+Remove the temporary Shopify wipe route now that the catalogue is empty again
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>

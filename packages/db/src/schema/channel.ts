@@ -141,6 +141,16 @@ export const channelLink = pgTable(
     lastPushError: text("last_push_error"),
     lastPushedAt: timestamp("last_pushed_at", { withTimezone: true }),
 
+    /**
+     * Set only alongside batchId. Null until the first push — before that,
+     * this row does not exist at all, so null here never means "unknown
+     * status" on a listing that is actually live; it means there is no
+     * listing yet. Every push to date sent Shopify's product status as a
+     * hardcoded ACTIVE, so a batch push writes `'active'` here; the "Shopify
+     * Draft" workflow step is what first has a reason to write `'draft'`.
+     */
+    shopifyStatus: text("shopify_status"),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -153,6 +163,10 @@ export const channelLink = pgTable(
     uniqueIndex("channel_link_channel_batch_key").on(t.channelId, t.batchId),
     index("channel_link_design_idx").on(t.designId),
     index("channel_link_batch_idx").on(t.batchId),
+    check(
+      "channel_link_shopify_status_known",
+      sql`${t.shopifyStatus} is null or ${t.shopifyStatus} in ('draft', 'active', 'archived')`,
+    ),
     check(
       "channel_link_exactly_one_kind",
       sql`

@@ -222,6 +222,126 @@ export function RecordEditor({
    */
   const [extra, setExtra] = useState<DesignExtra>(seed?.extra ?? {});
 
+  /*
+    Client-only draft autosave.
+
+    Nothing wrote anything anywhere before this — closing the dialog or a
+    tab refresh lost every field typed, confirmed by grepping the whole
+    editor for localStorage/debounce/autosave and finding none. This is
+    deliberately not a server draft: it exists so a closed laptop lid does
+    not cost the floor twenty minutes of typing back, not so two people can
+    collaborate on one record — that needs a real row, and is server-side
+    autosave's job once drafts are allowed to be incomplete.
+
+    Keyed by the record being edited, or by the template it is a new colour
+    of, or "new" for a wholly fresh record — three different half-finished
+    Sarees do not collide, and reopening the same record picks its own
+    snapshot back up.
+  */
+  const draftKey = `slk.record-draft.${record?.id ?? (template ? `new:${template.id}` : "new")}`;
+  const [restoreAvailable, setRestoreAvailable] = useState<{ savedAt: number } | null>(null);
+  const [restoreDismissed, setRestoreDismissed] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(draftKey);
+      if (raw === null) return;
+      const parsed = JSON.parse(raw) as { savedAt?: unknown };
+      if (typeof parsed.savedAt === "number") setRestoreAvailable({ savedAt: parsed.savedAt });
+    } catch {
+      // A snapshot that does not parse is the same as no snapshot.
+    }
+    // Mount only — a snapshot this same tab just wrote a moment ago should
+    // not immediately re-offer itself as something to restore.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function applyRestoredDraft() {
+    try {
+      const raw = window.localStorage.getItem(draftKey);
+      if (raw !== null) {
+        const snap = JSON.parse(raw) as Record<string, unknown>;
+        if (snap["attributes"]) setAttributes(snap["attributes"] as typeof attributes);
+        if ("colourId" in snap) setColourId(snap["colourId"] as string | null);
+        if ("secondaryColourId" in snap) setSecondaryColourId(snap["secondaryColourId"] as string | null);
+        if (snap["prices"]) setPrices(snap["prices"] as typeof prices);
+        if (typeof snap["quantity"] === "string") setQuantity(snap["quantity"]);
+        if (snap["openingStock"]) setOpeningStock(snap["openingStock"] as OpeningLine[]);
+        if (snap["imageSlots"]) setImageSlots(snap["imageSlots"] as string[]);
+        if (snap["descriptors"]) setDescriptors(snap["descriptors"] as string[]);
+        if (typeof snap["notes"] === "string") setNotes(snap["notes"]);
+        if (typeof snap["name"] === "string") setName(snap["name"]);
+        if (typeof snap["nameIsCustom"] === "boolean") setNameIsCustom(snap["nameIsCustom"]);
+        if (snap["extra"]) setExtra(snap["extra"] as DesignExtra);
+      }
+    } catch {
+      // Nothing to apply if the snapshot does not parse.
+    }
+    setRestoreAvailable(null);
+    setRestoreDismissed(true);
+  }
+
+  function discardRestoredDraft() {
+    try {
+      window.localStorage.removeItem(draftKey);
+    } catch {
+      // Leaving a stale snapshot behind is harmless — it just gets offered again.
+    }
+    setRestoreAvailable(null);
+    setRestoreDismissed(true);
+  }
+
+  // Debounced, and held off entirely while an unreviewed snapshot is on
+  // offer — saving the form's blank starting state during that window would
+  // overwrite the very thing Restore is about to show.
+  useEffect(() => {
+    if (restoreAvailable !== null && !restoreDismissed) return;
+
+    const timer = setTimeout(() => {
+      try {
+        window.localStorage.setItem(
+          draftKey,
+          JSON.stringify({
+            savedAt: Date.now(),
+            attributes,
+            colourId,
+            secondaryColourId,
+            prices,
+            quantity,
+            openingStock,
+            imageSlots,
+            descriptors,
+            notes,
+            name,
+            nameIsCustom,
+            extra,
+          }),
+        );
+      } catch {
+        // Private windows and blocked site data — the Save button still works either way.
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    draftKey,
+    restoreAvailable,
+    restoreDismissed,
+    attributes,
+    colourId,
+    secondaryColourId,
+    prices,
+    quantity,
+    openingStock,
+    imageSlots,
+    descriptors,
+    notes,
+    name,
+    nameIsCustom,
+    extra,
+  ]);
+
   const [tab, setTab] = useState<TabKey>(initialTab);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [result, setResult] = useState<ActionResult | null>(null);
@@ -654,7 +774,15 @@ export function RecordEditor({
         if (first) setTab(FIELD_TAB[first] ?? "basic");
       }
 
-      if (outcome.ok) onSaved(outcome.message);
+      if (outcome.ok) {
+        try {
+          window.localStorage.removeItem(draftKey);
+        } catch {
+          // A leftover snapshot for a record that just saved is stale, not
+          // harmful — worst case it offers a Restore nobody needs.
+        }
+        onSaved(outcome.message);
+      }
     });
   };
 
@@ -675,8 +803,8 @@ export function RecordEditor({
         // fields and Material has five, so sizing to content made the dialog
         // jump — and moved the Cancel and Save buttons under the pointer
         // between one tab and the next.
-        style={{ height: "min(88vh, 680px)" }}
-        className="relative flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-rule bg-surface shadow-2xl"
+        style={{ height: "min(92vh, 860px)" }}
+        className="relative flex w-full max-w-[min(1280px,95vw)] flex-col overflow-hidden rounded-xl border border-rule bg-surface shadow-2xl"
       >
         <header className="border-b border-rule px-6 pt-5">
           <div className="mb-4 flex items-baseline gap-3">
@@ -733,7 +861,30 @@ export function RecordEditor({
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto bg-surface-2 px-6 py-5">
+        {restoreAvailable !== null && !restoreDismissed && (
+          <div className="flex flex-wrap items-center gap-3 border-b border-rule bg-brick-soft px-6 py-2.5 text-[13px]">
+            <span className="text-brick">
+              An unsaved draft from {new Date(restoreAvailable.savedAt).toLocaleTimeString()} was found for this record.
+            </span>
+            <button
+              type="button"
+              onClick={applyRestoredDraft}
+              className="ml-auto rounded-md border border-brick px-2.5 py-1 font-medium text-brick hover:bg-surface"
+            >
+              Restore
+            </button>
+            <button
+              type="button"
+              onClick={discardRestoredDraft}
+              className="rounded-md px-2.5 py-1 text-muted hover:bg-surface"
+            >
+              Discard
+            </button>
+          </div>
+        )}
+
+        <div className="flex flex-1 overflow-hidden bg-surface-2">
+        <div className="flex-1 overflow-y-auto px-6 py-5">
           {activeTab === "basic" && (
             <>
               <Grid>
@@ -1270,6 +1421,22 @@ export function RecordEditor({
         </div>
 
         {/*
+          The sticky rail. Hidden below `xl` — there is no room for a second
+          column at that width, and the readiness/checklist/preview it will
+          hold are a supplement to the form, not a replacement for seeing all
+          of it. Placeholder cards for now; Phases 8 and 11 fill them with
+          the readiness score, the customer-questions checklist and the live
+          preview, all reading the same in-progress state this component
+          already holds — nothing here needs its own data fetch.
+        */}
+        <aside className="hidden w-[300px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-rule bg-surface px-4 py-5 xl:flex">
+          <RailPlaceholder title="Readiness" />
+          <RailPlaceholder title="Customer questions" />
+          <RailPlaceholder title="Preview" />
+        </aside>
+        </div>
+
+        {/*
           Creating walks forward; editing does not.
 
           A new record is a sequence — you cannot judge the prices before you
@@ -1360,9 +1527,11 @@ export function RecordEditor({
  */
 function Section({
   title,
+  cols,
   children,
 }: {
   title: string;
+  cols?: 1 | 2 | 3;
   children: React.ReactNode;
 }) {
   return (
@@ -1370,7 +1539,7 @@ function Section({
       <h3 className="mb-3 border-b border-rule pb-1.5 text-[12px] font-semibold tracking-wide text-muted uppercase">
         {title}
       </h3>
-      <Grid>{children}</Grid>
+      <Grid cols={cols}>{children}</Grid>
     </section>
   );
 }
@@ -1378,21 +1547,58 @@ function Section({
 /**
  * The field grid.
  *
- * Three across where there is room. Two left half the dialog empty and made
- * six fields scroll — the tabs are wide and the fields are not, so the third
- * column costs nothing and saves a tab from needing a scrollbar. Two on a
- * narrow window, one on a phone.
+ * Three across where there is room by default — the tabs are wide and the
+ * fields are not, so a third column costs nothing and saves a tab from
+ * needing a scrollbar. Two on a narrow window, one on a phone. `cols` caps
+ * it lower for a section that reads better narrower — a long-text pair of
+ * Sales Story questions at two across, say — without a one-off className at
+ * every call site.
  */
-function Grid({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {children}
-    </div>
-  );
+function Grid({
+  children,
+  cols = 3,
+}: {
+  children: React.ReactNode;
+  cols?: 1 | 2 | 3;
+}) {
+  const capped =
+    cols === 1
+      ? "grid-cols-1"
+      : cols === 2
+        ? "grid-cols-1 sm:grid-cols-2"
+        : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3";
+  return <div className={`grid gap-4 ${capped}`}>{children}</div>;
 }
 
 function Required() {
   return <span className="ml-1 text-brick">*</span>;
+}
+
+/** A rail card waiting on its real content — see the rail's own comment. */
+function RailPlaceholder({ title }: { title: string }) {
+  return (
+    <div className="rounded-lg border border-rule bg-surface-2 p-3">
+      <h4 className="mb-1 text-[11px] font-semibold tracking-wide text-muted uppercase">
+        {title}
+      </h4>
+      <p className="text-[12px] text-faint">Coming soon.</p>
+    </div>
+  );
+}
+
+/** The error/hint line every field-with-a-value-judgement shows the same way. */
+function FieldNote({ error, hint }: { error?: string; hint?: string }) {
+  if (error) {
+    return <span className="mt-1 block text-[11.5px] text-brick">{error}</span>;
+  }
+  if (hint !== undefined) {
+    return (
+      <span className="mt-1 block text-[11.5px] leading-relaxed text-muted">
+        {hint}
+      </span>
+    );
+  }
+  return null;
 }
 
 /**
@@ -1405,25 +1611,35 @@ function NumberField({
   unit,
   value,
   onChange,
+  required,
+  error,
+  hint,
 }: {
   label: string;
   unit?: string;
   value: number | null;
   onChange: (value: number | null) => void;
+  required?: boolean;
+  error?: string;
+  hint?: string;
 }) {
   return (
     <label className="block">
       <span className="mb-1 block text-[12.5px] text-ink-2">
         {label}
         {unit !== undefined && <span className="ml-1 text-muted">({unit})</span>}
+        {required && <Required />}
       </span>
       <input
         type="number"
         step="any"
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
-        className="w-full rounded-md border border-rule-2 bg-surface px-3 py-2 text-right text-[14px] tabular-nums text-ink"
+        className={`w-full rounded-md border bg-surface px-3 py-2 text-right text-[14px] tabular-nums text-ink ${
+          error ? "border-brick" : "border-rule-2"
+        }`}
       />
+      <FieldNote error={error} hint={hint} />
     </label>
   );
 }
@@ -1438,22 +1654,114 @@ function TextField({
   placeholder,
   value,
   onChange,
+  required,
+  error,
+  hint,
 }: {
   label: string;
   placeholder?: string;
   value: string;
   onChange: (value: string) => void;
+  required?: boolean;
+  error?: string;
+  hint?: string;
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[12.5px] text-ink-2">{label}</span>
+      <span className="mb-1 block text-[12.5px] text-ink-2">
+        {label}
+        {required && <Required />}
+      </span>
       <input
         type="text"
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-md border border-rule-2 bg-surface px-3 py-2 text-[14px] text-ink"
+        className={`w-full rounded-md border bg-surface px-3 py-2 text-[14px] text-ink ${
+          error ? "border-brick" : "border-rule-2"
+        }`}
       />
+      <FieldNote error={error} hint={hint} />
+    </label>
+  );
+}
+
+/**
+ * Free text with room to write — a Sales Story answer, a generated
+ * description section. Same shape as TextField; a textarea instead of an
+ * input is the only difference, so the two stay visually consistent rather
+ * than one looking like an afterthought next to the other.
+ */
+function TextArea({
+  label,
+  placeholder,
+  value,
+  onChange,
+  required,
+  error,
+  hint,
+  rows = 3,
+}: {
+  label: string;
+  placeholder?: string;
+  value: string;
+  onChange: (value: string) => void;
+  required?: boolean;
+  error?: string;
+  hint?: string;
+  rows?: number;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[12.5px] text-ink-2">
+        {label}
+        {required && <Required />}
+      </span>
+      <textarea
+        value={value}
+        placeholder={placeholder}
+        rows={rows}
+        onChange={(e) => onChange(e.target.value)}
+        className={`w-full resize-y rounded-md border bg-surface px-3 py-2 text-[14px] leading-relaxed text-ink ${
+          error ? "border-brick" : "border-rule-2"
+        }`}
+      />
+      <FieldNote error={error} hint={hint} />
+    </label>
+  );
+}
+
+/**
+ * A yes/no fact — Dry Clean Required, Colour Bleed Warning. A checkbox, not
+ * a Combo: the question has exactly two honest answers and no vocabulary to
+ * maintain, so a lookup list would be a list of two things nothing else ever
+ * reads.
+ */
+function BoolField({
+  label,
+  value,
+  onChange,
+  hint,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (value: boolean) => void;
+  hint?: string;
+}) {
+  return (
+    <label className="flex items-start gap-2.5 pt-[22px]">
+      <input
+        type="checkbox"
+        checked={value}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-0.5 h-4 w-4 rounded border-rule-2"
+      />
+      <span>
+        <span className="block text-[13px] text-ink">{label}</span>
+        {hint !== undefined && (
+          <span className="block text-[11.5px] leading-relaxed text-muted">{hint}</span>
+        )}
+      </span>
     </label>
   );
 }
@@ -1816,6 +2124,165 @@ function Combo({
         </span>
       ) : null}
     </label>
+  );
+}
+
+/**
+ * A `Combo` for a list too long to scan as a native `<select>` — the same
+ * search-box-over-a-filtered-list shape `ColourCombo` already uses, minus
+ * the swatch, so a new long list (Brand, Collection, Supplier, Artisan
+ * Cluster) gets it for free instead of growing its own picker. Filters and
+ * cascades exactly like `Combo` — same `parentFilter`/`fallbackToUnparented`
+ * — so a field can switch between the two purely by which one renders better
+ * at its list's current length, with no change to how the value is read.
+ */
+function SearchCombo({
+  label,
+  list,
+  options,
+  value,
+  onPick,
+  required,
+  error,
+  hint,
+  placeholder,
+  parentFilter,
+  fallbackToUnparented,
+}: {
+  label: string;
+  list: string;
+  options: Options;
+  value: string | null;
+  onPick: (value: string | null) => void;
+  required?: boolean;
+  error?: string;
+  hint?: string;
+  placeholder?: string;
+  parentFilter?: string | null;
+  fallbackToUnparented?: boolean;
+}) {
+  let values: Option[] = options[list] ?? [];
+
+  if (parentFilter !== undefined) {
+    if (parentFilter === null) {
+      values = [];
+    } else {
+      const own = values.filter((o) => o.parentId === parentFilter);
+      values =
+        fallbackToUnparented === true && own.length === 0
+          ? values.filter((o) => o.parentId === null)
+          : own;
+    }
+  }
+
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const box = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function away(event: MouseEvent) {
+      if (!box.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function escape(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("mousedown", away);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+
+  if (values.length === 0 && value === null) return null;
+
+  const chosen = values.find((o) => o.id === value) ?? null;
+  const q = query.trim().toLowerCase();
+  const shown = q === "" ? values : values.filter((o) => o.label.toLowerCase().includes(q));
+
+  return (
+    <div className="block" ref={box}>
+      <span className="mb-1 block text-[12.5px] text-ink-2">
+        {label}
+        {required && <Required />}
+      </span>
+
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => {
+            setOpen((v) => !v);
+            setQuery("");
+          }}
+          aria-expanded={open}
+          className={`flex w-full items-center gap-2 rounded-md border bg-surface px-3 py-2 text-left text-[14px] text-ink ${
+            error ? "border-brick" : "border-rule-2"
+          }`}
+        >
+          <span className={chosen === null ? "text-faint" : ""}>
+            {chosen?.label ?? placeholder ?? "Choose…"}
+          </span>
+          <span aria-hidden className="ml-auto text-[11px] text-faint">
+            ▾
+          </span>
+        </button>
+
+        {open && (
+          <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-lg border border-rule bg-surface shadow-lg">
+            <input
+              autoFocus
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`Search ${values.length}`}
+              className="w-full border-b border-rule bg-surface px-3 py-2 text-[13px] text-ink placeholder:text-faint focus:outline-none"
+            />
+
+            <div className="max-h-64 overflow-y-auto">
+              {value !== null && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onPick(null);
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] text-muted hover:bg-surface-2"
+                >
+                  Clear
+                </button>
+              )}
+
+              {shown.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => {
+                    onPick(option.id);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[13px] hover:bg-surface-2 ${
+                    option.id === value ? "bg-brick-soft font-medium text-brick" : "text-ink"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+
+              {shown.length === 0 && (
+                <p className="px-3 py-3 text-[12.5px] text-muted">
+                  No match for “{query}”.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <FieldNote error={error} hint={hint} />
+    </div>
   );
 }
 

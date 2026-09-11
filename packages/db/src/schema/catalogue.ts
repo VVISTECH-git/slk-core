@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -12,6 +13,7 @@ import {
   uuid,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 import { actor } from "./access";
 import { lookupValue } from "./lookup";
@@ -231,6 +233,41 @@ export const colourway = pgTable(
 
     isActive: boolean("is_active").notNull().default(true),
 
+    /**
+     * Taxable, tracked, and continue-selling-out-of-stock are per-colourway
+     * because a channel's inventory policy is a fact about a specific
+     * sellable line, not about the design it was cut or printed from.
+     */
+    isTaxable: boolean("is_taxable").notNull().default(true),
+    tracksInventory: boolean("tracks_inventory").notNull().default(true),
+    continueSellingOos: boolean("continue_selling_oos")
+      .notNull()
+      .default(false),
+
+    /**
+     * Editorial review, not the same thing as `isActive` above. `isActive`
+     * says whether this colour still sells at all; `reviewStatus` says
+     * whether what is entered for it has been checked before it is allowed
+     * to reach Shopify. An archived colourway was presumably approved once;
+     * a freshly drafted one is neither active-false nor approved — the two
+     * facts are orthogonal on purpose, see migration 0052's own comment.
+     */
+    reviewStatus: text("review_status").notNull().default("draft"),
+    createdBy: uuid("created_by_id").references(() => actor.id, {
+      onDelete: "restrict",
+    }),
+    updatedBy: uuid("updated_by_id").references(() => actor.id, {
+      onDelete: "restrict",
+    }),
+    submittedBy: uuid("submitted_by_id").references(() => actor.id, {
+      onDelete: "restrict",
+    }),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    reviewedBy: uuid("reviewed_by_id").references(() => actor.id, {
+      onDelete: "restrict",
+    }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -238,7 +275,14 @@ export const colourway = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [index("colourway_design_idx").on(t.designId)],
+  (t) => [
+    index("colourway_design_idx").on(t.designId),
+    index("colourway_review_status_idx").on(t.reviewStatus, t.updatedAt),
+    check(
+      "colourway_review_status_known",
+      sql`${t.reviewStatus} in ('draft', 'submitted', 'needs_changes', 'approved')`,
+    ),
+  ],
 );
 
 /**
@@ -499,6 +543,9 @@ export const movement = pgTable(
 
 export type Location = typeof location.$inferSelect;
 export type Design = typeof design.$inferSelect;
+export type DesignDescriptor = typeof designDescriptor.$inferSelect;
 export type Colourway = typeof colourway.$inferSelect;
+export type Batch = typeof batch.$inferSelect;
 export type Piece = typeof piece.$inferSelect;
+export type Image = typeof image.$inferSelect;
 export type Movement = typeof movement.$inferSelect;

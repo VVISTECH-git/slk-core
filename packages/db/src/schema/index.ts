@@ -6,9 +6,11 @@
  *   access.ts     actor → actor_token; who is acting, and what lets them
  *   channel.ts    channel → channel_link, reservation, channel_event —
  *                 what apps/sync reads and writes
+ *   review.ts     the editorial approval trail behind colourway.reviewStatus
  */
 
 export * from "./lookup";
 export * from "./catalogue";
 export * from "./access";
 export * from "./channel";
+export * from "./review";

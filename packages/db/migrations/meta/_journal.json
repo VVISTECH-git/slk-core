@@ -351,6 +351,27 @@
       "when": 1789122000000,
       "tag": "0049_the_families_the_saree_trade_actually_says",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1789215600000,
+      "tag": "0050_garments_get_their_own_product_types",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1789215700000,
+      "tag": "0051_garments_product_types_are_serialised_too",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1789302000000,
+      "tag": "0052_colourway_review_workflow",
+      "breakpoints": true
     }
   ]
 }

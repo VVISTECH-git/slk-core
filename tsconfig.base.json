@@ -17,6 +17,17 @@
     "verbatimModuleSyntax": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    // Every package here sets noEmit, so this is free everywhere — and it
+    // has to be set wherever a package's source is typechecked, not just in
+    // that package's own tsconfig: a workspace dependency with no build
+    // step (see @slk/domain's package.json exports, pointing straight at
+    // src/*.ts) is typechecked under the *consumer's* compiler options too.
+    // @slk/domain's test files need an explicit .ts extension so Node's
+    // type-stripping test runner can resolve them without a bundler; once
+    // one of its own source files imports another with that same extension
+    // (shopify-mapping.ts importing listing.ts), every package that
+    // depends on @slk/domain needs to tolerate it as well.
+    "allowImportingTsExtensions": true
   }
 }

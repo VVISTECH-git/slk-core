@@ -4,10 +4,7 @@
     "types": ["node"],
     "rootDir": "./src",
     "outDir": "./dist",
-    "noEmit": true,
-    // Test files import with an explicit .ts extension so Node's type-
-    // stripping test runner can resolve them; nothing here is ever emitted.
-    "allowImportingTsExtensions": true
+    "noEmit": true
   },
   "include": ["src/**/*.ts"]
 }

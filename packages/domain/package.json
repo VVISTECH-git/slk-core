@@ -11,7 +11,8 @@
     "./vocabulary": "./src/vocabulary.ts",
     "./money": "./src/money.ts",
     "./listing": "./src/listing.ts",
-    "./readiness": "./src/readiness.ts"
+    "./readiness": "./src/readiness.ts",
+    "./shopify-mapping": "./src/shopify-mapping.ts"
   },
   "scripts": {
     "test": "node --experimental-strip-types --test \"src/**/*.test.ts\"",

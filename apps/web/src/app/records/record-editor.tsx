@@ -2016,12 +2016,14 @@ export function RecordEditor({
           are a supplement to the form, not a replacement for seeing all of
           it. Readiness and Customer Questions read the same `readiness`
           value computed above, so the two cards never disagree; Preview
-          stays a placeholder for Phase 11.
+          reads composedTitle/composedBody — the same live composition
+          driving Sales Story's own preview — so what shows here updates on
+          every keystroke, not just after a Save.
         */}
         <aside className="hidden w-[300px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-rule bg-surface px-4 py-5 xl:flex">
           <RailReadiness readiness={readiness} onJump={(t) => setTab(t as TabKey)} />
           <RailChecklist readiness={readiness} onJump={(t) => setTab(t as TabKey)} />
-          <RailPlaceholder title="Preview" />
+          <RailPreview title={composedTitle} body={composedBody} />
         </aside>
         </div>
 
@@ -2242,6 +2244,34 @@ function RailChecklist({
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * The rail's live preview — the same `listingTitle`/`listingBody`
+ * composition the Sales Story tab shows, kept short here since the rail is
+ * 300px wide and this is a glance, not a review. Reads whatever the form
+ * currently holds, saved or not — this is "what would compose right now",
+ * not "what did the last Save produce" (that reading lives on the Publish
+ * tab's Review comparison instead, on purpose).
+ */
+function RailPreview({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-lg border border-rule bg-surface-2 p-3">
+      <h4 className="mb-2 text-[11px] font-semibold tracking-wide text-muted uppercase">Preview</h4>
+      {title === "" ? (
+        <p className="text-[12px] text-faint">Nothing composes yet.</p>
+      ) : (
+        <>
+          <p className="text-[12.5px] font-medium text-ink">{title}</p>
+          {body !== "" && (
+            <p className="mt-1.5 line-clamp-6 whitespace-pre-line text-[11.5px] leading-relaxed text-muted">
+              {body}
+            </p>
+          )}
+        </>
+      )}
     </div>
   );
 }

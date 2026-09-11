@@ -11,6 +11,12 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    // @slk/domain has no build step (its package.json exports point
+    // straight at src/*.ts) and one of its source files imports another
+    // with an explicit .ts extension, for Node's type-stripping test
+    // runner's sake — see tsconfig.base.json's own comment on why every
+    // consumer needs this, not just domain itself.
+    "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "incremental": true,
     "plugins": [

@@ -5,7 +5,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 import { colourSwatch, isPaleSwatch } from "@slk/domain/colour";
+import { DEFAULT_VENDOR } from "@slk/domain/listing";
 import { rupees } from "@slk/domain/money";
+import { toCsv, toShopifyCsvRow } from "@slk/domain/shopify-mapping";
 
 import {
   Cell,
@@ -202,6 +204,56 @@ export function RecordsTable({
   role: string;
 }) {
   const rows = served.rows;
+
+  /**
+   * A secondary capability, not a storage format — see shopify-mapping.ts's
+   * own comment. Built from exactly the rows already on screen, so what
+   * downloads matches what the search/industry/status filters are showing,
+   * not a second, separately-fetched idea of the catalogue. Capped by the
+   * same RECORD_LIMIT the grid itself is — a "newest hundred" export, same
+   * as the page it came from, not a full-catalogue dump.
+   */
+  const exportCsv = () => {
+    const csvRows = rows.map((r) =>
+      toShopifyCsvRow({
+        title: { designName: r.name, colour: r.colour, productCode: r.productCode },
+        description: {
+          craftTechnique: r.craftTechnique,
+          craftSubType: r.craftSubType,
+          textileMaterial: r.textileMaterial,
+          fibreType: r.fibreType,
+          weaveStructure: r.weaveStructure,
+          motif: r.motif,
+          motifCategory: r.motifCategory,
+          borderHeight: r.borderHeight,
+          blouseAvailable: r.blouseAvailable,
+        },
+        tags: {
+          colour: r.colour,
+          fibreType: r.fibreType,
+          textileMaterial: r.textileMaterial,
+          craftTechnique: r.craftTechnique,
+          craftSubType: r.craftSubType,
+          motif: r.motif,
+          motifCategory: r.motifCategory,
+          productionMethod: r.productionMethod,
+          blouseAvailable: r.blouseAvailable,
+        },
+        vendor: DEFAULT_VENDOR,
+        priceMinor: r.priceMinor,
+        sku: r.productCode,
+      }),
+    );
+
+    const blob = new Blob([toCsv(csvRows)], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `slk-products-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const router = useRouter();
   const pathname = usePathname();
   const [pending, startSearch] = useTransition();
@@ -590,6 +642,16 @@ export function RecordsTable({
           onResetWidths={resetWidths}
           onResetOrder={resetOrder}
         />
+
+        <button
+          type="button"
+          onClick={exportCsv}
+          disabled={rows.length === 0}
+          title="Exports the rows currently on screen, in Shopify's own product-CSV column order"
+          className="rounded-lg border border-rule-2 px-3 py-2 text-[13.5px] font-medium text-ink-2 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Export CSV
+        </button>
       </header>
 
       <FilterChips

@@ -68,6 +68,16 @@ export {
 } from "./readiness";
 
 export {
+  csvEscape,
+  shopifyHandle,
+  toCsv,
+  toShopifyCsvRow,
+  SHOPIFY_CSV_COLUMNS,
+  type ShopifyCsvRow,
+  type ShopifyCsvRowParts,
+} from "./shopify-mapping";
+
+export {
   stockAt,
   type LocationPosition,
   FABRIC_UNIT_METRES,

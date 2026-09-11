@@ -1339,6 +1339,38 @@ export async function recordMovement(
   if (cw === undefined) return { ok: false, message: "That record no longer exists." };
 
   /*
+    A metre-tracked design's stock lives per batch, not per colourway — see
+    batch_measured_qty and packReservation's own comment on the same thing.
+    Sending it out from here would record a real movement against the
+    colourway only, with no batch named, so the specific bolt it actually
+    left from would show no change at all: correct in total, wrong on the
+    listing a customer is looking at.
+    Receiving still works — openConsignment already opens one batch, so
+    there is no batch to be ambiguous about yet.
+    Refusing outright rather than silently under-counting one bolt: this
+    screen has no way yet to ask which consignment it is, and a wrong
+    answer here is a wrong number on a live Shopify listing, not just a
+    a number in this app. Remove this once "Record a Movement" can name a
+    batch the same way packing an order already does.
+  */
+  if (spec.dir === "out") {
+    const [design] = await db.execute<{ soldByMetre: boolean }>(sql`
+      select uom.code = 'metre' as "soldByMetre"
+      from design d left join lookup_value uom on uom.id = d.uom_id
+      where d.id = ${cw.designId}
+    `);
+    if (design?.soldByMetre === true) {
+      return {
+        ok: false,
+        message:
+          "This design is sold by the metre and tracked per consignment — " +
+          "this screen cannot yet say which bolt it is leaving from. " +
+          "Record it through the consignment it belongs to instead, or ask for this to be built.",
+      };
+    }
+  }
+
+  /*
     Serialised designs used to be refused here, on the grounds that their
     count is the number of tagged pieces and stock should move by scanning
     one. That was true when nothing could mint a piece — but receiving is now

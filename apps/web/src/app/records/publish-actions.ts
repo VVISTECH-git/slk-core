@@ -3,7 +3,7 @@
 import { sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
-import { sendProductSet, type ConsignmentRow, type PhotoRow } from "@slk/sync/product-set";
+import { sendProductSet, type ConsignmentRow, type PhotoRow, type ShopifyProductStatus } from "@slk/sync/product-set";
 import { shopifyClient } from "@slk/sync/shopify-client";
 
 import { db } from "@/lib/db";
@@ -22,10 +22,16 @@ import type { ActionResult } from "./actions";
  * office and above only, matching archiveRecord: putting something in front
  * of a real customer is a bigger call than floor staff correcting their own
  * entry.
+ *
+ * Shared by `publishBatchToChannel` (status ACTIVE — live, the button this
+ * always was) and `createShopifyDraft` (status DRAFT — new in Phase 10):
+ * one query, one Shopify call, one `channel_link` write, so the two ways of
+ * putting something on Shopify cannot quietly drift apart.
  */
-export async function publishBatchToChannel(
+async function publish(
   batchId: string,
   channelCode: string,
+  status: ShopifyProductStatus,
 ): Promise<ActionResult> {
   const denied = await guard("office");
   if (denied !== null) return denied;
@@ -132,10 +138,22 @@ export async function publishBatchToChannel(
     order by i.sort_order
   `);
 
-  const [existingLink] = await db.execute<{ shopify_product_id: string }>(sql`
-    select shopify_product_id from channel_link
+  const [existingLink] = await db.execute<{ shopify_product_id: string; shopify_status: string | null }>(sql`
+    select shopify_product_id, shopify_status from channel_link
     where channel_id = ${row.channel_id} and batch_id = ${row.batch_id}
   `);
+
+  // Create Draft is for putting something up to be checked before it goes
+  // live, not for taking a live listing back down — sendProductSet has no
+  // idea what a product's status already is, and would happily flip an
+  // ACTIVE one back to DRAFT if this let it through. Unapprove/Publish is
+  // the door for going the other way.
+  if (status === "DRAFT" && existingLink?.shopify_status === "active") {
+    return {
+      ok: false,
+      message: `${row.product_code} is already live on ${channelCode}. Use Publish to update it, not Create Draft.`,
+    };
+  }
 
   try {
     const client = await shopifyClient(channelCode);
@@ -152,6 +170,7 @@ export async function publishBatchToChannel(
         retailMinor,
         row.sellable ?? 0,
         existingProductId,
+        status,
       );
 
     /*
@@ -176,24 +195,30 @@ export async function publishBatchToChannel(
       sent = await send(undefined);
     }
 
+    const shopifyStatus = status === "DRAFT" ? "draft" : "active";
+
     await db.execute(sql`
-      insert into channel_link (channel_id, batch_id, shopify_product_id, shopify_variant_id, shopify_inventory_item_id)
-      values (${row.channel_id}, ${row.batch_id}, ${sent.productId}, ${sent.variantId}, ${sent.inventoryItemId})
+      insert into channel_link (channel_id, batch_id, shopify_product_id, shopify_variant_id, shopify_inventory_item_id, shopify_status)
+      values (${row.channel_id}, ${row.batch_id}, ${sent.productId}, ${sent.variantId}, ${sent.inventoryItemId}, ${shopifyStatus})
       on conflict (channel_id, batch_id) do update set
         shopify_product_id = excluded.shopify_product_id,
         shopify_variant_id = excluded.shopify_variant_id,
         shopify_inventory_item_id = excluded.shopify_inventory_item_id,
+        shopify_status = excluded.shopify_status,
         updated_at = now()
     `);
 
     revalidatePath("/records");
     revalidatePath("/channels");
 
+    const verb = existingLink !== undefined ? "Re-sent" : (status === "DRAFT" ? "Created" : "Published");
+
     return {
       ok: true,
-      message: existingLink !== undefined
-        ? `Republished ${row.product_code} on ${channelCode}.`
-        : `Published ${row.product_code} on ${channelCode} as "${sent.title}".`,
+      message:
+        status === "DRAFT"
+          ? `${verb} ${row.product_code} on ${channelCode} as a draft — not visible on the storefront yet.`
+          : `${verb} ${row.product_code} on ${channelCode} as "${sent.title}".`,
     };
   } catch (error) {
     return {
@@ -201,4 +226,20 @@ export async function publishBatchToChannel(
       message: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+/** The live "Publish"/"Republish" button — status ACTIVE, on the storefront the moment it succeeds. */
+export async function publishBatchToChannel(batchId: string, channelCode: string): Promise<ActionResult> {
+  return publish(batchId, channelCode, "ACTIVE");
+}
+
+/**
+ * Creates (or re-sends) the Shopify product as a DRAFT — everything a live
+ * publish does except the storefront visibility, so a listing can be
+ * reviewed on Shopify itself before `publishBatchToChannel` flips it live.
+ * Refused on a batch already live — see `publish`'s own guard — so this
+ * button can never accidentally take a real listing down.
+ */
+export async function createShopifyDraft(batchId: string, channelCode: string): Promise<ActionResult> {
+  return publish(batchId, channelCode, "DRAFT");
 }

@@ -352,7 +352,8 @@ function loadConsignments(colourwayId: string) {
       -- batch row regardless of how many pieces it has.
       (
         select coalesce(json_agg(jsonb_build_object(
-          'code', ch.code, 'name', ch.name, 'shopifyProductId', cl.shopify_product_id
+          'code', ch.code, 'name', ch.name, 'shopifyProductId', cl.shopify_product_id,
+          'shopifyStatus', cl.shopify_status
         ) order by ch.code), '[]'::json)
         from channel ch
         left join channel_link cl on cl.channel_id = ch.id and cl.batch_id = b.id

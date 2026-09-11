@@ -101,6 +101,9 @@ export interface SentProduct {
   title: string;
 }
 
+/** Shopify's own product lifecycle states this codebase ever sets — never ARCHIVED here, see archive-listing.ts for that path. */
+export type ShopifyProductStatus = "DRAFT" | "ACTIVE";
+
 /**
  * Composes the listing and sends one productSet call — creates when
  * `existingProductId` is undefined, updates that exact product in place
@@ -117,6 +120,13 @@ export async function sendProductSet(
   retailMinor: number,
   sellable: number,
   existingProductId: string | undefined,
+  /**
+   * DRAFT or ACTIVE — every caller must say which, on purpose. This used to
+   * be hardcoded ACTIVE, so a first publish had no way to stay off the
+   * storefront; there is no default here so that stays a caller's decision,
+   * not something a new call site can silently inherit.
+   */
+  status: ShopifyProductStatus,
 ): Promise<SentProduct> {
   // Per-channel title style: aartisanz reads "Design || Colour || 300015",
   // every other channel "Design — Colour". An override still gets the code
@@ -209,7 +219,7 @@ export async function sendProductSet(
       title,
       descriptionHtml: description,
       vendor: vendorFor(channelCode),
-      status: "ACTIVE",
+      status,
       // Shopify's own standard taxonomy — separate from tags/collections,
       // and left unset before this shipped an empty "Category:" on every
       // listing. Mapped from our own product_type via taxonomy.ts, found
@@ -309,6 +319,14 @@ export async function sendProductSet(
     created fine, set inventory fine, and was still a 404 for a real
     customer until this ran. Online Store only — Point of Sale is a
     decision this codebase has not been asked to make.
+
+    Run unconditionally, even for a DRAFT product — publishing scopes which
+    channels a product *could* appear on, and status is what actually gates
+    storefront visibility within that scope. A DRAFT product published to
+    Online Store should still 404 there until its status becomes ACTIVE —
+    Shopify's documented behaviour, confirmed live on this store's own
+    theme the same way ACTIVE-without-publish was confirmed above, the
+    first time DRAFT was actually sent.
   */
   const { publications } = await client.graphql<{
     publications: { nodes: { id: string; name: string }[] };

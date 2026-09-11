@@ -160,15 +160,18 @@ export async function GET(request: Request): Promise<Response> {
       row.retail_minor,
       row.sellable ?? 0,
       existingLink?.shopify_product_id,
+      // Always ACTIVE — an operator's bulk publish job, not a review step.
+      "ACTIVE",
     );
 
     await db.execute(sql`
-      insert into channel_link (channel_id, batch_id, shopify_product_id, shopify_variant_id, shopify_inventory_item_id)
-      values (${row.channel_id}, ${row.batch_id}, ${sent.productId}, ${sent.variantId}, ${sent.inventoryItemId})
+      insert into channel_link (channel_id, batch_id, shopify_product_id, shopify_variant_id, shopify_inventory_item_id, shopify_status)
+      values (${row.channel_id}, ${row.batch_id}, ${sent.productId}, ${sent.variantId}, ${sent.inventoryItemId}, 'active')
       on conflict (channel_id, batch_id) do update set
         shopify_product_id = excluded.shopify_product_id,
         shopify_variant_id = excluded.shopify_variant_id,
         shopify_inventory_item_id = excluded.shopify_inventory_item_id,
+        shopify_status = excluded.shopify_status,
         updated_at = now()
     `);
 

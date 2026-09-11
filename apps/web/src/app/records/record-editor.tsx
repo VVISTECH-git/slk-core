@@ -45,7 +45,7 @@ import {
 } from "./image-actions";
 import { PhotoCheck } from "./photo-check";
 import { ruleFor } from "./photo-rules";
-import { publishBatchToChannel } from "./publish-actions";
+import { createShopifyDraft, publishBatchToChannel } from "./publish-actions";
 import { approve, requestChanges, submitForReview, unapprove } from "./review-actions";
 
 /**
@@ -63,6 +63,7 @@ type TabKey =
   | "garment"
   | "story"
   | "care"
+  | "seo"
   | "prices"
   | "images"
   | "stock"
@@ -228,6 +229,11 @@ export function RecordEditor({
   const [shortName, setShortName] = useState(seed?.shortName ?? "");
   const [sourceUrl, setSourceUrl] = useState(seed?.source.url ?? "");
   const [sourceSku, setSourceSku] = useState(seed?.source.sku ?? "");
+  const [seoTitle, setSeoTitle] = useState(seed?.seo.title ?? "");
+  const [seoDescription, setSeoDescription] = useState(seed?.seo.description ?? "");
+  const [handleBase, setHandleBase] = useState(seed?.seo.handleBase ?? "");
+  /** Comma-separated in the form, split/joined at the edges — the same shape `extraTags` is stored and sent in is one string per tag, not one text box per tag. */
+  const [extraTagsText, setExtraTagsText] = useState((seed?.seo.extraTags ?? []).join(", "));
   /**
    * Dimension and construction facts — length, width, GSM, a matched set's
    * named pieces. Held as one object rather than a field each, the same
@@ -333,6 +339,10 @@ export function RecordEditor({
         if (typeof snap["shortName"] === "string") setShortName(snap["shortName"]);
         if (typeof snap["sourceUrl"] === "string") setSourceUrl(snap["sourceUrl"]);
         if (typeof snap["sourceSku"] === "string") setSourceSku(snap["sourceSku"]);
+        if (typeof snap["seoTitle"] === "string") setSeoTitle(snap["seoTitle"]);
+        if (typeof snap["seoDescription"] === "string") setSeoDescription(snap["seoDescription"]);
+        if (typeof snap["handleBase"] === "string") setHandleBase(snap["handleBase"]);
+        if (typeof snap["extraTagsText"] === "string") setExtraTagsText(snap["extraTagsText"]);
         if (snap["extra"]) setExtra(snap["extra"] as DesignExtra);
         if (snap["care"]) setCare(snap["care"] as typeof care);
         if (snap["story"]) setStory(snap["story"] as typeof story);
@@ -381,6 +391,10 @@ export function RecordEditor({
             shortName,
             sourceUrl,
             sourceSku,
+            seoTitle,
+            seoDescription,
+            handleBase,
+            extraTagsText,
             extra,
             care,
             story,
@@ -412,6 +426,10 @@ export function RecordEditor({
     shortName,
     sourceUrl,
     sourceSku,
+    seoTitle,
+    seoDescription,
+    handleBase,
+    extraTagsText,
     extra,
     care,
     story,
@@ -677,6 +695,7 @@ export function RecordEditor({
     // finished product has wash instructions worth stating, not just the
     // ones with a category-specific tab of their own.
     list.push({ key: "care", label: "Care" });
+    list.push({ key: "seo", label: "SEO & Shopify" });
     list.push({ key: "prices", label: "Prices" });
     // Which photographs the product needs can be decided while creating it —
     // the rows are written once the colourway exists.
@@ -943,6 +962,13 @@ export function RecordEditor({
       shortName,
       sourceUrl,
       sourceSku,
+      seoTitle,
+      seoDescription,
+      handleBase,
+      extraTags: extraTagsText
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => t !== ""),
       extra,
       care,
       story: { ...story, productDetails: composedDescription, fullDescription: composedBody },
@@ -1838,6 +1864,32 @@ export function RecordEditor({
                   onChange={(v) => setCare((prev) => ({ ...prev, specialNotes: v }))} />
               </Section>
             </>
+          )}
+
+          {/*
+            SEO & Shopify. Blank means "compose it" for Title/Description/
+            Handle, the same rule Product Name already follows — set only
+            when the defaults genuinely need overriding. Shopify's own
+            draft/publish state lives on the Publish tab, next to the
+            buttons that change it, not duplicated here.
+          */}
+          {activeTab === "seo" && (
+            <Section title="Search & Storefront">
+              <TextField label="SEO Title" placeholder="Defaults to the product name"
+                value={seoTitle}
+                onChange={setSeoTitle} />
+              <TextField label="URL Handle" placeholder="Defaults to a slug of the product name"
+                value={handleBase}
+                onChange={setHandleBase} />
+              <TextField label="Extra Tags" placeholder="Comma-separated, added on top of the composed tags"
+                value={extraTagsText}
+                onChange={setExtraTagsText} />
+              <div className="sm:col-span-2 lg:col-span-3">
+                <TextArea label="SEO Description" placeholder="Defaults to the composed product description"
+                  value={seoDescription}
+                  onChange={setSeoDescription} rows={3} />
+              </div>
+            </Section>
           )}
 
           {activeTab === "prices" && (
@@ -4200,10 +4252,10 @@ function ChannelsPanel({
   const [busyCode, setBusyCode] = useState<string | null>(null);
   const [result, setResult] = useState<{ code: string; outcome: ActionResult } | null>(null);
 
-  const publish = (code: string) => {
+  const run = (code: string, action: (batchId: string, code: string) => Promise<ActionResult>) => {
     setBusyCode(code);
     startTransition(async () => {
-      const outcome = await publishBatchToChannel(batchId, code);
+      const outcome = await action(batchId, code);
       setResult({ code, outcome });
       setBusyCode(null);
       if (outcome.ok) onPublished(code);
@@ -4214,7 +4266,14 @@ function ChannelsPanel({
     <div className="border-t border-rule bg-surface-2 px-4 py-3">
       <div className="flex flex-col gap-2">
         {channels.map((ch) => {
-          const live = ch.shopifyProductId !== null;
+          const linked = ch.shopifyProductId !== null;
+          // A link written before Phase 10, and never re-pushed since, has
+          // no status recorded — the same "treat null as already-active"
+          // rule publish-listing.ts uses, so an old listing does not
+          // suddenly read as a draft it never was.
+          const isDraft = linked && ch.shopifyStatus === "draft";
+          const busy = pending && busyCode === ch.code;
+
           return (
             <div
               key={ch.code}
@@ -4222,22 +4281,30 @@ function ChannelsPanel({
             >
               <div className="min-w-0">
                 <p className="text-[13px] font-medium text-ink">{ch.name}</p>
-                <p className={`text-[11.5px] ${live ? "text-ok" : "text-muted"}`}>
-                  {live ? "Published" : "Not published yet"}
+                <p className={`text-[11.5px] ${isDraft ? "text-muted" : linked ? "text-ok" : "text-muted"}`}>
+                  {isDraft ? "Draft — not visible on the storefront" : linked ? "Published" : "Not published yet"}
                 </p>
               </div>
-              <button
-                type="button"
-                disabled={pending && busyCode === ch.code}
-                onClick={() => publish(ch.code)}
-                className="flex-none rounded-md border border-rule-2 px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {pending && busyCode === ch.code
-                  ? "Publishing…"
-                  : live
-                    ? "Republish"
-                    : "Publish"}
-              </button>
+              <div className="flex flex-none gap-2">
+                {!linked && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => run(ch.code, createShopifyDraft)}
+                    className="rounded-md border border-rule-2 px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {busy ? "Working…" : "Create Draft"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => run(ch.code, publishBatchToChannel)}
+                  className="rounded-md border border-rule-2 px-3 py-1.5 text-[12.5px] font-medium text-ink-2 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {busy ? "Working…" : isDraft ? "Publish" : linked ? "Republish" : "Publish"}
+                </button>
+              </div>
             </div>
           );
         })}

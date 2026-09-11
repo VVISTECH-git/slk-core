@@ -289,7 +289,13 @@ export interface RecordDetail {
      * consignment is listed on it yet. A batch can be on some channels and
      * not others — each is its own decision, not a side effect of the other.
      */
-    channels: { code: string; name: string; shopifyProductId: string | null }[];
+    channels: {
+      code: string;
+      name: string;
+      shopifyProductId: string | null;
+      /** "draft" | "active" | "archived" | null — null on a link that predates Phase 10 and was never re-pushed since. */
+      shopifyStatus: string | null;
+    }[];
   }[];
 
   /**

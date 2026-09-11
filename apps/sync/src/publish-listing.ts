@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 
 import type { Database } from "@slk/db";
 
-import { sendProductSet, type ConsignmentRow, type PhotoRow } from "./product-set";
+import { sendProductSet, type ConsignmentRow, type PhotoRow, type ShopifyProductStatus } from "./product-set";
 import { shopifyClient } from "./shopify-client";
 
 export interface PushResult {
@@ -48,6 +48,8 @@ export async function pushListingForColourway(
     batch_id: string;
     product_code: string;
     shopify_product_id: string;
+    /** Whatever `channel_link` currently says — read and preserved, never flipped by a re-push. Null on a row from before this column existed reads as already-active, matching migration 0052's own backfill. */
+    shopify_status: string | null;
     retail_minor: number | null;
     sellable: number | null;
   };
@@ -59,6 +61,7 @@ export async function pushListingForColourway(
       b.id                   as batch_id,
       b.code                 as product_code,
       cl.shopify_product_id,
+      cl.shopify_status,
       bp.retail_minor,
       cbs.sold_by_metre,
       cbs.sellable,
@@ -144,6 +147,7 @@ export async function pushListingForColourway(
 
     try {
       const client = await shopifyClient(row.channel_code);
+      const status: ShopifyProductStatus = row.shopify_status === "draft" ? "DRAFT" : "ACTIVE";
       const sent = await sendProductSet(
         client,
         row.channel_code,
@@ -154,6 +158,7 @@ export async function pushListingForColourway(
         row.retail_minor,
         row.sellable ?? 0,
         row.shopify_product_id,
+        status,
       );
 
       await db.execute(sql`

@@ -3,6 +3,7 @@ import {
   listingDescription,
   listingTags,
   listingTitle,
+  shopifyPriceForMetreMinor,
   styledTitle,
   titleStyleFor,
   vendorFor,
@@ -43,6 +44,14 @@ export type ConsignmentRow = {
   description_override: string | null;
   weight_grams: number | null;
   hsn_code: string | null;
+  /**
+   * True when `sellable` (below, passed separately) is a count of
+   * half-metre units rather than pieces — channel_batch_sellable's own
+   * `sold_by_metre` column, read straight through rather than re-derived
+   * here from product_type, which is a label and not what decides this any
+   * more. See FABRIC_UNIT_METRES in @slk/domain for why half a metre.
+   */
+  sold_by_metre: boolean;
 };
 
 export type PhotoRow = { slot: string | null; storage_key: string; alt_override: string | null };
@@ -180,7 +189,15 @@ export async function sendProductSet(
       variants: [
         {
           optionValues: [{ optionName: "Title", name: "Default Title" }],
-          price: (retailMinor / 100).toFixed(2),
+          // For a metre-sold consignment, retailMinor is what the design
+          // charges per metre — sellable below is a count of half-metre
+          // units, not metres, and Shopify multiplies price × quantity
+          // itself, so the variant has to be priced per unit for a cart of
+          // 3 units to total the right amount. Every other product type is
+          // priced exactly as it always was.
+          price: (
+            (row.sold_by_metre ? shopifyPriceForMetreMinor(retailMinor) : retailMinor) / 100
+          ).toFixed(2),
           sku: productCode,
           inventoryItem: {
             tracked: true,

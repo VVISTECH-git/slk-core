@@ -276,8 +276,10 @@ function summarizeErrors(errors: Record<string, string>): string {
  * design that should have been serialised can be corrected, while item codes
  * minted for cloth sold by the metre cannot be taken back off it.
  *
- * Dupatta, Fabric, Bedsheets, Scarves and Stolls are all pooled today.
- * Serialising one is a migration setting this key, not a change here.
+ * As of 11 Sep, Saree, Dupatta, Fabric, Bedsheets, Scarves and Stolls all
+ * carry this flag — every product type is at least listed per batch now.
+ * Whether a *serialised* design gets item codes or a running metre count is
+ * a separate question; see resolveUom below.
  */
 async function isSerialised(productTypeId: string | null): Promise<boolean> {
   if (productTypeId === null || productTypeId === "") return false;
@@ -288,6 +290,50 @@ async function isSerialised(productTypeId: string | null): Promise<boolean> {
   `);
 
   return row?.serialised ?? false;
+}
+
+/**
+ * Unit of Measure, resolved server-side the same way is_serialised is —
+ * re-read from the database rather than trusted from the form, because it
+ * now decides more than a label next to a price. A "metre" design is
+ * counted in half-metre units on the ledger and priced per unit to Shopify
+ * (see product-set.ts); a "piece" design gets item codes. Getting this
+ * wrong at creation is not cosmetic.
+ *
+ * Follows the product type by default (Fabric sells by the Metre, almost
+ * everything else by the Piece — Product Type already answers it, same as
+ * the form's own disabled Unit of Measure field says). The one override: a
+ * Fabric design whose Product Sub Type is one of the five that already
+ * carries a piece count (Suit Sets, Coord Sets, Patiala Sets, Lehanga Sets,
+ * Crop Tops Sets) is a matched, unstitched set bought whole, not by the
+ * length, so it falls back to Piece regardless of what its parent product
+ * type sells by.
+ */
+export async function resolveUom(
+  productTypeId: string | null,
+  garmentTypeId: string | null,
+): Promise<string | null> {
+  if (productTypeId === null || productTypeId === "") return null;
+
+  const [productType] = await db.execute<{ soldById: string | null }>(sql`
+    select sold_by_id as "soldById" from lookup_value where id = ${productTypeId}
+  `);
+  if (productType === undefined) return null;
+
+  if (garmentTypeId !== null && garmentTypeId !== "") {
+    const [isMatchedSet] = await db.execute<{ pieces: boolean }>(sql`
+      select true as pieces from lookup_value where id = ${garmentTypeId} and meta ? 'pieces'
+    `);
+    if (isMatchedSet !== undefined) {
+      const [pieceUom] = await db.execute<{ id: string }>(sql`
+        select id from lookup_value lv join lookup_list ll on ll.id = lv.list_id
+        where ll.code = 'uom' and lv.code = 'piece'
+      `);
+      return pieceUom?.id ?? productType.soldById;
+    }
+  }
+
+  return productType.soldById;
 }
 
 /** Labels for the values an id points at, so a name can be composed. */
@@ -794,6 +840,17 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
   */
   const serialised = await isSerialised(
     draft.attributes.productType ?? draft.attributes.homeProductType ?? null,
+  );
+
+  /*
+    Same re-read-not-trust reasoning as `serialised` above, now that uom
+    decides how a design's stock is counted (item codes vs a running metre
+    total) and what Shopify is charged per unit, not just what label shows
+    next to the price. Overwrites whatever the form sent — see resolveUom.
+  */
+  draft.attributes.uom = await resolveUom(
+    draft.attributes.productType ?? draft.attributes.homeProductType ?? null,
+    draft.attributes.garmentType ?? null,
   );
 
   const [last] = await db

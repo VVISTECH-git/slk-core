@@ -60,6 +60,7 @@ export async function pushListingForColourway(
       b.code                 as product_code,
       cl.shopify_product_id,
       bp.retail_minor,
+      cbs.sold_by_metre,
       cbs.sellable,
       d.name                 as design_name,
       product_type.label     as product_type,

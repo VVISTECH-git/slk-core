@@ -57,6 +57,7 @@ export async function GET(request: Request): Promise<Response> {
         d.name              as design_name,
         product_type.label  as product_type,
         d.is_serialised,
+        cbs.sold_by_metre,
         cbs.sellable,
         bp.retail_minor,
         b.title             as title_override,

@@ -10,7 +10,9 @@ import { loadPickableLocations } from "@/lib/locations";
 import type { AttributeKey } from "@/lib/attributes";
 import type { MovementDraft } from "@/lib/movements";
 
-import type { RecordDraft } from "../actions";
+import { metresToUnits } from "@slk/domain";
+
+import { resolveUom, type RecordDraft } from "../actions";
 import { IMPORT_COLUMNS, IMPORT_LISTS, TEMPLATE_ROWS } from "./columns";
 
 const PRODUCTS_SHEET = "Products";
@@ -78,7 +80,8 @@ function writeInstructionsSheet(workbook: ExcelJS.Workbook): void {
     "6. To add a new product: leave Existing Product Code blank and fill in the rest of the row. This mints one new design, one colourway and one opening consignment.",
     "7. To add stock to a product that already exists: fill in Existing Product Code with its design code (e.g. SAR-SRI-SIL-0001) and Colour, plus Opening Stock Location and Quantity, and optionally Reference and Notes. Every other column is ignored for that row — the product's own details don't change, only its stock does.",
     "8. Descriptors is free text: comma-separated, matching labels from the Descriptor list (e.g. \"Soft, Pure\").",
-    "9. Save the file and upload it on the Import Consignments screen. Every row is imported on its own — one bad row does not stop the rest, and you'll see exactly which rows failed and why.",
+    "9. For a Fabric row with no Product Sub Type filled in (not one of the matched-set sub-types), Retail Price and Opening Stock Quantity are both read per metre — a bolt of 34.5 metres is simply \"34.5\" in Opening Stock Quantity, the same way its price is already read per metre. A Fabric row with a matched-set sub-type (Suit Sets, Coord Sets, Patiala Sets, Lehanga Sets, Crop Tops Sets) is priced and counted per set instead, the same as any other product.",
+    "10. Save the file and upload it on the Import Consignments screen. Every row is imported on its own — one bad row does not stop the rest, and you'll see exactly which rows failed and why.",
   ];
 
   lines.forEach((line, i) => {
@@ -232,11 +235,15 @@ export async function parseImportFile(
   // One lookup per distinct code rather than one per row — a template with
   // the same existing product on fifty rows should cost fifty rows' worth of
   // stock, not fifty round trips to look up the same design.
-  const colourwayCache = new Map<string, { id: string; colourId: string | null }[]>();
+  const colourwayCache = new Map<string, { id: string; colourId: string | null; uomId: string | null }[]>();
+
+  // options already holds every active list, uom included — no second query
+  // needed to find which id "Metre" resolved to.
+  const metreUomId = (options["uom"] ?? []).find((o) => o.code === "metre")?.id ?? null;
 
   const rows: ParsedRow[] = [];
   for (const { rowNumber, cells } of raw) {
-    rows.push(await parseRow(rowNumber, cells, labelMaps, descriptorMap, colourwayCache));
+    rows.push(await parseRow(rowNumber, cells, labelMaps, descriptorMap, colourwayCache, metreUomId));
   }
 
   return { ok: true, rows };
@@ -256,14 +263,17 @@ function cellText(value: ExcelJS.CellValue): string {
  */
 async function colourwaysForCode(
   code: string,
-  cache: Map<string, { id: string; colourId: string | null }[]>,
-): Promise<{ id: string; colourId: string | null }[]> {
+  cache: Map<string, { id: string; colourId: string | null; uomId: string | null }[]>,
+): Promise<{ id: string; colourId: string | null; uomId: string | null }[]> {
   const key = code.trim().toLowerCase();
   const cached = cache.get(key);
   if (cached !== undefined) return cached;
 
-  const found = await db.execute<{ id: string; colourId: string | null }>(sql`
-    select cw.id, cw.colour_id as "colourId"
+  // uomId travels with the design, not asked for again on a restock row —
+  // whether this consignment's quantity means metres or pieces was decided
+  // when the design was created, not by whoever is restocking it today.
+  const found = await db.execute<{ id: string; colourId: string | null; uomId: string | null }>(sql`
+    select cw.id, cw.colour_id as "colourId", d.uom_id as "uomId"
     from colourway cw
     join design d on d.id = cw.design_id
     where lower(d.code) = ${key} and cw.is_active
@@ -278,7 +288,14 @@ async function parseRow(
   cells: ExcelJS.CellValue[],
   labelMaps: Map<string, Map<string, string>>,
   descriptorMap: Map<string, string>,
-  colourwayCache: Map<string, { id: string; colourId: string | null }[]>,
+  colourwayCache: Map<string, { id: string; colourId: string | null; uomId: string | null }[]>,
+  /**
+   * The `uom` list's own "Metre" row, resolved once for the whole file
+   * rather than per row — the same reasoning as caching a colourway lookup
+   * per code. Null on a store with no such value, which just means the
+   * metres-vs-pieces conversion below never triggers.
+   */
+  metreUomId: string | null,
 ): Promise<ParsedRow> {
   const errors: string[] = [];
   const attributes: Partial<Record<AttributeKey, string | null>> = {};
@@ -354,6 +371,18 @@ async function parseRow(
   });
 
   if (existingProductCode.trim() === "") {
+    // Same server-side resolution createRecord itself does, run early
+    // because it decides how the Opening Stock Quantity cell is read, not
+    // only what gets stored — see the comment on resolveUom.
+    const uomId = await resolveUom(
+      attributes.productType ?? attributes.homeProductType ?? null,
+      attributes.garmentType ?? null,
+    );
+    const openingQtyForStorage =
+      uomId !== null && uomId === metreUomId && openingQty.trim() !== ""
+        ? String(metresToUnits(Number(openingQty)))
+        : openingQty;
+
     const draft: RecordDraft = {
       attributes,
       descriptors,
@@ -361,7 +390,7 @@ async function parseRow(
       secondaryColourId,
       prices,
       quantity: "",
-      openingStock: [{ locationId, qty: openingQty }],
+      openingStock: [{ locationId, qty: openingQtyForStorage }],
       imageSlots: [],
       notes,
       name,
@@ -383,8 +412,10 @@ async function parseRow(
   }
 
   let colourwayId = "";
+  let uomId: string | null = null;
   if (candidates.length === 1) {
     colourwayId = candidates[0]!.id;
+    uomId = candidates[0]!.uomId;
   } else if (candidates.length > 1) {
     if (colourId === null) {
       errors.push(
@@ -396,14 +427,23 @@ async function parseRow(
         errors.push(`Existing Product Code: "${existingProductCode}" has no colourway in that Colour.`);
       } else {
         colourwayId = match.id;
+        uomId = match.uomId;
       }
     }
   }
 
+  // A restock's Opening Stock Quantity means whatever the design it is
+  // restocking already means — metres for a metre-sold design, pieces for
+  // everything else. Not asked again; read off the design itself.
+  const movementQty =
+    uomId !== null && uomId === metreUomId && openingQty.trim() !== ""
+      ? String(metresToUnits(Number(openingQty)))
+      : openingQty;
+
   const movement: MovementDraft = {
     kind: "received",
     locationId,
-    qty: openingQty,
+    qty: movementQty,
     reference,
     note: notes,
   };

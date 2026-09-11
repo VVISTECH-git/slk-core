@@ -71,6 +71,7 @@ async function main(): Promise<void> {
     design_name: string;
     product_type: string | null;
     is_serialised: boolean;
+    sold_by_metre: boolean;
     sellable: number | null;
     retail_minor: number | null;
     currency: string;
@@ -104,6 +105,7 @@ async function main(): Promise<void> {
       d.name              as design_name,
       product_type.label  as product_type,
       d.is_serialised,
+      cbs.sold_by_metre,
       cbs.sellable,
       bp.retail_minor,
       bp.currency,

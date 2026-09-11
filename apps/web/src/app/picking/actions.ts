@@ -125,21 +125,52 @@ export async function packReservation(
   }
 
   try {
-    const [batch] = await db.execute<{ colourwayId: string }>(sql`
-      select colourway_id as "colourwayId" from batch where id = ${claimed.batchId}
+    // soldByMetre also answers a question packReservation never had to ask
+    // before this existed: does the movement this pack writes need to name
+    // its batch. Every other design leaves batch_id null on a sale — the
+    // piece keeps the codes it arrived with and piece_position infers which
+    // batch left, newest-first. A metre-tracked design has no piece to
+    // infer through, so its own stock (batch_measured_qty) only exists at
+    // all if the sale names the batch directly, the one deliberate
+    // exception to "batch_id is only ever set on receipt" — see that
+    // column's own comment on `movement`.
+    const [batch] = await db.execute<{ colourwayId: string; soldByMetre: boolean }>(sql`
+      select b.colourway_id as "colourwayId", uom.code = 'metre' as "soldByMetre"
+      from batch b
+      join colourway cw on cw.id = b.colourway_id
+      join design d on d.id = cw.design_id
+      left join lookup_value uom on uom.id = d.uom_id
+      where b.id = ${claimed.batchId}
     `);
     if (batch === undefined) throw new PackRejected("That consignment no longer exists.");
 
     // Same check recordMovement makes: cannot send out more than this
-    // location actually holds of this colourway.
-    const [held] = await db.execute<{ qty: number }>(sql`
-      select (
-        coalesce((select sum(m.qty)::int from movement m
-                  where m.colourway_id = ${batch.colourwayId} and m.to_location_id = ${locationId}), 0)
-      - coalesce((select sum(m.qty)::int from movement m
-                  where m.colourway_id = ${batch.colourwayId} and m.from_location_id = ${locationId}), 0)
-      ) as qty
-    `);
+    // location actually holds — of this colourway for a piece-tracked
+    // design, matching how its stock is counted everywhere else. A
+    // metre-tracked design is scoped to this one batch instead: Shopify
+    // listed this specific bolt with its own sellable count, so packing
+    // against the colourway's combined total across every bolt would let
+    // one listing oversell by borrowing stock a customer never actually
+    // saw offered.
+    const [held] = await db.execute<{ qty: number }>(
+      batch.soldByMetre
+        ? sql`
+          select (
+            coalesce((select sum(m.qty)::int from movement m
+                      where m.batch_id = ${claimed.batchId} and m.to_location_id = ${locationId}), 0)
+          - coalesce((select sum(m.qty)::int from movement m
+                      where m.batch_id = ${claimed.batchId} and m.from_location_id = ${locationId}), 0)
+          ) as qty
+        `
+        : sql`
+          select (
+            coalesce((select sum(m.qty)::int from movement m
+                      where m.colourway_id = ${batch.colourwayId} and m.to_location_id = ${locationId}), 0)
+          - coalesce((select sum(m.qty)::int from movement m
+                      where m.colourway_id = ${batch.colourwayId} and m.from_location_id = ${locationId}), 0)
+          ) as qty
+        `,
+    );
     const available = held?.qty ?? 0;
 
     if (claimed.qty > available) {
@@ -152,6 +183,8 @@ export async function packReservation(
 
     await db.insert(movement).values({
       colourwayId: batch.colourwayId,
+      // The one deliberate exception — see the comment above `held`.
+      batchId: batch.soldByMetre ? claimed.batchId : null,
       qty: claimed.qty,
       kind: "sold",
       fromLocationId: locationId,

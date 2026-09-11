@@ -49,7 +49,14 @@ export {
   type ListingTitleParts,
 } from "./listing";
 
-export { stockAt, type LocationPosition } from "./stock";
+export {
+  stockAt,
+  type LocationPosition,
+  FABRIC_UNIT_METRES,
+  metresToUnits,
+  unitsToMetres,
+  shopifyPriceForMetreMinor,
+} from "./stock";
 
 export {
   hashSecret,

@@ -4,10 +4,9 @@
  * API, not guessed. Lives here rather than in @slk/domain: this is a fact
  * about Shopify, not about the business.
  *
- * Only Saree matters functionally today — is_serialised gates everything
- * else out of channel_batch_sellable before a listing is possible — but
- * the mapping is real for the day a second product type gets there rather
- * than something to rebuild from scratch.
+ * As of 11 Sep every product type here is serialised and reaches
+ * channel_batch_sellable — Saree was simply first. The mapping was written
+ * ahead of that day rather than rebuilt from scratch once it arrived.
  */
 const SHOPIFY_CATEGORY_BY_PRODUCT_TYPE: Record<string, string> = {
   // Apparel & Accessories > Clothing > Traditional & Ceremonial Clothing >

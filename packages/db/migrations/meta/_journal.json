@@ -337,6 +337,13 @@
       "when": 1788941523881,
       "tag": "0047_only_the_colours_slk_names",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1789035600000,
+      "tag": "0048_the_other_five_get_listed_too",
+      "breakpoints": true
     }
   ]
 }

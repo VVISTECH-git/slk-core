@@ -886,6 +886,7 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
           name = ${draft.nameIsCustom ? draft.name : composed},
           name_is_custom = ${draft.nameIsCustom},
           notes = ${draft.notes.trim() === "" ? null : draft.notes},
+          extra = ${JSON.stringify(draft.extra ?? {})}::jsonb,
           updated_at = now()
         where id = ${parent.id}
       `);

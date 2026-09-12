@@ -132,6 +132,50 @@ export interface PickableLocation {
   isInternal: boolean;
 }
 
+/**
+ * Where a wholly fresh record's in-progress draft id lives — a pointer, not
+ * the draft itself.
+ *
+ * Every open of "New Record" used to autosave under the same literal "new"
+ * key. Cancel one half-finished Saree, start an unrelated one, and the
+ * second was offered the first's fields to "restore" — with nothing but a
+ * timestamp to say they did not match. Taking the offer put the wrong
+ * saree's attributes, prices and short name into what was meant to be a
+ * blank record.
+ *
+ * A pointer to the *current* attempt's id survives exactly what it needs to
+ * — a reload, a closed laptop, mid-typing — and no more: `clearFreshDraftId`
+ * removes it wherever an attempt genuinely ends (Cancel, Discard, or a
+ * successful Finish), so the next "New Record" click starts an id of its
+ * own instead of reopening this one.
+ */
+const NEW_DRAFT_POINTER_KEY = "slk.record-draft.new.current-id";
+
+/** The id to key this attempt's draft under — reused across a reload for as
+ * long as the pointer says this attempt is still open, fresh otherwise. */
+function currentFreshDraftId(): string {
+  try {
+    const existing = window.localStorage.getItem(NEW_DRAFT_POINTER_KEY);
+    if (existing !== null && existing !== "") return existing;
+    const created = crypto.randomUUID();
+    window.localStorage.setItem(NEW_DRAFT_POINTER_KEY, created);
+    return created;
+  } catch {
+    // Private windows and blocked site data: every attempt in this tab
+    // falls back to sharing one id, same as before this fix — there is no
+    // persistence to collide across in the first place.
+    return "new";
+  }
+}
+
+function clearFreshDraftId(): void {
+  try {
+    window.localStorage.removeItem(NEW_DRAFT_POINTER_KEY);
+  } catch {
+    // Nothing was persisted to clean up.
+  }
+}
+
 export function RecordEditor({
   record,
   template = null,
@@ -316,11 +360,16 @@ export function RecordEditor({
     autosave's job once drafts are allowed to be incomplete.
 
     Keyed by the record being edited, or by the template it is a new colour
-    of, or "new" for a wholly fresh record — three different half-finished
-    Sarees do not collide, and reopening the same record picks its own
-    snapshot back up.
+    of — both have a stable id of their own, so reopening either picks its
+    own snapshot back up and two of them never collide.
+
+    A wholly fresh record has no such id yet, so it gets one from
+    `currentFreshDraftId` — memoized for the life of this mounted editor,
+    not recomputed on every render, which would mint a fresh id (and so a
+    fresh, empty draftKey) on every keystroke.
   */
-  const draftKey = `slk.record-draft.${record?.id ?? (template ? `new:${template.id}` : "new")}`;
+  const [freshDraftId] = useState(() => (record === null && template === null ? currentFreshDraftId() : ""));
+  const draftKey = `slk.record-draft.${record?.id ?? (template ? `new:${template.id}` : freshDraftId)}`;
   const [restoreAvailable, setRestoreAvailable] = useState<{ savedAt: number } | null>(null);
   const [restoreDismissed, setRestoreDismissed] = useState(false);
 
@@ -377,8 +426,25 @@ export function RecordEditor({
     } catch {
       // Leaving a stale snapshot behind is harmless — it just gets offered again.
     }
+    // This attempt is done with, not merely unreviewed — the next "New
+    // Record" should start its own id rather than autosaving right back
+    // into the slot just emptied.
+    if (record === null && template === null) clearFreshDraftId();
     setRestoreAvailable(null);
     setRestoreDismissed(true);
+  }
+
+  /**
+   * Cancel, the header ✕, and the backdrop click all leave without saving —
+   * and for a wholly fresh record, all three end this attempt the same way
+   * Discard does: the draft snapshot itself is left alone (closing a
+   * half-typed record must not cost the twenty minutes already spent), but
+   * the pointer to it is cleared, so the next "New Record" is its own
+   * attempt rather than a reopening of this one.
+   */
+  function handleCancel() {
+    if (record === null && template === null) clearFreshDraftId();
+    onClose();
   }
 
   // Debounced, and held off entirely while an unreviewed snapshot is on
@@ -452,6 +518,19 @@ export function RecordEditor({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [result, setResult] = useState<ActionResult | null>(null);
   const [pending, startTransition] = useTransition();
+
+  /**
+   * The single-page layout being trialled alongside the step wizard.
+   *
+   * Same fields, same state, same Save — this only changes whether every
+   * tab's content is on screen at once (with the tab strip acting as a
+   * jump-to-section index) or one tab at a time. Not persisted: it is a
+   * one-session experiment, not a preference.
+   */
+  const [singlePage, setSinglePage] = useState(false);
+  const scrollToSection = (key: string) => {
+    document.getElementById(`section-${key}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const labelOf = (list: string, id: string | null | undefined) =>
     id ? (options[list]?.find((o) => o.id === id)?.label ?? null) : null;
@@ -730,6 +809,27 @@ export function RecordEditor({
   // Dupatta — so fall back rather than render nothing.
   const activeTab = tabs.some((t) => t.key === tab) ? tab : "basic";
 
+  // A section renders if it is the active step (wizard mode) or always
+  // (single-page mode) — every `{showTab("x") && (...)}` gate below reads
+  // the same way in both layouts.
+  const showTab = (key: TabKey) => singlePage || activeTab === key;
+
+  // The single-page layout's stand-in for the tab strip: a heading marking
+  // where each section starts, numbered and anchored the same way the tab
+  // itself is, so the two layouts read as the same steps in the same order.
+  const sectionHeading = (key: TabKey) => {
+    const t = tabs.find((x) => x.key === key);
+    if (!t) return null;
+    return (
+      <h3
+        id={`section-${key}`}
+        className="mb-4 mt-10 scroll-mt-4 text-[15px] font-semibold text-ink first:mt-0"
+      >
+        {tabs.indexOf(t) + 1}. {t.label}
+      </h3>
+    );
+  };
+
   // Recomputed rather than held in state, because the steps themselves change
   // as the record does: choosing Saree inserts Blouse between Craft & Design
   // and Prices, and a stored index would then point at the wrong one.
@@ -1002,6 +1102,9 @@ export function RecordEditor({
           // A leftover snapshot for a record that just saved is stale, not
           // harmful — worst case it offers a Restore nobody needs.
         }
+        // Saved for real now — a new colourway with its own id, not this
+        // attempt any more. The next "New Record" gets its own.
+        if (record === null && template === null) clearFreshDraftId();
         onSaved(outcome.message);
       }
     });
@@ -1012,7 +1115,7 @@ export function RecordEditor({
       <button
         type="button"
         aria-label="Close editor"
-        onClick={onClose}
+        onClick={handleCancel}
         className="absolute inset-0 cursor-default bg-ink/25"
       />
 
@@ -1043,9 +1146,16 @@ export function RecordEditor({
             )}
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => setSinglePage((v) => !v)}
+              className="ml-auto rounded-md border border-rule-2 px-2.5 py-1 text-[12px] font-medium text-ink-2 hover:bg-surface-2"
+            >
+              {singlePage ? "Switch to step-by-step" : "Try single-page layout"}
+            </button>
+            <button
+              type="button"
+              onClick={handleCancel}
               aria-label="Close"
-              className="ml-auto rounded p-1 text-muted hover:bg-surface-2 hover:text-ink"
+              className="rounded p-1 text-muted hover:bg-surface-2 hover:text-ink"
             >
               ✕
             </button>
@@ -1056,7 +1166,7 @@ export function RecordEditor({
               <button
                 key={t.key}
                 type="button"
-                onClick={() => setTab(t.key)}
+                onClick={() => (singlePage ? scrollToSection(t.key) : setTab(t.key))}
                 aria-current={activeTab === t.key ? "page" : undefined}
                 className={`relative rounded-t-md px-3 py-2 text-[13px] ${
                   activeTab === t.key
@@ -1109,8 +1219,9 @@ export function RecordEditor({
 
         <div className="flex flex-1 overflow-hidden bg-surface-2">
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          {activeTab === "basic" && (
+          {showTab("basic") && (
             <>
+              {singlePage && sectionHeading("basic")}
               <Grid>
                 <Combo label="Industry" list="industry" required
                   options={options} value={attributes.industry ?? null}
@@ -1313,8 +1424,10 @@ export function RecordEditor({
             </>
           )}
 
-          {activeTab === "craft" && (
-            <Grid>
+          {showTab("craft") && (
+            <>
+              {singlePage && sectionHeading("craft")}
+              <Grid>
               {/*
                 Colour leads, because on a hand-painted saree it is the first
                 thing anyone says about the piece and the thing that makes one
@@ -1360,10 +1473,11 @@ export function RecordEditor({
                 disabled={!attributes.motifCategory}
                 placeholder={attributes.motifCategory ? "Choose…" : "Pick a category first"}
                 onPick={(v) => set("motif", v)} />
-            </Grid>
+              </Grid>
+            </>
           )}
 
-          {activeTab === "craft" && (
+          {showTab("craft") && (
             <Section title="Technique & Appearance">
               <Combo label="Print Technique" list="print_technique"
                 options={options} value={attributes.printTechnique ?? null}
@@ -1411,8 +1525,9 @@ export function RecordEditor({
             finished saree rather than the cloth it is made from or the craft
             that decorated it.
           */}
-          {activeTab === "blouse" && (
+          {showTab("blouse") && (
             <>
+              {singlePage && sectionHeading("blouse")}
               {isSaree && (
                 <>
                   {/*
@@ -1708,8 +1823,10 @@ export function RecordEditor({
             </>
           )}
 
-          {activeTab === "garment" && (
-            <Section title="Garment Details">
+          {showTab("garment") && (
+            <>
+              {singlePage && sectionHeading("garment")}
+              <Section title="Garment Details">
               <Combo label="Age Group" list="age_group"
                 options={options} value={attributes.ageGroup ?? null}
                 onPick={(v) => set("ageGroup", v)} />
@@ -1731,7 +1848,8 @@ export function RecordEditor({
               <Combo label="Fit Type" list="fit_type"
                 options={options} value={attributes.fitType ?? null}
                 onPick={(v) => set("fitType", v)} />
-            </Section>
+              </Section>
+            </>
           )}
 
           {/*
@@ -1743,8 +1861,9 @@ export function RecordEditor({
             already made, shown here so the sentence a taxonomy edit changes
             is visible without leaving the tab.
           */}
-          {activeTab === "story" && (
+          {showTab("story") && (
             <>
+              {singlePage && sectionHeading("story")}
               <Section title="Tell Us About It" cols={2}>
                 <TextArea label="What's special about this piece?"
                   value={story.qSpecial}
@@ -1827,8 +1946,9 @@ export function RecordEditor({
             same distinction Sales Story draws between an internal record and
             something meant to be read by a buyer.
           */}
-          {activeTab === "care" && (
+          {showTab("care") && (
             <>
+              {singlePage && sectionHeading("care")}
               <Section title="Washing">
                 <Combo label="Wash Method" list="wash_method"
                   options={options} value={care.washMethodId}
@@ -1877,8 +1997,10 @@ export function RecordEditor({
             draft/publish state lives on the Publish tab, next to the
             buttons that change it, not duplicated here.
           */}
-          {activeTab === "seo" && (
-            <Section title="Search & Storefront">
+          {showTab("seo") && (
+            <>
+              {singlePage && sectionHeading("seo")}
+              <Section title="Search & Storefront">
               <TextField label="SEO Title" placeholder="Defaults to the product name"
                 value={seoTitle}
                 onChange={setSeoTitle} />
@@ -1893,11 +2015,13 @@ export function RecordEditor({
                   value={seoDescription}
                   onChange={setSeoDescription} rows={3} />
               </div>
-            </Section>
+              </Section>
+            </>
           )}
 
-          {activeTab === "prices" && (
+          {showTab("prices") && (
             <>
+              {singlePage && sectionHeading("prices")}
               <Grid>
                 {PRICE_KINDS.map((p) => (
                   <label key={p.key} className="block">
@@ -1959,8 +2083,10 @@ export function RecordEditor({
             </>
           )}
 
-          {activeTab === "images" && (
-            <ImageSlots
+          {showTab("images") && (
+            <>
+              {singlePage && sectionHeading("images")}
+              <ImageSlots
               /*
                 Which photographs a product needs depends on what it is: a
                 saree is judged on Body, Pallu, Border and Blouse, and a
@@ -1983,11 +2109,14 @@ export function RecordEditor({
                 setExtraImageSlots((prev) => [...prev, option]);
                 setImageSlots((prev) => [...prev, option.id]);
               }}
-            />
+              />
+            </>
           )}
 
-          {activeTab === "stock" && (
-            <StockTab
+          {showTab("stock") && (
+            <>
+              {singlePage && sectionHeading("stock")}
+              <StockTab
               record={record}
               quantity={quantity}
               setQuantity={setQuantity}
@@ -1998,14 +2127,18 @@ export function RecordEditor({
               onMoved={onSaved}
               composedTitle={composedTitle}
               composedDescription={composedDescription}
-            />
+              />
+            </>
           )}
 
-          {activeTab === "publish" && (
-            <PublishTab record={record} role={role} onReviewed={onPhotoChanged} />
+          {showTab("publish") && (
+            <>
+              {singlePage && sectionHeading("publish")}
+              <PublishTab record={record} role={role} onReviewed={onPhotoChanged} />
+            </>
           )}
 
-          {activeTab === "basic" && (
+          {showTab("basic") && (
             <label className="mt-4 block">
               <span className="mb-1 block text-[12.5px] text-ink-2">Notes</span>
               <textarea
@@ -2030,8 +2163,8 @@ export function RecordEditor({
           every keystroke, not just after a Save.
         */}
         <aside className="hidden w-[300px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-rule bg-surface px-4 py-5 xl:flex">
-          <RailReadiness readiness={readiness} onJump={(t) => setTab(t as TabKey)} />
-          <RailChecklist readiness={readiness} onJump={(t) => setTab(t as TabKey)} />
+          <RailReadiness readiness={readiness} onJump={(t) => (singlePage ? scrollToSection(t) : setTab(t as TabKey))} />
+          <RailChecklist readiness={readiness} onJump={(t) => (singlePage ? scrollToSection(t) : setTab(t as TabKey))} />
           <RailPreview title={composedTitle} body={composedBody} />
         </aside>
         </div>
@@ -2059,7 +2192,9 @@ export function RecordEditor({
 
           {result === null && (
             <span className="text-[12.5px] text-muted">
-              Step {step + 1} of {tabs.length} — {tabs[step]?.label}
+              {singlePage
+                ? "All sections — scroll or use a tab to jump"
+                : `Step ${step + 1} of ${tabs.length} — ${tabs[step]?.label}`}
             </span>
           )}
 
@@ -2067,25 +2202,27 @@ export function RecordEditor({
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleCancel}
             className="rounded-md px-3 py-2 text-[13.5px] text-muted hover:text-ink"
           >
             Cancel
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              const previous = tabs[step - 1];
-              if (previous) setTab(previous.key);
-            }}
-            disabled={onFirstStep}
-            className="rounded-md border border-rule-2 px-3 py-2 text-[13.5px] text-ink-2 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Back
-          </button>
+          {!singlePage && (
+            <button
+              type="button"
+              onClick={() => {
+                const previous = tabs[step - 1];
+                if (previous) setTab(previous.key);
+              }}
+              disabled={onFirstStep}
+              className="rounded-md border border-rule-2 px-3 py-2 text-[13.5px] text-ink-2 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Back
+            </button>
+          )}
 
-          {!onLastStep && (
+          {!singlePage && !onLastStep && (
             <button
               type="button"
               onClick={goNext}

@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
 import { colourway, design, location, movement } from "@slk/db";
-import { designCode, designName } from "@slk/domain";
+import { designCode, designName, titleCase } from "@slk/domain";
 import { archiveListing } from "@slk/sync/archive-listing";
 import { pushInventoryForColourway } from "@slk/sync/inventory-push";
 import { pushListingForColourway } from "@slk/sync/publish-listing";
@@ -2012,4 +2012,72 @@ async function setImageSlots(
         and slot_id in (${sql.join(toDrop.map((id) => sql`${id}`), sql`, `)})
     `);
   }
+}
+
+/** Same rule Master Lists' own addCategory uses, so a code minted here reads identically to one minted there. */
+function slugify(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * A quick, in-the-moment way to add a photo type the Images tab does not
+ * offer yet — without leaving the record, and without needing office access
+ * to Master Lists. Deliberately floor-gated: this exists for exactly the
+ * situation of standing over a product with a camera and nowhere in the
+ * list to put the shot.
+ *
+ * Scoped to the product type the record already has, the same relationship
+ * Pallu/Border/Blouse have to Saree — not universal by default, since most
+ * new slots turn out to describe one category, not every category. A label
+ * has to be unique across the whole Image Slot list regardless of which
+ * product type it is scoped to (the same constraint Master Lists' own Add
+ * runs into), so a name already taken by another product type is refused
+ * rather than silently reparented — the caller sees the refusal and picks a
+ * more specific name instead.
+ */
+export async function addImageSlot(
+  label: string,
+  productTypeId: string | null,
+): Promise<{ ok: true; id: string; label: string } | { ok: false; message: string }> {
+  const denied = await guard("floor");
+  if (denied !== null) return denied;
+
+  const clean = titleCase(label.trim());
+  const code = slugify(clean);
+  if (clean === "" || code === "") {
+    return { ok: false, message: "That is not a usable name." };
+  }
+
+  const [list] = await db.execute<{ id: string }>(sql`
+    select id from lookup_list where code = 'image_slot'
+  `);
+  if (list === undefined) return { ok: false, message: "The Image Slot list is missing." };
+
+  const [clash] = await db.execute<{ label: string }>(sql`
+    select label from lookup_value where list_id = ${list.id} and lower(label) = lower(${clean})
+  `);
+  if (clash !== undefined) {
+    return {
+      ok: false,
+      message: `"${clash.label}" already exists as a photo type. If this is for a different product, try a more specific name.`,
+    };
+  }
+
+  const [next] = await db.execute<{ max: number }>(sql`
+    select coalesce(max(sort_order), -1)::int as max from lookup_value where list_id = ${list.id}
+  `);
+
+  const [row] = await db.execute<{ id: string }>(sql`
+    insert into lookup_value (list_id, code, label, sort_order, parent_value_id)
+    values (${list.id}, ${code}, ${clean}, ${(next?.max ?? -1) + 1}, ${productTypeId})
+    returning id
+  `);
+
+  revalidatePath("/records");
+
+  return { ok: true, id: row!.id, label: clean };
 }

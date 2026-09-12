@@ -27,6 +27,7 @@ import {
 } from "@/lib/movements";
 
 import {
+  addImageSlot,
   archiveRecord,
   deleteRecord,
   createRecord,
@@ -211,6 +212,14 @@ export function RecordEditor({
       .filter((o) => o.parentId === null || o.parentId === productType)
       .map((o) => o.id);
   });
+  /**
+   * Photo types added from the Images tab itself, this session — a quick,
+   * floor-level provision (see addImageSlot's own comment) for when the
+   * list does not yet offer the shot somebody is holding a camera up to
+   * take. `options` is a page-level prop, loaded once; this is what makes a
+   * slot created just now show up without a full reload.
+   */
+  const [extraImageSlots, setExtraImageSlots] = useState<Option[]>([]);
   /**
    * The adjectives, several of them.
    *
@@ -1947,7 +1956,7 @@ export function RecordEditor({
                 only under it; one that names none is offered on everything,
                 which is what the four existing slots do.
               */
-              slots={(options["image_slot"] ?? []).filter(
+              slots={[...(options["image_slot"] ?? []), ...extraImageSlots].filter(
                 (o) =>
                   o.parentId === null ||
                   o.parentId === (attributes.productType ?? attributes.homeProductType),
@@ -1957,6 +1966,11 @@ export function RecordEditor({
               taken={record?.images ?? []}
               colourwayId={record?.id ?? null}
               onChanged={onPhotoChanged}
+              productTypeId={attributes.productType ?? attributes.homeProductType ?? null}
+              onAdded={(option) => {
+                setExtraImageSlots((prev) => [...prev, option]);
+                setImageSlots((prev) => [...prev, option.id]);
+              }}
             />
           )}
 
@@ -4484,6 +4498,8 @@ function ImageSlots({
   taken,
   colourwayId,
   onChanged,
+  productTypeId,
+  onAdded,
 }: {
   slots: Option[];
   chosen: string[];
@@ -4498,6 +4514,9 @@ function ImageSlots({
    */
   colourwayId: string | null;
   onChanged: (message: string) => void;
+  /** What a photo type added right here gets scoped to — this record's own product type, same as Pallu/Border/Blouse are scoped to Saree. */
+  productTypeId: string | null;
+  onAdded: (option: Option) => void;
 }) {
   const [storage, setStorage] = useState<{
     ready: boolean;
@@ -4506,6 +4525,35 @@ function ImageSlots({
 
   /** The photograph being looked at properly, or null. */
   const [enlarged, setEnlarged] = useState<string | null>(null);
+
+  const [addingSlot, setAddingSlot] = useState(false);
+  const [newSlotLabel, setNewSlotLabel] = useState("");
+  const [addSlotPending, startAddSlot] = useTransition();
+  const [addSlotError, setAddSlotError] = useState<string | null>(null);
+
+  const submitNewSlot = () => {
+    setAddSlotError(null);
+    startAddSlot(async () => {
+      const outcome = await addImageSlot(newSlotLabel, productTypeId);
+      if (!outcome.ok) {
+        setAddSlotError(outcome.message);
+        return;
+      }
+      onAdded({
+        id: outcome.id,
+        label: outcome.label,
+        code: outcome.label.toLowerCase().replace(/\s+/g, "-"),
+        parentId: productTypeId,
+        soldById: null,
+        hex: null,
+        serialised: false,
+        isDefault: false,
+        pieces: null,
+      });
+      setNewSlotLabel("");
+      setAddingSlot(false);
+    });
+  };
 
   // Asked once, when the tab is opened. Whether the bucket is configured is a
   // fact about the server, and the alternative — threading it down from the
@@ -4525,15 +4573,6 @@ function ImageSlots({
       .filter((t) => t.slotId !== null && t.url !== null)
       .map((t) => [t.slotId as string, t.url as string]),
   );
-
-  if (slots.length === 0) {
-    return (
-      <Note>
-        No image slots are set up. Add them on Master Lists → Image Slot, and
-        they will be offered here.
-      </Note>
-    );
-  }
 
   return (
     <>
@@ -4567,6 +4606,70 @@ function ImageSlots({
             onEnlarge={setEnlarged}
           />
         ))}
+      </div>
+
+      {slots.length === 0 && !addingSlot && (
+        <p className="mt-3 text-[12.5px] text-muted">
+          No photo types are set up for this product yet.
+        </p>
+      )}
+
+      <div className="mt-3">
+        {addingSlot ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              autoFocus
+              value={newSlotLabel}
+              onChange={(e) => setNewSlotLabel(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitNewSlot();
+                if (e.key === "Escape") {
+                  setAddingSlot(false);
+                  setNewSlotLabel("");
+                  setAddSlotError(null);
+                }
+              }}
+              placeholder="e.g. Fringe Close-Up"
+              className="rounded-md border border-rule-2 bg-surface px-3 py-1.5 text-[13px] text-ink"
+            />
+            <button
+              type="button"
+              disabled={addSlotPending || newSlotLabel.trim() === ""}
+              onClick={submitNewSlot}
+              className="rounded-md bg-ink px-3 py-1.5 text-[12.5px] font-medium text-surface hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {addSlotPending ? "Adding…" : "Add"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAddingSlot(false);
+                setNewSlotLabel("");
+                setAddSlotError(null);
+              }}
+              className="rounded-md px-3 py-1.5 text-[12.5px] text-muted hover:bg-surface-2"
+            >
+              Cancel
+            </button>
+            {addSlotError !== null && (
+              <span className="w-full text-[12px] text-brick">{addSlotError}</span>
+            )}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setAddingSlot(true)}
+            className="text-[12.5px] font-medium text-ink-2 underline hover:text-brick"
+          >
+            + Add a photo type
+          </button>
+        )}
+        <p className="mt-1.5 text-[11.5px] leading-relaxed text-faint">
+          A quick, in-the-moment provision — scoped to this product type only
+          (the same way Border and Pallu are scoped to Saree), so it will not
+          show up on an unrelated category. For anything more permanent,
+          Master Lists → Image Slot is the proper home.
+        </p>
       </div>
 
       {enlarged !== null && (

@@ -58,7 +58,7 @@ export async function archiveListing(
     }
 
     const ARCHIVE = `
-      mutation Archive($input: ProductUpdateInput!) {
+      mutation Archive($input: ProductInput!) {
         productUpdate(input: $input) {
           userErrors { field message }
         }

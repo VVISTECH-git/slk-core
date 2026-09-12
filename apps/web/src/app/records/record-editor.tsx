@@ -1130,6 +1130,16 @@ export function RecordEditor({
     });
   };
 
+  /**
+   * The code shown in the header — the one on a QR tag and a supplier
+   * invoice, not `record.code`, the design's own stable recipe id.
+   *
+   * A record with no consignment yet (created but nothing received)
+   * has no product code to show, so it falls back to the design code
+   * rather than showing nothing.
+   */
+  const productCode = record ? (record.consignments[0]?.code ?? record.code) : "";
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
       <button
@@ -1142,7 +1152,7 @@ export function RecordEditor({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={isNew ? (template ? `New colour of ${template.code}` : "New Product Record") : `Edit ${record.code}`}
+        aria-label={isNew ? (template ? `New colour of ${template.code}` : "New Product Record") : `Edit ${productCode}`}
         // A fixed height, not one that follows the content. Basic has nine
         // fields and Material has five, so sizing to content made the dialog
         // jump — and moved the Cancel and Save buttons under the pointer
@@ -1157,7 +1167,7 @@ export function RecordEditor({
             </h2>
             {!isNew && (
               <>
-                <span className="font-mono text-[12px] text-faint">{record.code}</span>
+                <span className="font-mono text-[12px] text-faint">{productCode}</span>
                 <ReviewStatusBadge status={record.reviewStatus} />
               </>
             )}

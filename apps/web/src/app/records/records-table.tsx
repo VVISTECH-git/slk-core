@@ -1028,7 +1028,7 @@ export function RecordsTable({
 
       {archiving && (
         <ArchiveDialog
-          record={{ id: archiving.id, name: archiving.name, code: archiving.code }}
+          record={{ id: archiving.id, name: archiving.name, code: archiving.productCode ?? archiving.code }}
           canDelete={role === "owner"}
           onClose={() => setArchiving(null)}
           onDone={done}

@@ -76,13 +76,6 @@ export const MASTER_LISTING: SeedList[] = [
     values: plain("Piece", "Metre"),
   },
   {
-    code: "image_slot",
-    label: "Image Slot",
-    description:
-      "The photographs a product carries. Body, Pallu, Border and Blouse are the parts a saree is judged by; add more and they are offered on every record.",
-    values: plain("Body", "Pallu", "Border", "Blouse"),
-  },
-  {
     code: "motif_category",
     label: "Motif Category",
     description:
@@ -131,6 +124,22 @@ export const MASTER_LISTING: SeedList[] = [
       { label: "Bedsheets", soldBy: "Piece" },
       { label: "Scarves", soldBy: "Piece" },
       { label: "Stolls", soldBy: "Piece" },
+      // Product Sub Type answers "what cut of it" — Frocks, Shirts, Tops,
+      // Kurtha, Kurthi, Skirts, Palazoos, on the garment_type list below.
+      { label: "Garments", soldBy: "Piece" },
+    ],
+  },
+  {
+    code: "image_slot",
+    label: "Image Slot",
+    description:
+      "The photographs a product carries. Body is universal — every product type wants one. Pallu, Border and Blouse are parts a saree specifically is judged by (0055, after a Frock's Images tab was found offering a Pallu and Blouse shot it has none of); a value with no parent is offered on every record, same as Body.",
+    parentList: "product_type",
+    values: [
+      { label: "Body" },
+      { label: "Pallu", parent: "Saree" },
+      { label: "Border", parent: "Saree" },
+      { label: "Blouse", parent: "Saree" },
     ],
   },
   {
@@ -432,23 +441,22 @@ export const MASTER_LISTING: SeedList[] = [
     label: "Product Sub Type",
     description:
       "Garments sheet. Offered only on product types that have sub types — give a value a parent and it appears there.",
-    // Depends on Product Type, though no value names one yet: no product type
-    // in the list is a garment. The dependency is what hides the field on a
-    // saree.
     parentList: "product_type",
     values: [
-      { label: "Shirts", soldBy: "Piece" },
-      { label: "Tops", soldBy: "Piece" },
-      { label: "Frocks", soldBy: "Piece" },
-      { label: "Kurthi", soldBy: "Piece" },
+      // Garments' own cuts (0054: Garments became a real Product Type, and
+      // these seven — orphaned since 0025 — are its Product Sub Types).
+      { label: "Shirts", soldBy: "Piece", parent: "Garments" },
+      { label: "Tops", soldBy: "Piece", parent: "Garments" },
+      { label: "Frocks", soldBy: "Piece", parent: "Garments" },
+      { label: "Kurthi", soldBy: "Piece", parent: "Garments" },
       { label: "Suit Sets", soldBy: "Piece", meta: { pieces: "2 or 3" } },
       { label: "Coord Sets", soldBy: "Piece", meta: { pieces: "2" } },
       { label: "Lehanga Sets", soldBy: "Piece", meta: { pieces: "2 or 3" } },
       { label: "Crop Tops Sets", soldBy: "Piece", meta: { pieces: "2" } },
-      { label: "Skirts", soldBy: "Piece" },
-      { label: "Palazoos", soldBy: "Piece" },
+      { label: "Skirts", soldBy: "Piece", parent: "Garments" },
+      { label: "Palazoos", soldBy: "Piece", parent: "Garments" },
       { label: "Patiala Sets", soldBy: "Piece", meta: { pieces: "2" } },
-      { label: "Kurtha", soldBy: "Piece" },
+      { label: "Kurtha", soldBy: "Piece", parent: "Garments" },
     ],
   },
   {

@@ -386,6 +386,13 @@
       "when": 1789475400000,
       "tag": "0054_garments_becomes_a_product_type",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1789476300000,
+      "tag": "0055_image_slots_saree_only",
+      "breakpoints": true
     }
   ]
 }

@@ -2065,14 +2065,15 @@ export async function addImageSlot(
    * One atomic statement, not a check followed by an insert — two people
    * (or one impatient double-click) submitting the same name at the same
    * moment must not both pass a separate "does this exist" query before
-   * either has actually written a row. `lookup_value_list_label_key` is the
-   * real constraint; `on conflict` targets it directly, so Postgres itself
-   * is the one deciding, atomically, whether this name is free.
+   * either has actually written a row. `lookup_value_list_label_key` backs
+   * (list_id, label) as a unique *index*, not a named constraint — `on
+   * conflict on constraint` doesn't apply to a bare index, only column-based
+   * inference does, which is what this targets instead.
    */
   const [row] = await db.execute<{ id: string }>(sql`
     insert into lookup_value (list_id, code, label, sort_order, parent_value_id)
     values (${list.id}, ${code}, ${clean}, ${(next?.max ?? -1) + 1}, ${productTypeId})
-    on conflict on constraint lookup_value_list_label_key do nothing
+    on conflict (list_id, label) do nothing
     returning id
   `);
 

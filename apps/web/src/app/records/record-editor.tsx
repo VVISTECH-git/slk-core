@@ -113,6 +113,18 @@ function asInput(minor: number | null): string {
   return minor === null ? "" : String(minor / 100);
 }
 
+/**
+ * Last one wins, order otherwise preserved — for merging a page-level
+ * options list with something added locally this session (see
+ * extraImageSlots' own comment). A value just added can end up in both:
+ * `revalidatePath` can bring the same row back through the page's own
+ * options before this component next reads them, and without this the
+ * option would render twice, once from each source, both with the same id.
+ */
+function dedupeById<T extends { id: string }>(options: T[]): T[] {
+  return [...new Map(options.map((o) => [o.id, o])).values()];
+}
+
 export interface PickableLocation {
   id: string;
   name: string;
@@ -1956,7 +1968,7 @@ export function RecordEditor({
                 only under it; one that names none is offered on everything,
                 which is what the four existing slots do.
               */
-              slots={[...(options["image_slot"] ?? []), ...extraImageSlots].filter(
+              slots={dedupeById([...(options["image_slot"] ?? []), ...extraImageSlots]).filter(
                 (o) =>
                   o.parentId === null ||
                   o.parentId === (attributes.productType ?? attributes.homeProductType),

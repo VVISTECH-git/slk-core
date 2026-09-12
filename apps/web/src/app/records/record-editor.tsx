@@ -524,10 +524,30 @@ export function RecordEditor({
    *
    * Same fields, same state, same Save — this only changes whether every
    * tab's content is on screen at once (with the tab strip acting as a
-   * jump-to-section index) or one tab at a time. Not persisted: it is a
-   * one-session experiment, not a preference.
+   * jump-to-section index) or one tab at a time. Remembered per browser, the
+   * same way the draft autosave is: this is which layout someone prefers,
+   * not a fact about the record, so it is not stored on the record itself
+   * or read from anywhere the server can see.
    */
-  const [singlePage, setSinglePage] = useState(false);
+  const LAYOUT_KEY = "slk.record-editor.layout";
+  const [singlePage, setSinglePage] = useState(() => {
+    try {
+      return window.localStorage.getItem(LAYOUT_KEY) === "single";
+    } catch {
+      return false;
+    }
+  });
+  const toggleLayout = () => {
+    setSinglePage((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(LAYOUT_KEY, next ? "single" : "wizard");
+      } catch {
+        // No persistence available — the toggle still works for this open.
+      }
+      return next;
+    });
+  };
   const scrollToSection = (key: string) => {
     document.getElementById(`section-${key}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -1146,7 +1166,7 @@ export function RecordEditor({
             )}
             <button
               type="button"
-              onClick={() => setSinglePage((v) => !v)}
+              onClick={toggleLayout}
               className="ml-auto rounded-md border border-rule-2 px-2.5 py-1 text-[12px] font-medium text-ink-2 hover:bg-surface-2"
             >
               {singlePage ? "Switch to step-by-step" : "Try single-page layout"}

@@ -550,6 +550,19 @@ function Categories({
     );
   };
 
+  /**
+   * Same candidate-parent lookup as `parentsFor`, for a value that does not
+   * exist yet — Add has no row to start from, only the classification
+   * chosen in the dropdown above it. No "keep the one already chosen"
+   * exception here: there is nothing chosen yet.
+   */
+  const parentsForClassification = (classificationId: string): Category[] => {
+    const list = classifications.find((c) => c.id === classificationId);
+    if (list?.dependsOnId == null) return [];
+
+    return rows.filter((r) => r.classificationId === list.dependsOnId && r.isEnabled);
+  };
+
   return (
     <section>
       <SectionHead
@@ -878,6 +891,7 @@ function Categories({
       {adding && chosenList !== null && (
         <AddCategoryDrawer
           classification={chosenList}
+          parents={parentsForClassification(chosenList.id)}
           pending={pending}
           onClose={() => setAdding(false)}
           onRun={onRun}
@@ -994,17 +1008,20 @@ function MergeDrawer({
  */
 function AddCategoryDrawer({
   classification,
+  parents,
   pending,
   onClose,
   onRun,
 }: {
   classification: Classification;
+  parents: Category[];
   pending: boolean;
   onClose: () => void;
   onRun: (action: () => Promise<Result>, onOk?: () => void) => void;
 }) {
   const [mode, setMode] = useState<"one" | "many">("one");
   const [name, setName] = useState("");
+  const [belongsTo, setBelongsTo] = useState("");
   const [text, setText] = useState("");
   const [preview, setPreview] = useState<PastePreview | null>(null);
   const [checking, setChecking] = useState(false);
@@ -1030,7 +1047,10 @@ function AddCategoryDrawer({
               tone="primary"
               disabled={pending || name.trim() === ""}
               onClick={() =>
-                onRun(() => addCategory(classification.id, name, null), onClose)
+                onRun(
+                  () => addCategory(classification.id, name, belongsTo === "" ? null : belongsTo),
+                  onClose,
+                )
               }
             >
               Add
@@ -1049,7 +1069,12 @@ function AddCategoryDrawer({
               disabled={pending || preview.fresh.length === 0}
               onClick={() =>
                 onRun(
-                  () => commitPaste(classification.code, preview.fresh),
+                  () =>
+                    commitPaste(
+                      classification.code,
+                      preview.fresh,
+                      belongsTo === "" ? null : belongsTo,
+                    ),
                   onClose,
                 )
               }
@@ -1076,7 +1101,7 @@ function AddCategoryDrawer({
           </Choice>
         </div>
 
-        {mode === "one" ? (
+        {mode === "one" && (
           <Field label="Name" hint="Stored as Init Caps however it is typed.">
             <input
               className={inputClass}
@@ -1085,7 +1110,33 @@ function AddCategoryDrawer({
               onChange={(e) => setName(e.target.value)}
             />
           </Field>
-        ) : (
+        )}
+
+        {classification.dependent && (
+          <Field
+            label="Belongs to"
+            hint={
+              mode === "one"
+                ? `${classification.name} depends on another classification, so this value needs to name the one it sits under.`
+                : `${classification.name} depends on another classification — every value in this paste gets this same parent. Pasting a mix that belongs to different parents needs separate pastes, one per parent.`
+            }
+          >
+            <select
+              className={inputClass}
+              value={belongsTo}
+              onChange={(e) => setBelongsTo(e.target.value)}
+            >
+              <option value="">Not set</option>
+              {parents.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
+
+        {mode === "many" && (
           <>
             <Field
               label="Values"

@@ -330,6 +330,8 @@ export async function previewPaste(
 export async function commitPaste(
   listCode: string,
   labels: string[],
+  /** Every value pasted in this batch gets the same parent — one shared "Belongs to", not one per line. */
+  parentValueId: string | null = null,
 ): Promise<Result> {
   const denied = await guard("office");
   if (denied !== null) return denied;
@@ -358,6 +360,7 @@ export async function commitPaste(
       code: slugify(label),
       label,
       sortOrder: order++,
+      parentValueId,
     }));
 
   if (rows.length === 0) {

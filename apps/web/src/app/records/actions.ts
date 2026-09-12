@@ -2057,25 +2057,34 @@ export async function addImageSlot(
   `);
   if (list === undefined) return { ok: false, message: "The Image Slot list is missing." };
 
-  const [clash] = await db.execute<{ label: string }>(sql`
-    select label from lookup_value where list_id = ${list.id} and lower(label) = lower(${clean})
-  `);
-  if (clash !== undefined) {
-    return {
-      ok: false,
-      message: `"${clash.label}" already exists as a photo type. If this is for a different product, try a more specific name.`,
-    };
-  }
-
   const [next] = await db.execute<{ max: number }>(sql`
     select coalesce(max(sort_order), -1)::int as max from lookup_value where list_id = ${list.id}
   `);
 
+  /*
+   * One atomic statement, not a check followed by an insert — two people
+   * (or one impatient double-click) submitting the same name at the same
+   * moment must not both pass a separate "does this exist" query before
+   * either has actually written a row. `lookup_value_list_label_key` is the
+   * real constraint; `on conflict` targets it directly, so Postgres itself
+   * is the one deciding, atomically, whether this name is free.
+   */
   const [row] = await db.execute<{ id: string }>(sql`
     insert into lookup_value (list_id, code, label, sort_order, parent_value_id)
     values (${list.id}, ${code}, ${clean}, ${(next?.max ?? -1) + 1}, ${productTypeId})
+    on conflict on constraint lookup_value_list_label_key do nothing
     returning id
   `);
+
+  if (row === undefined) {
+    const [clash] = await db.execute<{ label: string }>(sql`
+      select label from lookup_value where list_id = ${list.id} and lower(label) = lower(${clean})
+    `);
+    return {
+      ok: false,
+      message: `"${clash?.label ?? clean}" already exists as a photo type. If this is for a different product, try a more specific name.`,
+    };
+  }
 
   revalidatePath("/records");
 

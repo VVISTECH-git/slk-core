@@ -4532,6 +4532,10 @@ function ImageSlots({
   const [addSlotError, setAddSlotError] = useState<string | null>(null);
 
   const submitNewSlot = () => {
+    // Enter and a click on Add can both reach here for the one keystroke —
+    // the server side is now race-safe regardless (see addImageSlot's own
+    // comment), but there is no reason to fire the second request at all.
+    if (addSlotPending) return;
     setAddSlotError(null);
     startAddSlot(async () => {
       const outcome = await addImageSlot(newSlotLabel, productTypeId);

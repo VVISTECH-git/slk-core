@@ -379,6 +379,13 @@
       "when": 1789388400000,
       "tag": "0053_colourway_story_care_and_identity_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1789475400000,
+      "tag": "0054_garments_becomes_a_product_type",
+      "breakpoints": true
     }
   ]
 }

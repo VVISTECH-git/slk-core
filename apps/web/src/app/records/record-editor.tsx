@@ -227,8 +227,6 @@ export function RecordEditor({
   const [name, setName] = useState(seed?.name ?? "");
   const [nameIsCustom, setNameIsCustom] = useState(seed?.nameIsCustom ?? false);
   const [shortName, setShortName] = useState(seed?.shortName ?? "");
-  const [sourceUrl, setSourceUrl] = useState(seed?.source.url ?? "");
-  const [sourceSku, setSourceSku] = useState(seed?.source.sku ?? "");
   const [seoTitle, setSeoTitle] = useState(seed?.seo.title ?? "");
   const [seoDescription, setSeoDescription] = useState(seed?.seo.description ?? "");
   const [handleBase, setHandleBase] = useState(seed?.seo.handleBase ?? "");
@@ -337,8 +335,6 @@ export function RecordEditor({
         if (typeof snap["name"] === "string") setName(snap["name"]);
         if (typeof snap["nameIsCustom"] === "boolean") setNameIsCustom(snap["nameIsCustom"]);
         if (typeof snap["shortName"] === "string") setShortName(snap["shortName"]);
-        if (typeof snap["sourceUrl"] === "string") setSourceUrl(snap["sourceUrl"]);
-        if (typeof snap["sourceSku"] === "string") setSourceSku(snap["sourceSku"]);
         if (typeof snap["seoTitle"] === "string") setSeoTitle(snap["seoTitle"]);
         if (typeof snap["seoDescription"] === "string") setSeoDescription(snap["seoDescription"]);
         if (typeof snap["handleBase"] === "string") setHandleBase(snap["handleBase"]);
@@ -389,8 +385,6 @@ export function RecordEditor({
             name,
             nameIsCustom,
             shortName,
-            sourceUrl,
-            sourceSku,
             seoTitle,
             seoDescription,
             handleBase,
@@ -424,8 +418,6 @@ export function RecordEditor({
     name,
     nameIsCustom,
     shortName,
-    sourceUrl,
-    sourceSku,
     seoTitle,
     seoDescription,
     handleBase,
@@ -486,20 +478,20 @@ export function RecordEditor({
   const hasSubTypes = !isHome && subTypes.length > 0;
 
   /**
-   * The Garment tab is for the Garments industry — compared by label, the
-   * same way isHome above decides Home & Lifestyle, since industry has no
-   * per-value code check anywhere else in this form to be consistent with.
+   * The Garment tab is for garments, and a saree is not one.
    *
-   * Having a Product Sub Type used to be treated as the same thing as being
-   * a garment, because only garment kinds were parented to one. Two things
-   * broke that: a saree gained sub types of its own, and Garments (0050)
-   * became its own industry with its own Product Type list, parenting
-   * nothing to Product Sub Type at all — "what cut of it" is still Saree
-   * and Fabric's question alone, per 0050's own comment. Sub types were
-   * always a proxy for "is this a garment", and a proxy that had stopped
-   * matching what it stood in for is worse than asking the real question.
+   * This was briefly `industry === "Garments"`, while 0050 had made
+   * Garments its own industry with its own Product Type list and nothing
+   * parented to Product Sub Type — the sub-type proxy below had genuinely
+   * stopped matching what it stood in for, so the industry check was the
+   * honest fix for that shape. 0054 corrected the shape instead: Garments
+   * is a Product Type under Clothing now, the same as Saree, and Frocks/
+   * Shirts/Tops/Kurtha/Kurthi/Skirts/Palazoos are its Product Sub Types —
+   * so the original proxy is exactly right again, and the industry check
+   * would now be wrong (Clothing is not Garments, but a Clothing/Garments/
+   * Frocks record needs this tab same as a Clothing/Garments/Kurthi one).
    */
-  const isGarment = industry === "Garments";
+  const isGarment = hasSubTypes && !isSaree && Boolean(attributes.garmentType);
 
   /**
    * Which shape of dimension/construction fields this product type wants —
@@ -960,8 +952,6 @@ export function RecordEditor({
       name,
       nameIsCustom,
       shortName,
-      sourceUrl,
-      sourceSku,
       seoTitle,
       seoDescription,
       handleBase,
@@ -1202,13 +1192,15 @@ export function RecordEditor({
               </Grid>
 
               {/*
-                Identity and sourcing — who this is filed under, and where the
-                facts on this record came from. Brand/Collection/Supplier stay
-                hidden until Master Lists has values for them, same as every
-                other Combo; Source URL/SKU are the manual-reference-lookup
-                fields the review screen's gap chips will read against.
+                Identity — who this is filed under. No Supplier and no
+                Source URL/SKU: everything SLK sells is made and finished
+                in-house, never bought in from a supplier or sourced against
+                a reference listing, so those fields described a workflow
+                that does not exist here. Brand/Collection stay hidden
+                until Master Lists has values for them, same as every other
+                Combo.
               */}
-              <Section title="Identity & Sourcing">
+              <Section title="Identity">
                 <TextField label="Short Name" placeholder="A short, customer-facing label"
                   value={shortName}
                   onChange={setShortName} />
@@ -1218,18 +1210,9 @@ export function RecordEditor({
                 <Combo label="Collection" list="collection"
                   options={options} value={attributes.collection ?? null}
                   onPick={(v) => set("collection", v)} />
-                <Combo label="Supplier" list="supplier"
-                  options={options} value={attributes.supplier ?? null}
-                  onPick={(v) => set("supplier", v)} />
                 <Combo label="Country of Origin" list="country"
                   options={options} value={attributes.countryOfOrigin ?? null}
                   onPick={(v) => set("countryOfOrigin", v)} />
-                <TextField label="Source URL" placeholder="https://…"
-                  value={sourceUrl}
-                  onChange={setSourceUrl} />
-                <TextField label="Source SKU"
-                  value={sourceSku}
-                  onChange={setSourceSku} />
               </Section>
 
               {/*

@@ -215,7 +215,15 @@ export function checkStill(
     );
   }
   if (Math.max(width, height) < rule.minLongSide) {
-    return fail(`Too small: ${width} × ${height}. At least ${rule.minLongSide} pixels on the long side.`);
+    // A warning rather than a wall. It used to be the one hard block nothing
+    // could get past — everything else here (dark, washed out, something at
+    // the edges) already let the person judge for themselves and go on
+    // anyway. A photo actually in hand should not be refused for a number.
+    return {
+      ok: true,
+      warning: true,
+      message: `Too small: ${width} × ${height}. A retake of at least ${rule.minLongSide} pixels on the long side will look sharper on the storefront and in the try-on preview.`,
+    };
   }
   const whole = stats(g, 0, 0, g.width, g.height);
   if (whole.mean < 60) return { ok: true, message: "Looks dark. A brighter retake will reproduce better.", warning: true };

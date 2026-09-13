@@ -11,18 +11,27 @@ export interface ActionResult {
   message: string;
 }
 
+export interface SupplierDraft {
+  name: string;
+  codePrefix: string;
+  phone: string;
+  gstin: string;
+  address: string;
+  contactPerson: string;
+}
+
 function revalidate() {
   revalidatePath("/suppliers");
   // The bale form's dropdown reads from the same list.
   revalidatePath("/bales");
 }
 
-export async function createSupplier(name: string, codePrefix: string): Promise<ActionResult> {
+export async function createSupplier(draft: SupplierDraft): Promise<ActionResult> {
   const denied = await guard("floor");
   if (denied !== null) return denied;
 
-  const cleanName = name.trim();
-  const cleanPrefix = codePrefix.trim().toUpperCase();
+  const cleanName = draft.name.trim();
+  const cleanPrefix = draft.codePrefix.trim().toUpperCase();
 
   if (cleanName === "") {
     return { ok: false, message: "Name is required." };
@@ -46,7 +55,15 @@ export async function createSupplier(name: string, codePrefix: string): Promise<
   }
 
   await db.execute(sql`
-    insert into supplier (name, code_prefix) values (${cleanName}, ${cleanPrefix})
+    insert into supplier (name, code_prefix, phone, gstin, address, contact_person)
+    values (
+      ${cleanName},
+      ${cleanPrefix},
+      ${draft.phone.trim() || null},
+      ${draft.gstin.trim() || null},
+      ${draft.address.trim() || null},
+      ${draft.contactPerson.trim() || null}
+    )
   `);
 
   revalidate();

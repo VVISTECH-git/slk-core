@@ -421,6 +421,13 @@
       "when": 1789476304000,
       "tag": "0059_vendors_get_a_list",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1789476305000,
+      "tag": "0060_registration_details",
+      "breakpoints": true
     }
   ]
 }

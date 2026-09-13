@@ -46,6 +46,17 @@ export const supplier = pgTable(
      */
     codePrefix: text("code_prefix").notNull(),
 
+    /** Who to call about this supplier — a bale issue, a return, anything. */
+    phone: text("phone"),
+
+    /** For tax-compliant invoicing. Nullable — not every supplier has one. */
+    gstin: text("gstin"),
+
+    address: text("address"),
+
+    /** The person to reach, when the supplier is a firm rather than an individual. */
+    contactPerson: text("contact_person"),
+
     /**
      * The next bale number for this supplier. Incremented in the same
      * transaction that mints a bale's code, by a plain `UPDATE ...
@@ -104,6 +115,29 @@ export const vendor = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
+
+    /** Who gets called to hand off or collect work — the field that matters most here. */
+    phone: text("phone"),
+
+    /** Vendors are individual artisans working out of a specific place, not a company address. */
+    village: text("village"),
+
+    /**
+     * Which stage(s) this vendor normally does — "Karakkaya", "Ironing" —
+     * matching the spreadsheet's own "Persons" sheet, where the same person
+     * could appear under more than one stage. Informational only: nothing
+     * enforces or reads this yet, since the handover pipeline it describes
+     * is not built. A plain array rather than a join table, because there
+     * is no other table yet for it to join against.
+     */
+    stages: text("stages")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+
+    /** A standard rate, a special arrangement — whatever doesn't fit a field above. */
+    notes: text("notes"),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

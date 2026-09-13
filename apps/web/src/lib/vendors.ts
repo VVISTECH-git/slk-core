@@ -11,10 +11,14 @@ import { db } from "@/lib/db";
 export type VendorRow = {
   id: string;
   name: string;
+  phone: string | null;
+  village: string | null;
+  stages: string[];
+  notes: string | null;
 };
 
 export async function loadVendors(): Promise<VendorRow[]> {
   return db.execute<VendorRow>(sql`
-    select id, name from vendor order by name
+    select id, name, phone, village, stages, notes from vendor order by name
   `);
 }

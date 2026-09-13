@@ -61,6 +61,10 @@ export type SupplierRow = {
   id: string;
   name: string;
   codePrefix: string;
+  phone: string | null;
+  gstin: string | null;
+  address: string | null;
+  contactPerson: string | null;
   baleCount: number;
 };
 
@@ -70,6 +74,10 @@ export async function loadSuppliers(): Promise<SupplierRow[]> {
       s.id,
       s.name,
       s.code_prefix                        as "codePrefix",
+      s.phone,
+      s.gstin,
+      s.address,
+      s.contact_person                     as "contactPerson",
       count(b.id)::int                     as "baleCount"
     from supplier s
     left join bale b on b.supplier_id = s.id

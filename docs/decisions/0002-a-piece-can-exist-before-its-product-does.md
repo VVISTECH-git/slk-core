@@ -55,14 +55,16 @@ reason to depart from that shape.
 **Cutting.** A bale is cut into pieces the trade calls **Thaans** — this
 was `Ghana` in an earlier pass at this doc, which was a mishearing; it is
 Thaan throughout, and it is already in the sheet's own vocabulary
-(`Cotton Chunni Thaans`, `Per Thaan Mtr`). Cutting is not necessarily one
-sitting: a bale can be half-cut today and half-cut tomorrow, sitting in a
-genuinely partial state in between — which is exactly what the sheet's
-`Bale status` column (`Bale Cutting Done` / `Bale Cutting going on` /
-`Bale Cutting not Started`) already tracks. Whatever a session actually
-cuts, entered as a whole at the end of that session, becomes a batch of
-individually created Thaans — for example, twelve pieces cut in one sitting
-are entered as twelve at once, not one at a time as the scissors move.
+(`Cotton Chunni Thaans`, `Per Thaan Mtr`). **Revised:** the whole bale is
+cut in one sitting, not split across sessions or days — an earlier pass at
+this doc said cutting could be partial (half today, half tomorrow), on the
+strength of the sheet's `Bale status` column having a `Bale Cutting going
+on` value; the business has since said to document it as one complete
+cut instead. Whatever a bale yields is entered as a whole once cutting
+finishes, becoming a batch of individually created Thaans in one go — for
+example, twelve pieces cut from one bale are entered as twelve at once, not
+one at a time as the scissors move. Bale status is then simpler than the
+sheet's three values: awaiting cutting, or cut.
 
 **QR, minted once, kept for life — unless the piece is split.** Every
 Thaan gets its own QR the moment it is created, and it is stitched onto the
@@ -142,7 +144,9 @@ already exists.
   they become known.
 - **A `bale` entity**, holding intake's own fields: supplier, transporter,
   invoice number and date, metres received, item/type description, number
-  of bales, and a cutting-progress status.
+  of bales, and a two-value cutting status (awaiting cutting / cut) — not
+  three, now that cutting is a single sitting rather than a process that
+  can sit partially done.
 - **A general "split" event**, not specific to cutting a bale: takes one
   piece, produces N new pieces each with a fresh QR, and records which
   piece they came from. Bale-to-Thaan and Thaan-to-finished-piece both go

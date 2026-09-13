@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
@@ -8,13 +9,27 @@ import {
   Drawer,
   Field,
   Header,
+  RowMenu,
   ToastBar,
   inputClass,
   useToast,
 } from "@/components/ui";
-import type { BaleRow } from "@/lib/bales";
+import type { BaleRow, ClothItemRow, SupplierRow } from "@/lib/bales";
 
-import { createBale, type ActionResult, type BaleDraft } from "./actions";
+import { BALE_TYPES, UOMS } from "./constants";
+import { createBale, markBaleReturned, type ActionResult, type BaleDraft } from "./actions";
+
+const STATUS_LABEL: Record<BaleRow["status"], string> = {
+  awaiting_cutting: "Awaiting cutting",
+  cut: "Cut",
+  returned: "Returned",
+};
+
+const STATUS_STYLE: Record<BaleRow["status"], { background: string; color: string }> = {
+  awaiting_cutting: { background: "var(--warn-soft)", color: "var(--warn)" },
+  cut: { background: "var(--ok-soft)", color: "var(--ok)" },
+  returned: { background: "var(--brick-soft)", color: "var(--brick)" },
+};
 
 /**
  * Kora to Shelf, step one: receiving a bale.
@@ -23,7 +38,15 @@ import { createBale, type ActionResult, type BaleDraft } from "./actions";
  * tab bolted onto Product Management. A bale has no design and no colour
  * yet; joining it to that screen would mean pretending it does.
  */
-export function Bales({ rows }: { rows: BaleRow[] }) {
+export function Bales({
+  rows,
+  suppliers,
+  clothItems,
+}: {
+  rows: BaleRow[];
+  suppliers: SupplierRow[];
+  clothItems: ClothItemRow[];
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [toast, showToast] = useToast();
@@ -41,6 +64,7 @@ export function Bales({ rows }: { rows: BaleRow[] }) {
   }
 
   const awaitingCutting = rows.filter((r) => r.status === "awaiting_cutting").length;
+  const canAdd = suppliers.length > 0 && clothItems.length > 0;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -48,15 +72,39 @@ export function Bales({ rows }: { rows: BaleRow[] }) {
         title="Bale Intake"
         lede={`Kora cloth received from suppliers. ${rows.length} bale${rows.length === 1 ? "" : "s"} recorded${awaitingCutting > 0 ? `, ${awaitingCutting} awaiting cutting` : ""}.`}
         actions={
-          <Button tone="primary" onClick={() => setAdding(true)}>
-            Add bale
-          </Button>
+          canAdd ? (
+            <Button tone="primary" onClick={() => setAdding(true)}>
+              Add bale
+            </Button>
+          ) : undefined
         }
       />
 
       <div className="flex-1 px-8 py-6">
-        <div className="mx-auto max-w-4xl">
-          {rows.length === 0 ? (
+        <div className="mx-auto max-w-5xl">
+          {!canAdd ? (
+            <p className="rounded-lg border border-dashed border-rule-2 px-4 py-10 text-center text-[13px] text-muted">
+              {suppliers.length === 0 && (
+                <>
+                  No suppliers on file yet.{" "}
+                  <Link href="/suppliers" className="text-brick underline">
+                    Add one
+                  </Link>
+                  .
+                </>
+              )}
+              {suppliers.length === 0 && clothItems.length === 0 && <br />}
+              {clothItems.length === 0 && (
+                <>
+                  No cloth items on file yet.{" "}
+                  <Link href="/items" className="text-brick underline">
+                    Add one
+                  </Link>
+                  .
+                </>
+              )}
+            </p>
+          ) : rows.length === 0 ? (
             <p className="rounded-lg border border-dashed border-rule-2 px-4 py-10 text-center text-[13px] text-muted">
               No bales recorded yet. Add the first one to get started.
             </p>
@@ -72,10 +120,13 @@ export function Bales({ rows }: { rows: BaleRow[] }) {
                       Supplier
                     </th>
                     <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
+                      Type
+                    </th>
+                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
                       Item
                     </th>
                     <th scope="col" className="px-3 py-2 text-right text-[11.5px] font-medium text-muted">
-                      Metres
+                      Quantity
                     </th>
                     <th scope="col" className="px-3 py-2 text-right text-[11.5px] font-medium text-muted">
                       Bales
@@ -86,6 +137,9 @@ export function Bales({ rows }: { rows: BaleRow[] }) {
                     <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
                       Status
                     </th>
+                    <th scope="col" className="w-12 px-3 py-2">
+                      <span className="sr-only">Actions</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -93,11 +147,15 @@ export function Bales({ rows }: { rows: BaleRow[] }) {
                     <tr key={r.id} className="h-11 border-b border-rule last:border-b-0 hover:bg-surface-2">
                       <td className="px-4 font-mono text-[12.5px] text-ink">{r.code}</td>
                       <td className="px-3 text-ink-2">{r.supplierName}</td>
-                      <td className="max-w-0 truncate px-3 text-ink-2" title={r.itemDescription ?? ""}>
-                        {r.itemDescription ?? "—"}
+                      <td className="px-3 text-ink-2">{r.type}</td>
+                      <td
+                        className="max-w-0 truncate px-3 text-ink-2"
+                        title={[r.itemName, r.notes].filter(Boolean).join(" — ")}
+                      >
+                        {r.itemName}
                       </td>
                       <td className="px-3 text-right font-mono text-[12.5px] text-ink-2 tabular-nums">
-                        {r.metresReceived.toLocaleString("en-IN")}
+                        {r.metresReceived.toLocaleString("en-IN")} {r.uom}
                       </td>
                       <td className="px-3 text-right font-mono text-[12.5px] text-ink-2 tabular-nums">
                         {r.baleCount}
@@ -105,14 +163,28 @@ export function Bales({ rows }: { rows: BaleRow[] }) {
                       <td className="px-3 text-ink-2">{r.receivedAt}</td>
                       <td className="px-3">
                         <span
-                          className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${
-                            r.status === "cut"
-                              ? "bg-ok-soft text-ok"
-                              : "bg-warn-soft text-warn"
-                          }`}
+                          className="rounded px-1.5 py-0.5 text-[11px] font-medium"
+                          style={STATUS_STYLE[r.status]}
                         >
-                          {r.status === "cut" ? "Cut" : "Awaiting cutting"}
+                          {STATUS_LABEL[r.status]}
                         </span>
+                      </td>
+                      <td className="px-3">
+                        <RowMenu
+                          label={r.code}
+                          items={[
+                            {
+                              label: "Mark returned",
+                              danger: true,
+                              disabled: pending || r.status !== "awaiting_cutting",
+                              hint:
+                                r.status !== "awaiting_cutting"
+                                  ? "Only a bale still awaiting cutting can be returned."
+                                  : undefined,
+                              onSelect: () => run(() => markBaleReturned(r.id)),
+                            },
+                          ]}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -124,7 +196,13 @@ export function Bales({ rows }: { rows: BaleRow[] }) {
       </div>
 
       {adding && (
-        <AddDrawer pending={pending} onClose={() => setAdding(false)} onRun={run} />
+        <AddDrawer
+          suppliers={suppliers}
+          clothItems={clothItems}
+          pending={pending}
+          onClose={() => setAdding(false)}
+          onRun={run}
+        />
       )}
 
       <ToastBar toast={toast} onDismiss={() => showToast(null)} />
@@ -133,28 +211,39 @@ export function Bales({ rows }: { rows: BaleRow[] }) {
 }
 
 function AddDrawer({
+  suppliers,
+  clothItems,
   pending,
   onClose,
   onRun,
 }: {
+  suppliers: SupplierRow[];
+  clothItems: ClothItemRow[];
   pending: boolean;
   onClose: () => void;
   onRun: (action: () => Promise<ActionResult>, onOk?: () => void) => void;
 }) {
   const [draft, setDraft] = useState<BaleDraft>({
-    supplierName: "",
+    supplierId: "",
     transporter: "",
     invoiceNumber: "",
     invoiceDate: "",
+    type: "",
     metresReceived: "",
-    itemDescription: "",
+    uom: "Mtrs",
+    itemId: "",
     baleCount: "1",
+    notes: "",
   });
 
   const set = <K extends keyof BaleDraft>(key: K, value: BaleDraft[K]) =>
     setDraft((prev) => ({ ...prev, [key]: value }));
 
-  const valid = draft.supplierName.trim() !== "" && Number(draft.metresReceived) > 0;
+  const valid =
+    draft.supplierId !== "" &&
+    draft.itemId !== "" &&
+    draft.type !== "" &&
+    Number(draft.metresReceived) > 0;
 
   return (
     <Drawer
@@ -175,14 +264,37 @@ function AddDrawer({
       }
     >
       <div className="flex flex-col gap-5">
-        <Field label="Supplier">
-          <input
-            className={inputClass}
-            value={draft.supplierName}
-            onChange={(e) => set("supplierName", e.target.value)}
-            autoFocus
-          />
-        </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Supplier">
+            <select
+              className={inputClass}
+              value={draft.supplierId}
+              onChange={(e) => set("supplierId", e.target.value)}
+              autoFocus
+            >
+              <option value="">Choose…</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Type">
+            <select
+              className={inputClass}
+              value={draft.type}
+              onChange={(e) => set("type", e.target.value)}
+            >
+              <option value="">Choose…</option>
+              {BALE_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
 
         <Field label="Transporter" hint="Optional — who delivered it.">
           <input
@@ -210,8 +322,8 @@ function AddDrawer({
           </Field>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Metres received">
+        <div className="grid grid-cols-3 gap-4">
+          <Field label="Quantity received">
             <input
               type="number"
               min="0"
@@ -220,6 +332,19 @@ function AddDrawer({
               value={draft.metresReceived}
               onChange={(e) => set("metresReceived", e.target.value)}
             />
+          </Field>
+          <Field label="Unit">
+            <select
+              className={inputClass}
+              value={draft.uom}
+              onChange={(e) => set("uom", e.target.value)}
+            >
+              {UOMS.map((u) => (
+                <option key={u} value={u}>
+                  {u}
+                </option>
+              ))}
+            </select>
           </Field>
           <Field label="Number of bales">
             <input
@@ -233,11 +358,27 @@ function AddDrawer({
           </Field>
         </div>
 
-        <Field label="Item description" hint="A rough description of the cloth — not a design, just what it is.">
-          <input
+        <Field label="Item" hint="Not on the list? Add it from Cloth Items first.">
+          <select
             className={inputClass}
-            value={draft.itemDescription}
-            onChange={(e) => set("itemDescription", e.target.value)}
+            value={draft.itemId}
+            onChange={(e) => set("itemId", e.target.value)}
+          >
+            <option value="">Choose…</option>
+            {clothItems.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="Notes" hint="Anything else worth recording about this entry.">
+          <textarea
+            className={inputClass}
+            rows={2}
+            value={draft.notes}
+            onChange={(e) => set("notes", e.target.value)}
           />
         </Field>
       </div>

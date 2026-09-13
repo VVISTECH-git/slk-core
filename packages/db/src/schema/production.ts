@@ -19,21 +19,88 @@ import { actor } from "./access";
  * built yet — they come after this is working and confirmed.
  */
 
+/**
+ * A supplier of raw kora cloth, and the running count of bales received
+ * from them.
+ *
+ * Its own table, not a lookup value — that vocabulary belongs to the
+ * catalogue this file is deliberately independent of. `codePrefix` is the
+ * letter the old spreadsheet already used per supplier ("A" for APA, and so
+ * on): a bale's own code is that prefix plus this counter, so codes read
+ * the same way staff already read them, not a new convention layered on
+ * top of a familiar one.
+ */
+export const supplier = pgTable(
+  "supplier",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+
+    /**
+     * A short code, chosen by hand when the supplier is added. Not derived
+     * from the name, and not migrated from the old spreadsheet's letters —
+     * checked against its real history, the same supplier was given
+     * different letters at different times and the same letter went to
+     * more than one supplier, so there is no clean mapping to carry
+     * forward. The client picks the letters going forward instead.
+     */
+    codePrefix: text("code_prefix").notNull(),
+
+    /**
+     * The next bale number for this supplier. Incremented in the same
+     * transaction that mints a bale's code, by a plain `UPDATE ...
+     * RETURNING` rather than a Postgres sequence — a sequence is one
+     * counter for the whole table, and this needs one counter per
+     * supplier, starting at 1 each.
+     */
+    nextBaleNumber: integer("next_bale_number").notNull().default(1),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("supplier_name_key").on(t.name),
+    uniqueIndex("supplier_code_prefix_key").on(t.codePrefix),
+  ],
+);
+
+/**
+ * A named kind of cloth — "Cotton Fabric A40s", "A Cotton Sarees" — the
+ * spreadsheet's own "Item Name" column, which was itself a maintained
+ * dropdown of specific names rather than free text. Its own table for the
+ * same reason `supplier` is: new names get added deliberately, not typed
+ * fresh (and misspelled) on every bale.
+ */
+export const clothItem = pgTable(
+  "cloth_item",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("cloth_item_name_key").on(t.name)],
+);
+
 export const bale = pgTable(
   "bale",
   {
     id: uuid("id").primaryKey().defaultRandom(),
 
-    /** The bale's own lot number — BALE-000001 and up, from a sequence. */
+    /** The supplier's prefix plus their own running number — "A3". */
     code: text("code").notNull(),
 
-    /**
-     * Free text for now, not a lookup value. That vocabulary belongs to the
-     * catalogue this table is deliberately independent of; whether supplier
-     * and transporter deserve their own controlled list is worth deciding
-     * once there is real data to look at, not guessed at up front.
-     */
-    supplierName: text("supplier_name").notNull(),
+    supplierId: uuid("supplier_id")
+      .notNull()
+      .references(() => supplier.id, { onDelete: "restrict" }),
     transporter: text("transporter"),
 
     /**
@@ -44,21 +111,37 @@ export const bale = pgTable(
     invoiceNumber: text("invoice_number"),
     invoiceDate: date("invoice_date"),
 
+    /**
+     * The broad category — Sarees, Fabric, Chunnies, Bedsheets, Pillows —
+     * the same five the spreadsheet's "Unique Items" sheet names. A plain
+     * constrained column rather than a maintained list: unlike supplier
+     * names, this set has stayed fixed and small, and a table is worth
+     * building only once it stops being either.
+     */
+    type: text("type").notNull(),
+
     /** What was actually received — the one fact every entry starts from. */
     metresReceived: numeric("metres_received", { precision: 10, scale: 2 }).notNull(),
+    /** Mtrs or Nos, matching the spreadsheet's own two units. */
+    uom: text("uom").notNull().default("Mtrs"),
 
-    /** A rough description of the cloth — "Cotton Fabric A40s". Not a taxonomy. */
-    itemDescription: text("item_description"),
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => clothItem.id, { onDelete: "restrict" }),
 
     /** How many physical bales this one entry covers. */
     baleCount: integer("bale_count").notNull().default(1),
 
+    /** Whatever does not fit the fields above — the spreadsheet's own "Column 1". */
+    notes: text("notes"),
+
     /**
-     * Whether this bale has been cut yet. Two states, not three: the
-     * business asked for cutting to be a single sitting rather than a
-     * process that can sit half-done, so there is no "in progress" to
-     * track. Cutting itself is not built yet — nothing sets this to `cut`
-     * until it is.
+     * `awaiting_cutting`, `cut`, or `returned`. Not a fourth "cutting in
+     * progress" state — the business asked for cutting to be a single
+     * sitting rather than a process that can sit half-done. `returned`
+     * covers a bale sent back to the supplier (wrong or damaged material),
+     * matching the spreadsheet's own "Bale Returned" status. Cutting itself
+     * is not built yet — nothing sets this to `cut` until it is.
      */
     status: text("status").notNull().default("awaiting_cutting"),
 
@@ -80,8 +163,15 @@ export const bale = pgTable(
   },
   (t) => [
     uniqueIndex("bale_code_key").on(t.code),
-    check("bale_status_known", sql`${t.status} in ('awaiting_cutting', 'cut')`),
+    check("bale_status_known", sql`${t.status} in ('awaiting_cutting', 'cut', 'returned')`),
+    check("bale_uom_known", sql`${t.uom} in ('Mtrs', 'Nos')`),
+    check(
+      "bale_type_known",
+      sql`${t.type} in ('Sarees', 'Fabric', 'Chunnies', 'Bedsheets', 'Pillows')`,
+    ),
   ],
 );
 
+export type Supplier = typeof supplier.$inferSelect;
+export type ClothItem = typeof clothItem.$inferSelect;
 export type Bale = typeof bale.$inferSelect;

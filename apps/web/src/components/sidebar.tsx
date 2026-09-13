@@ -24,6 +24,21 @@ const NAV = [
     icon: "M4 5l6-2 6 2v10l-6 2-6-2z M10 3v14 M4 5l6 2 6-2",
   },
   {
+    // Who kora cloth is bought from — Kora to Shelf's own vocabulary, kept
+    // beside Bale Intake rather than under Master Lists, which manages the
+    // catalogue's controlled vocabulary and nothing here.
+    href: "/suppliers",
+    label: "Suppliers",
+    icon: "M4 8l2-4h8l2 4 M4 8h12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8z M8 11h4",
+  },
+  {
+    // The specific cloth names a bale's contents are picked from — the same
+    // vocabulary reasoning as Suppliers, kept beside it.
+    href: "/items",
+    label: "Cloth Items",
+    icon: "M5 3h10v14H5z M5 7h10 M8 10h4 M8 13h4",
+  },
+  {
     href: "/records",
     label: "Product Management",
     icon: "M3 4h14v12H3z M3 8h14 M8 8v8",

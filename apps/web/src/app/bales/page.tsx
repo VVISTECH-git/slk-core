@@ -1,5 +1,5 @@
 import { requirePage } from "@/lib/session";
-import { loadBales } from "@/lib/bales";
+import { loadBales, loadClothItems, loadSuppliers } from "@/lib/bales";
 
 import { Bales } from "./bales";
 
@@ -15,5 +15,11 @@ export const dynamic = "force-dynamic";
 export default async function BalesPage() {
   await requirePage();
 
-  return <Bales rows={await loadBales()} />;
+  const [rows, suppliers, clothItems] = await Promise.all([
+    loadBales(),
+    loadSuppliers(),
+    loadClothItems(),
+  ]);
+
+  return <Bales rows={rows} suppliers={suppliers} clothItems={clothItems} />;
 }

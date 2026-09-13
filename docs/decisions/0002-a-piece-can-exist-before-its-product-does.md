@@ -26,14 +26,20 @@ outside vendors, some in-house — and at every handoff someone hands it over
 and later collects it back. Only once it comes out the far end does it
 become a real product with a design, a colour and a price.
 
-The spreadsheet the team runs today (`Cloth Exchanges Final Fixed Sheet.xlsx`)
-is this process, worked around the system's absence: one tab per stage
+**None of this exists in software today.** There is no application behind
+bale intake, cutting, or any handover in the pipeline — nothing here is
+being migrated off of or replacing an existing system. It happens entirely
+by hand, tracked only in a spreadsheet
+(`Cloth Exchanges Final Fixed Sheet.xlsx`): one tab per stage
 (`Kora to Salava`, `Salava to Karakkaya`, `Karakkaya to Print`,
 `Print to Nellateeta`, `Second Print`, `Neelateeta to Udukulu`, `Ironing`,
 `Dispatch`), each row naming a bale, a rough item description, and who has
-it right now. Reading that sheet's columns and validation rules answered
-some questions; the rest came directly from the business in the working
-session this revision is built on.
+it right now, filled in and read by people, not by any program. Reading
+that sheet's columns and validation rules answered some questions; the rest
+came directly from the business in the working session this revision is
+built on. This whole subsystem is being built from nothing — the only
+existing software in this story is Product Management and Stock Records,
+which a piece only ever meets once it is finished.
 
 ## The process, as confirmed
 

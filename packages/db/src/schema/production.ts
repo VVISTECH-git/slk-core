@@ -90,6 +90,30 @@ export const clothItem = pgTable(
   (t) => [uniqueIndex("cloth_item_name_key").on(t.name)],
 );
 
+/**
+ * Someone who does a stage of processing — cutting, salava, karakkaya,
+ * printing, ironing, and so on — matching the spreadsheet's own "Persons"
+ * sheet (one column of names per stage). Deliberately just a name for now:
+ * the stage pipeline itself (handovers, which vendor did which stage for
+ * which piece) is not built yet, so there is nothing yet to attach a
+ * vendor's stage to. This table exists so the list can start being kept
+ * accurately ahead of that, the same way `supplier` and `cloth_item` do.
+ */
+export const vendor = pgTable(
+  "vendor",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("vendor_name_key").on(t.name)],
+);
+
 export const bale = pgTable(
   "bale",
   {
@@ -174,4 +198,5 @@ export const bale = pgTable(
 
 export type Supplier = typeof supplier.$inferSelect;
 export type ClothItem = typeof clothItem.$inferSelect;
+export type Vendor = typeof vendor.$inferSelect;
 export type Bale = typeof bale.$inferSelect;

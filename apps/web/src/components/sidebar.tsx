@@ -39,6 +39,14 @@ const NAV = [
     icon: "M5 3h10v14H5z M5 7h10 M8 10h4 M8 13h4",
   },
   {
+    // Who does a stage of processing, kept ready ahead of the handover
+    // pipeline that will reference this list — see
+    // packages/db/src/schema/production.ts.
+    href: "/vendors",
+    label: "Vendors",
+    icon: "M7 17v-5a3 3 0 0 1 6 0v5 M5 17h10 M10 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
+  },
+  {
     href: "/records",
     label: "Product Management",
     icon: "M3 4h14v12H3z M3 8h14 M8 8v8",

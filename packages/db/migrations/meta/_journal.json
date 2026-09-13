@@ -414,6 +414,13 @@
       "when": 1789476303000,
       "tag": "0058_bale_returns_and_a_real_item_list",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1789476304000,
+      "tag": "0059_vendors_get_a_list",
+      "breakpoints": true
     }
   ]
 }

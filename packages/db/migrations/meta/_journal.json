@@ -393,6 +393,13 @@
       "when": 1789476300000,
       "tag": "0055_image_slots_saree_only",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1789476301000,
+      "tag": "0056_kora_bale_intake",
+      "breakpoints": true
     }
   ]
 }

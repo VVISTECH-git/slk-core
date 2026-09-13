@@ -15,6 +15,15 @@ const HIDDEN = new Set<string>([]);
 
 const NAV = [
   {
+    // Kora to Shelf's own first step — receiving a bale, before any design
+    // or colour is known. Deliberately its own entry, not under Product
+    // Management: a bale is not a product yet, and joining the two nav
+    // items would suggest a relationship the data does not have.
+    href: "/bales",
+    label: "Bale Intake",
+    icon: "M4 5l6-2 6 2v10l-6 2-6-2z M10 3v14 M4 5l6 2 6-2",
+  },
+  {
     href: "/records",
     label: "Product Management",
     icon: "M3 4h14v12H3z M3 8h14 M8 8v8",

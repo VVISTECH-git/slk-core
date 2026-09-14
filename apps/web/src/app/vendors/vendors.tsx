@@ -426,13 +426,19 @@ function EditDrawer({
         </section>
 
         <section>
-          <h3 className="mb-2 text-[13px] font-semibold text-ink">Ledger</h3>
+          <h3 className="mb-2 text-[13px] font-semibold text-ink">
+            Ledger{entries !== null && entries.length > 0 ? ` (${entries.length})` : ""}
+          </h3>
           {entries === null ? (
             <p className="text-[13px] text-muted">Loading…</p>
           ) : entries.length === 0 ? (
             <p className="text-[13px] text-muted">Nothing recorded yet.</p>
           ) : (
-            <ul className="divide-y divide-rule rounded-lg border border-rule">
+            // Newest first, capped and scrollable rather than paginated — this
+            // is one section of an already-scrolling drawer, not its own
+            // page, and a vendor paid weekly for a year would otherwise push
+            // Rates and the payment form off screen entirely.
+            <ul className="max-h-64 divide-y divide-rule overflow-y-auto rounded-lg border border-rule">
               {entries.map((e) => (
                 <li key={`${e.kind}-${e.id}`} className="flex items-center justify-between px-3 py-2 text-[13px]">
                   <span>

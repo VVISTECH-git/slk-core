@@ -238,12 +238,14 @@ export const bale = pgTable(
     notes: text("notes"),
 
     /**
-     * `awaiting_cutting`, `cut`, or `returned`. Not a fourth "cutting in
-     * progress" state — the business asked for cutting to be a single
-     * sitting rather than a process that can sit half-done. `returned`
-     * covers a bale sent back to the supplier (wrong or damaged material),
-     * matching the spreadsheet's own "Bale Returned" status. Cutting itself
-     * is not built yet — nothing sets this to `cut` until it is.
+     * `awaiting_cutting`, `cutting_in_progress`, `cut`, or `returned`.
+     * Cutting can be partial: recording any Thaans (`recordThaans`) moves
+     * an `awaiting_cutting` bale to `cutting_in_progress`, where it can sit
+     * through more than one recording before someone closes it out with
+     * `markCuttingComplete`, which is the only thing that sets `cut`.
+     * `returned` covers a bale sent back to the supplier (wrong or damaged
+     * material) while it is still `awaiting_cutting`, matching the
+     * spreadsheet's own "Bale Returned" status.
      */
     status: text("status").notNull().default("awaiting_cutting"),
 
@@ -278,7 +280,10 @@ export const bale = pgTable(
   },
   (t) => [
     uniqueIndex("bale_code_key").on(t.code),
-    check("bale_status_known", sql`${t.status} in ('awaiting_cutting', 'cut', 'returned')`),
+    check(
+      "bale_status_known",
+      sql`${t.status} in ('awaiting_cutting', 'cutting_in_progress', 'cut', 'returned')`,
+    ),
     check("bale_uom_known", sql`${t.uom} in ('Mtrs', 'Nos')`),
     check(
       "bale_type_known",

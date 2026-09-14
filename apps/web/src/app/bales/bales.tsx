@@ -32,9 +32,10 @@ import type { BaleRow, ClothItemRow, SupplierRow } from "@/lib/bales";
 import { BALE_TYPES, UOMS } from "./constants";
 import {
   createBale,
-  cutBale,
   generateQrCodes,
   markBaleReturned,
+  markCuttingComplete,
+  recordThaans,
   setBaleType,
   updateBale,
   type ActionResult,
@@ -44,12 +45,14 @@ import {
 
 const STATUS_LABEL: Record<BaleRow["status"], string> = {
   awaiting_cutting: "Awaiting cutting",
+  cutting_in_progress: "Cutting in progress",
   cut: "Cut",
   returned: "Returned",
 };
 
 const STATUS_STYLE: Record<BaleRow["status"], { background: string; color: string }> = {
   awaiting_cutting: { background: "var(--warn-soft)", color: "var(--warn)" },
+  cutting_in_progress: { background: "var(--off-soft)", color: "var(--off)" },
   cut: { background: "var(--ok-soft)", color: "var(--ok)" },
   returned: { background: "var(--brick-soft)", color: "var(--brick)" },
 };
@@ -180,7 +183,7 @@ export function Bales({
   const [editing, setEditing] = useState<BaleRow | null>(null);
   const [duplicating, setDuplicating] = useState<BaleRow | null>(null);
   const [confirming, setConfirming] = useState<
-    { kind: "generateQr" | "markReturned"; bale: BaleRow } | null
+    { kind: "generateQr" | "markReturned" | "markCuttingComplete"; bale: BaleRow } | null
   >(null);
 
   function run(action: () => Promise<ActionResult>, onOk?: () => void) {
@@ -506,13 +509,22 @@ export function Bales({
                               onSelect: () => setDuplicating(r),
                             },
                             {
-                              label: "Record cutting",
-                              disabled: pending || r.status !== "awaiting_cutting",
+                              label: "Record Thaans cut",
+                              disabled: pending || r.status === "cut" || r.status === "returned",
                               hint:
-                                r.status !== "awaiting_cutting"
-                                  ? "Already cut, returned, or otherwise no longer waiting."
+                                r.status === "cut" || r.status === "returned"
+                                  ? "Already cut, or returned to the supplier."
                                   : undefined,
                               onSelect: () => setCutting(r),
+                            },
+                            {
+                              label: "Mark cutting complete",
+                              disabled: pending || r.status !== "cutting_in_progress",
+                              hint:
+                                r.status !== "cutting_in_progress"
+                                  ? "Only once at least one Thaan has been recorded, and before it's already marked cut."
+                                  : undefined,
+                              onSelect: () => setConfirming({ kind: "markCuttingComplete", bale: r }),
                             },
                             {
                               label: "Generate QR codes",
@@ -618,6 +630,19 @@ export function Bales({
           onCancel={() => setConfirming(null)}
           onConfirm={() =>
             run(() => markBaleReturned(confirming.bale.id), () => setConfirming(null))
+          }
+        />
+      )}
+
+      {confirming !== null && confirming.kind === "markCuttingComplete" && (
+        <ConfirmDialog
+          title={`Mark ${confirming.bale.code} cut?`}
+          description={`Closes cutting out at the ${confirming.bale.thaanCount} Thaan${confirming.bale.thaanCount === 1 ? "" : "s"} recorded so far. Nothing more can be cut from this bale afterward.`}
+          confirmLabel="Mark cut"
+          pending={pending}
+          onCancel={() => setConfirming(null)}
+          onConfirm={() =>
+            run(() => markCuttingComplete(confirming.bale.id), () => setConfirming(null))
           }
         />
       )}
@@ -915,7 +940,7 @@ function CutDrawer({
   return (
     <Drawer
       open
-      title={`Cut ${bale.code}`}
+      title={`Record Thaans cut from ${bale.code}`}
       onClose={onClose}
       footer={
         <>
@@ -923,7 +948,7 @@ function CutDrawer({
           <Button
             tone="primary"
             disabled={pending || !valid}
-            onClick={() => onRun(() => cutBale(bale.id, thaanCount), onClose)}
+            onClick={() => onRun(() => recordThaans(bale.id, thaanCount), onClose)}
           >
             Save
           </Button>
@@ -931,9 +956,14 @@ function CutDrawer({
       }
     >
       <div className="flex flex-col gap-5">
+        {bale.thaanCount > 0 && (
+          <p className="text-[13px] text-muted">
+            {bale.thaanCount} Thaan{bale.thaanCount === 1 ? "" : "s"} recorded so far.
+          </p>
+        )}
         <Field
           label="Number of Thaans"
-          hint="How many pieces the whole bale was cut into. Entered once — cutting is done in one sitting."
+          hint="How many pieces were just cut — the whole bale or only part of it. Recording again later adds more; nothing here closes the bale out."
         >
           <input
             type="number"

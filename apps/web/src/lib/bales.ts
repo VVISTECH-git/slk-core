@@ -25,7 +25,7 @@ export type BaleRow = {
   itemName: string;
   baleCount: number;
   notes: string | null;
-  status: "awaiting_cutting" | "cut" | "returned";
+  status: "awaiting_cutting" | "cutting_in_progress" | "cut" | "returned";
   /** "14 Sep 2026" — when this bale was entered, not when the invoice was prepared. */
   billEntryDate: string;
   /** "2026-09-14" — for sorting; "DD Mon YYYY" doesn't sort chronologically as text. */

@@ -273,13 +273,16 @@ export async function markBaleReturned(baleId: string): Promise<ActionResult> {
 }
 
 /**
- * Cutting a bale: the whole thing, in one sitting — the business's own
- * rule, not a technical shortcut — so this creates every Thaan the bale
- * becomes at once, rather than accumulating them over several visits.
- * Codes are not assigned here; that is `generateQrCodes`, a deliberate
- * second act.
+ * Recording Thaans cut from a bale — as many times as it takes. Whatever
+ * count is entered here is created as that many Thaans at once, but the
+ * recording itself can repeat across more than one sitting: the business's
+ * real process is cut some, note it down, cut more later. The first
+ * recording moves the bale out of `awaiting_cutting`; nothing here closes
+ * it out — that is `markCuttingComplete`, a deliberate second act once
+ * nothing more will be cut from this bale. Codes are not assigned here
+ * either; that is `generateQrCodes`, a third.
  */
-export async function cutBale(baleId: string, thaanCount: string): Promise<ActionResult> {
+export async function recordThaans(baleId: string, thaanCount: string): Promise<ActionResult> {
   const denied = await guard("floor");
   if (denied !== null) return denied;
 
@@ -293,8 +296,8 @@ export async function cutBale(baleId: string, thaanCount: string): Promise<Actio
   const code = await db.transaction(async (tx) => {
     const [row] = await tx.execute<{ code: string }>(sql`
       update bale
-      set status = 'cut', cut_by_id = ${actorId}, updated_at = now()
-      where id = ${baleId} and status = 'awaiting_cutting'
+      set status = 'cutting_in_progress', cut_by_id = ${actorId}, updated_at = now()
+      where id = ${baleId} and status in ('awaiting_cutting', 'cutting_in_progress')
       returning code
     `);
 
@@ -309,12 +312,39 @@ export async function cutBale(baleId: string, thaanCount: string): Promise<Actio
   });
 
   if (code === null) {
-    return { ok: false, message: "That bale can no longer be cut." };
+    return { ok: false, message: "That bale can no longer have Thaans recorded against it." };
   }
 
   revalidate();
 
-  return { ok: true, message: `${code} cut into ${count} Thaan${count === 1 ? "" : "s"}.` };
+  return { ok: true, message: `Recorded ${count} Thaan${count === 1 ? "" : "s"} for ${code}.` };
+}
+
+/**
+ * Closes a bale's cutting out: nothing more will be cut from it. Only from
+ * `cutting_in_progress` — at least one Thaan must already be recorded, or
+ * there is nothing to close out.
+ */
+export async function markCuttingComplete(baleId: string): Promise<ActionResult> {
+  const denied = await guard("floor");
+  if (denied !== null) return denied;
+
+  const actorId = await actingId();
+
+  const [row] = await db.execute<{ code: string }>(sql`
+    update bale
+    set status = 'cut', cut_by_id = ${actorId}, updated_at = now()
+    where id = ${baleId} and status = 'cutting_in_progress'
+    returning code
+  `);
+
+  if (row === undefined) {
+    return { ok: false, message: "That bale isn't mid-cutting, so there's nothing to complete." };
+  }
+
+  revalidate();
+
+  return { ok: true, message: `${row.code} marked cut.` };
 }
 
 /**

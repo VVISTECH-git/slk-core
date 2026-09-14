@@ -42,6 +42,7 @@ export function toBaleDraft(body: Record<string, unknown>): BaleDraft {
     metresReceived: amount(body.metresReceived, "metresReceived"),
     uom: text(body.uom, "uom"),
     itemId: text(body.itemId, "itemId"),
+    gradeCode: text(body.gradeCode, "gradeCode"),
     baleCount: amount(body.baleCount, "baleCount"),
     notes: text(body.notes, "notes"),
   };

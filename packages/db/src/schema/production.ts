@@ -231,6 +231,14 @@ export const bale = pgTable(
       .notNull()
       .references(() => clothItem.id, { onDelete: "restrict" }),
 
+    /**
+     * SLK's own mark for how premium this particular batch is — not
+     * anything the supplier's bill carries, and not fixed to the item: the
+     * same cloth item can get a different code bale to bale (e.g. "A3" one
+     * delivery, "A4" the next). Freeform rather than a lookup list.
+     */
+    gradeCode: text("grade_code"),
+
     /** How many physical bales this one entry covers. */
     baleCount: integer("bale_count").notNull().default(1),
 

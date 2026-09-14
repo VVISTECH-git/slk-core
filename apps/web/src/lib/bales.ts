@@ -17,6 +17,8 @@ export type BaleRow = {
   transporter: string | null;
   invoiceNumber: string | null;
   invoiceDate: string | null;
+  /** "21 May 2026" — the same date, formatted for display. Null when `invoiceDate` is. */
+  invoiceDateDisplay: string | null;
   invoiceAmount: number | null;
   type: string;
   metresReceived: number;
@@ -24,6 +26,8 @@ export type BaleRow = {
   itemId: string;
   itemName: string;
   baleCount: number;
+  /** SLK's own premium-ness mark for this batch — "A3", "G5"... Not from the supplier, not tied to the item. */
+  gradeCode: string | null;
   notes: string | null;
   status: "awaiting_cutting" | "cutting_in_progress" | "cut" | "returned";
   /** "14 Sep 2026" — when this bale was entered, not when the invoice was prepared. */
@@ -55,6 +59,7 @@ export async function loadBales(): Promise<BaleRow[]> {
       b.transporter,
       b.invoice_number                              as "invoiceNumber",
       to_char(b.invoice_date, 'YYYY-MM-DD')         as "invoiceDate",
+      to_char(b.invoice_date, 'DD Mon YYYY')        as "invoiceDateDisplay",
       b.invoice_amount::double precision            as "invoiceAmount",
       b.type,
       b.metres_received::double precision           as "metresReceived",
@@ -62,6 +67,7 @@ export async function loadBales(): Promise<BaleRow[]> {
       b.item_id                                     as "itemId",
       i.name                                         as "itemName",
       b.bale_count                                  as "baleCount",
+      b.grade_code                                  as "gradeCode",
       b.notes,
       b.status,
       to_char(b.bill_entry_date, 'DD Mon YYYY')     as "billEntryDate",

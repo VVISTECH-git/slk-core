@@ -512,6 +512,13 @@
       "when": 1789476317000,
       "tag": "0072_thaan_codes_are_wider_and_distinct_from_bale_codes",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1789476318000,
+      "tag": "0073_bale_grade_code",
+      "breakpoints": true
     }
   ]
 }

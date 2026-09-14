@@ -66,8 +66,11 @@ const STATUS_STYLE: Record<BaleRow["status"], { background: string; color: strin
 const COLUMNS = [
   { key: "code", label: "Bale ID", width: 90 },
   { key: "supplierName", label: "Supplier", width: 150 },
+  { key: "invoiceNumber", label: "Bill No", width: 100 },
+  { key: "invoiceDate", label: "Bill Date", width: 120 },
   { key: "type", label: "Type", width: 100 },
   { key: "itemName", label: "Item", width: 200 },
+  { key: "gradeCode", label: "Code", width: 80 },
   { key: "quantity", label: "Quantity", width: 110 },
   { key: "baleCount", label: "Bales", width: 70 },
   { key: "perThaanMetres", label: "Per Thaan Mtr", width: 120 },
@@ -75,6 +78,7 @@ const COLUMNS = [
   { key: "invoiceAmount", label: "Bill Amount", width: 120 },
   { key: "status", label: "Status", width: 140 },
   { key: "thaans", label: "Thaans", width: 150 },
+  { key: "notes", label: "Remarks", width: 180 },
 ] as const;
 
 type ColumnKey = (typeof COLUMNS)[number]["key"];
@@ -98,10 +102,16 @@ function cellText(row: BaleRow, key: ColumnKey): string {
       return row.code;
     case "supplierName":
       return row.supplierName;
+    case "invoiceNumber":
+      return row.invoiceNumber ?? "";
+    case "invoiceDate":
+      return row.invoiceDateDisplay ?? "";
     case "type":
       return row.type;
     case "itemName":
       return row.itemName;
+    case "gradeCode":
+      return row.gradeCode ?? "";
     case "quantity":
       return String(row.metresReceived);
     case "baleCount":
@@ -116,6 +126,8 @@ function cellText(row: BaleRow, key: ColumnKey): string {
       return STATUS_LABEL[row.status];
     case "thaans":
       return String(row.thaanCount);
+    case "notes":
+      return row.notes ?? "";
   }
 }
 
@@ -133,6 +145,8 @@ function sortValue(row: BaleRow, key: ColumnKey): string | number {
       return row.invoiceAmount ?? -1;
     case "billEntryDate":
       return row.billEntryDateOn;
+    case "invoiceDate":
+      return row.invoiceDate ?? "";
     default:
       return cellText(row, key).toLowerCase();
   }
@@ -154,6 +168,7 @@ function draftFrom(row: BaleRow): BaleDraft {
     metresReceived: String(row.metresReceived),
     uom: row.uom,
     itemId: row.itemId,
+    gradeCode: row.gradeCode ?? "",
     baleCount: String(row.baleCount),
     notes: row.notes ?? "",
   };
@@ -700,23 +715,15 @@ function BaleFields({
         </Field>
       </div>
 
-      <Field label="Transporter" hint="Optional — who delivered it.">
-        <input
-          className={inputClass}
-          value={draft.transporter}
-          onChange={(e) => set("transporter", e.target.value)}
-        />
-      </Field>
-
       <div className="grid grid-cols-3 gap-4">
-        <Field label="Invoice number" hint="Leave blank if it hasn't arrived yet.">
+        <Field label="Bill No" hint="Leave blank if it hasn't arrived yet.">
           <input
             className={inputClass}
             value={draft.invoiceNumber}
             onChange={(e) => set("invoiceNumber", e.target.value)}
           />
         </Field>
-        <Field label="Invoice date">
+        <Field label="Bill Date">
           <input
             type="date"
             className={inputClass}
@@ -724,7 +731,7 @@ function BaleFields({
             onChange={(e) => set("invoiceDate", e.target.value)}
           />
         </Field>
-        <Field label="Invoice amount" hint="The bill's own total, in ₹.">
+        <Field label="Bill amount" hint="The bill's own total, in ₹.">
           <input
             type="number"
             min="0"
@@ -768,21 +775,32 @@ function BaleFields({
         </Field>
       </div>
 
-      <Field label="Item" hint="Not on the list? Add it from Cloth Items first.">
-        <select className={inputClass} value={draft.itemId} onChange={(e) => set("itemId", e.target.value)}>
-          <option value="">Choose…</option>
-          {clothItems
-            .filter((i) => i.status === "active" || i.id === draft.itemId)
-            .map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-                {i.status === "inactive" ? " (inactive)" : ""}
-              </option>
-            ))}
-        </select>
-      </Field>
+      <div className="grid grid-cols-3 gap-4">
+        <div className="col-span-2">
+          <Field label="Item" hint="Not on the list? Add it from Cloth Items first.">
+            <select className={inputClass} value={draft.itemId} onChange={(e) => set("itemId", e.target.value)}>
+              <option value="">Choose…</option>
+              {clothItems
+                .filter((i) => i.status === "active" || i.id === draft.itemId)
+                .map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.name}
+                    {i.status === "inactive" ? " (inactive)" : ""}
+                  </option>
+                ))}
+            </select>
+          </Field>
+        </div>
+        <Field label="Code" hint="SLK's own mark for how premium this batch is — not from the supplier.">
+          <input
+            className={inputClass}
+            value={draft.gradeCode}
+            onChange={(e) => set("gradeCode", e.target.value)}
+          />
+        </Field>
+      </div>
 
-      <Field label="Notes" hint="Anything else worth recording about this entry.">
+      <Field label="Remarks" hint="Anything else worth recording about this entry.">
         <textarea
           className={inputClass}
           rows={2}
@@ -824,6 +842,7 @@ function AddDrawer({
           metresReceived: "",
           uom: "Mtrs",
           itemId: "",
+          gradeCode: "",
           baleCount: "1",
           notes: "",
         },

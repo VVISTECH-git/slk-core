@@ -24,6 +24,14 @@ export type ThaanRow = {
   createdAt: string;
   voidedAt: string | null;
   voidedByName: string | null;
+  /**
+   * Where this Thaan actually is right now, in plain terms: no code yet
+   * ("QR Pending"), coded but not yet sent for stitching — shouldn't really
+   * persist, since QR generation sends it automatically, but can happen if
+   * no vendor does Label Stitching yet ("QR Generated"), out with whoever
+   * stitches labels ("Label Pending"), or back and done ("Labelled").
+   */
+  stitchStatus: "QR Pending" | "QR Generated" | "Label Pending" | "Labelled";
 };
 
 export async function loadThaans(): Promise<ThaanRow[]> {
@@ -43,13 +51,20 @@ export async function loadThaans(): Promise<ThaanRow[]> {
       qr_by.name                                              as "qrGeneratedByName",
       to_char(t.created_at, 'DD Mon YYYY')                   as "createdAt",
       to_char(t.voided_at, 'DD Mon YYYY, HH12:MI AM')        as "voidedAt",
-      void_by.name                                            as "voidedByName"
+      void_by.name                                            as "voidedByName",
+      case
+        when t.code is null then 'QR Pending'
+        when lh.thaan_id is null then 'QR Generated'
+        when lh.received_at is null then 'Label Pending'
+        else 'Labelled'
+      end                                                      as "stitchStatus"
     from thaan t
     join bale b on b.id = t.bale_id
     join supplier s on s.id = b.supplier_id
     join cloth_item i on i.id = b.item_id
     left join actor qr_by on qr_by.id = t.qr_generated_by_id
     left join actor void_by on void_by.id = t.voided_by_id
+    left join handover lh on lh.thaan_id = t.id and lh.stage = 'Label Stitching'
     order by t.created_at desc, t.code
   `);
 }

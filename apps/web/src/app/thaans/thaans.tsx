@@ -12,6 +12,13 @@ import { restoreThaan, voidThaan, type ActionResult } from "./actions";
 
 const PER_PAGE = 50;
 
+const STITCH_STATUS_STYLE: Record<ThaanRow["stitchStatus"], { background: string; color: string }> = {
+  "QR Pending": { background: "var(--warn-soft)", color: "var(--warn)" },
+  "QR Generated": { background: "var(--off-soft)", color: "var(--off)" },
+  "Label Pending": { background: "var(--off-soft)", color: "var(--off)" },
+  Labelled: { background: "var(--ok-soft)", color: "var(--ok)" },
+};
+
 /**
  * What a bale becomes once it's cut — cascaded with the bale and item
  * context that produced it, so this reads as the full picture rather than
@@ -110,6 +117,7 @@ export function Thaans({ rows }: { rows: ThaanRow[] }) {
                   <thead className="sticky top-0 bg-surface-2">
                     <tr className="border-b border-rule text-left">
                       <th scope="col" className="px-4 py-2 text-[11.5px] font-medium text-muted">Code</th>
+                      <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Status</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Bale</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Supplier</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Item</th>
@@ -130,6 +138,14 @@ export function Thaans({ rows }: { rows: ThaanRow[] }) {
                         }`}
                       >
                         <td className="px-4 font-mono text-[12.5px] text-ink">{r.code ?? "—"}</td>
+                        <td className="px-3">
+                          <span
+                            className="rounded px-1.5 py-0.5 text-[11px] font-medium"
+                            style={STITCH_STATUS_STYLE[r.stitchStatus]}
+                          >
+                            {r.stitchStatus}
+                          </span>
+                        </td>
                         <td className="px-3">
                           <Link href={`/thaans/print/${r.baleId}`} className="font-mono text-[12.5px] text-brick underline">
                             {r.baleCode}

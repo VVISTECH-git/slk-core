@@ -268,8 +268,69 @@ export const thaan = pgTable(
   (t) => [uniqueIndex("thaan_code_key").on(t.code)],
 );
 
+/**
+ * One Thaan's trip through one stage — sent to a vendor (or kept in-house,
+ * when `vendorId` is null) on `sentAt`, and back on `receivedAt` once it's
+ * done. The stage pipeline itself: Kora to Salava, Salava to Karakkaya,
+ * Karakkaya to Print, Second Print, Print to Nellateeta, Neelateeta to
+ * Udukulu, Ironing, in that order (`apps/web/src/lib/stages.ts`) — a Thaan
+ * must finish one before the next can start, checked in the server action
+ * rather than here, since stage order is a fact about the business, not
+ * something a column constraint can express.
+ *
+ * A Thaan's current state is derived, not stored: no open row (`received_at`
+ * is null) for it means it's at home, waiting on whichever stage it hasn't
+ * completed yet; one open row means it's out for that row's stage. The
+ * partial unique index below is what makes "at most one open row per
+ * Thaan" a guarantee rather than a hope.
+ */
+export const handover = pgTable(
+  "handover",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    thaanId: uuid("thaan_id")
+      .notNull()
+      .references(() => thaan.id, { onDelete: "restrict" }),
+
+    stage: text("stage").notNull(),
+
+    /** Null means this stage was done in-house, not sent to anyone. */
+    vendorId: uuid("vendor_id").references(() => vendor.id, { onDelete: "restrict" }),
+
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+    receivedAt: timestamp("received_at", { withTimezone: true }),
+
+    notes: text("notes"),
+
+    recordedBy: uuid("recorded_by_id").references(() => actor.id, {
+      onDelete: "restrict",
+    }),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("handover_one_open_per_thaan")
+      .on(t.thaanId)
+      .where(sql`${t.receivedAt} is null`),
+    check(
+      "handover_stage_known",
+      sql`${t.stage} in (
+        'Kora to Salava', 'Salava to Karakkaya', 'Karakkaya to Print',
+        'Second Print', 'Print to Nellateeta', 'Neelateeta to Udukulu', 'Ironing'
+      )`,
+    ),
+  ],
+);
+
 export type Supplier = typeof supplier.$inferSelect;
 export type ClothItem = typeof clothItem.$inferSelect;
 export type Vendor = typeof vendor.$inferSelect;
 export type Bale = typeof bale.$inferSelect;
 export type Thaan = typeof thaan.$inferSelect;
+export type Handover = typeof handover.$inferSelect;

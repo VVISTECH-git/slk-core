@@ -4,9 +4,9 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button, Drawer, Field, Header, ToastBar, inputClass, useToast } from "@/components/ui";
+import { STAGES } from "@/lib/stages";
 import type { VendorRow } from "@/lib/vendors";
 
-import { STAGES } from "./constants";
 import { createVendor, type ActionResult, type VendorDraft } from "./actions";
 
 /**

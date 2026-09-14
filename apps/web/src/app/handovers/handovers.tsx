@@ -114,19 +114,31 @@ function SendPanel({
   const [scanError, setScanError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
 
+  // Mirrors `stage`, but readable synchronously within one `scanMany` call —
+  // `setStage` inside the loop's first iteration wouldn't be visible to the
+  // second iteration until React re-renders, which is too late to stop two
+  // different stages from ending up in the same batch.
+  const stageRef = useRef(stage);
+  useEffect(() => {
+    stageRef.current = stage;
+  }, [stage]);
+
   async function scan(code: string) {
-    if (stage === "") {
-      setScanError("Choose a stage first.");
-      return;
-    }
     if (items.some((t) => t.code === code)) return; // Already in this batch.
 
-    const result = await lookupForSend(code, stage);
+    // Nothing chosen yet: read this Thaan's own next stage back and lock
+    // the whole batch to it, rather than making the reader look it up and
+    // pick it from the dropdown before scanning anything.
+    const result = await lookupForSend(code, stageRef.current === "" ? null : stageRef.current);
     if (!result.ok) {
       setScanError(result.message);
       return;
     }
     setScanError(null);
+    if (stageRef.current === "") {
+      stageRef.current = result.stage;
+      setStage(result.stage);
+    }
     setItems((prev) => [...prev, result.thaan]);
   }
 
@@ -172,7 +184,7 @@ function SendPanel({
               setItems([]);
             }}
           >
-            <option value="">Choose…</option>
+            <option value="">Auto — picked from the first scan</option>
             {/* Label Stitching is sent automatically when QR codes are generated —
                 there's nothing on a fresh Thaan to scan yet, so it never
                 belongs in a manual-scan picker. */}
@@ -205,7 +217,6 @@ function SendPanel({
       </div>
 
       <ScanControls
-        disabled={stage === ""}
         onCamera={() => setCameraOpen(true)}
         onManual={(code) => void scanMany(code)}
         error={scanError}
@@ -307,7 +318,6 @@ function ReceivePanel({
       </p>
 
       <ScanControls
-        disabled={false}
         onCamera={() => setCameraOpen(true)}
         onManual={(code) => void scanMany(code)}
         error={scanError}
@@ -354,12 +364,10 @@ function ReceivePanel({
 /* --------------------------------------------------------- scan input */
 
 function ScanControls({
-  disabled,
   onCamera,
   onManual,
   error,
 }: {
-  disabled: boolean;
   onCamera: () => void;
   onManual: (code: string) => void;
   error: string | null;
@@ -372,10 +380,7 @@ function ScanControls({
         <input
           className={inputClass}
           value={value}
-          disabled={disabled}
-          placeholder={
-            disabled ? "Choose a stage first" : "Scan, or type Thaan codes (comma or space separated) and press Enter"
-          }
+          placeholder="Scan, or type Thaan codes (comma or space separated) and press Enter"
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && value.trim() !== "") {
@@ -384,9 +389,7 @@ function ScanControls({
             }
           }}
         />
-        <Button onClick={onCamera} disabled={disabled}>
-          Camera
-        </Button>
+        <Button onClick={onCamera}>Camera</Button>
       </div>
       {error !== null && <p className="mt-1.5 text-[12.5px] text-brick">{error}</p>}
       <p className="mt-1.5 text-[11.5px] text-muted">

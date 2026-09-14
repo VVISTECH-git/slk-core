@@ -48,11 +48,16 @@ export type ThaanForSend = {
  * if so. Stage order is a fact about the business, not something a column
  * constraint can express — enforced here rather than in the schema, same
  * reasoning as `packages/db/src/schema/production.ts` gives for `handover`.
+ *
+ * `stage: null` means "whatever's next for this Thaan" — the first scan of
+ * a batch that hasn't had its stage chosen yet reads its answer back to
+ * lock the whole batch to that stage, rather than making the reader look
+ * up and pick it by hand before scanning anything.
  */
 export async function checkThaanForSend(
   code: string,
-  stage: Stage,
-): Promise<{ ok: true; thaan: ThaanForSend } | { ok: false; message: string }> {
+  stage: Stage | null,
+): Promise<{ ok: true; thaan: ThaanForSend; stage: Stage } | { ok: false; message: string }> {
   const trimmed = code.trim();
   if (trimmed === "") return { ok: false, message: "Empty code." };
 
@@ -98,7 +103,7 @@ export async function checkThaanForSend(
   if (expected === undefined) {
     return { ok: false, message: `${thaan.code} has already finished every stage.` };
   }
-  if (expected !== stage) {
+  if (stage !== null && expected !== stage) {
     return {
       ok: false,
       message: `${thaan.code}'s next stage is ${expected}, not ${stage}.`,
@@ -108,6 +113,7 @@ export async function checkThaanForSend(
   return {
     ok: true,
     thaan: { id: thaan.id, code: thaan.code, baleCode: thaan.baleCode, baleType: thaan.baleType, itemName: thaan.itemName },
+    stage: expected,
   };
 }
 

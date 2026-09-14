@@ -17,19 +17,24 @@ export interface ActionResult {
  * Every scan calls this first — the same check `sendBatch` re-runs at
  * commit time, just early enough to tell the reader right away rather than
  * after they've scanned another twenty.
+ *
+ * `stage: null` means "not chosen yet" — the first scan of a batch reads
+ * its own next stage back instead of being refused, so the reader can
+ * scan straight away rather than looking the stage up and picking it from
+ * a dropdown first.
  */
 export async function lookupForSend(
   code: string,
-  stage: string,
-): Promise<{ ok: true; thaan: ThaanForSend } | { ok: false; message: string }> {
+  stage: string | null,
+): Promise<{ ok: true; thaan: ThaanForSend; stage: Stage } | { ok: false; message: string }> {
   const denied = await guard("floor");
   if (denied !== null) return denied;
 
-  if (!(STAGES as readonly string[]).includes(stage)) {
-    return { ok: false, message: "Choose a stage first." };
+  if (stage !== null && !(STAGES as readonly string[]).includes(stage)) {
+    return { ok: false, message: "Unknown stage." };
   }
 
-  return checkThaanForSend(code, stage as Stage);
+  return checkThaanForSend(code, stage as Stage | null);
 }
 
 export async function lookupForReceive(

@@ -24,6 +24,13 @@ const NAV = [
     icon: "M4 5l6-2 6 2v10l-6 2-6-2z M10 3v14 M4 5l6 2 6-2",
   },
   {
+    // What a bale becomes once cut. Kept right after Bale Intake since
+    // cutting is the next step in the same pipeline.
+    href: "/thaans",
+    label: "Thaans",
+    icon: "M4 4h5v12H4z M11 4h5v12h-5z M4 4l5 12 M16 4l-5 12",
+  },
+  {
     // Who kora cloth is bought from — Kora to Shelf's own vocabulary, kept
     // beside Bale Intake rather than under Master Lists, which manages the
     // catalogue's controlled vocabulary and nothing here.

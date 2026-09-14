@@ -17,7 +17,14 @@ import {
 import type { BaleRow, ClothItemRow, SupplierRow } from "@/lib/bales";
 
 import { BALE_TYPES, UOMS } from "./constants";
-import { createBale, markBaleReturned, type ActionResult, type BaleDraft } from "./actions";
+import {
+  createBale,
+  cutBale,
+  generateQrCodes,
+  markBaleReturned,
+  type ActionResult,
+  type BaleDraft,
+} from "./actions";
 
 const STATUS_LABEL: Record<BaleRow["status"], string> = {
   awaiting_cutting: "Awaiting cutting",
@@ -51,6 +58,7 @@ export function Bales({
   const [pending, start] = useTransition();
   const [toast, showToast] = useToast();
   const [adding, setAdding] = useState(false);
+  const [cutting, setCutting] = useState<BaleRow | null>(null);
 
   function run(action: () => Promise<ActionResult>, onOk?: () => void) {
     start(async () => {
@@ -137,6 +145,9 @@ export function Bales({
                     <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
                       Status
                     </th>
+                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
+                      Thaans
+                    </th>
                     <th scope="col" className="w-12 px-3 py-2">
                       <span className="sr-only">Actions</span>
                     </th>
@@ -169,10 +180,58 @@ export function Bales({
                           {STATUS_LABEL[r.status]}
                         </span>
                       </td>
+                      <td className="px-3 text-ink-2">
+                        {r.thaanCount === 0 ? (
+                          "—"
+                        ) : (
+                          <>
+                            {r.thaanCount}{" "}
+                            <span
+                              className="rounded px-1.5 py-0.5 text-[11px] font-medium"
+                              style={
+                                r.qrGeneratedCount >= r.thaanCount
+                                  ? { background: "var(--ok-soft)", color: "var(--ok)" }
+                                  : { background: "var(--warn-soft)", color: "var(--warn)" }
+                              }
+                            >
+                              {r.qrGeneratedCount >= r.thaanCount ? "QR ready" : "QR pending"}
+                            </span>
+                          </>
+                        )}
+                      </td>
                       <td className="px-3">
                         <RowMenu
                           label={r.code}
                           items={[
+                            {
+                              label: "Record cutting",
+                              disabled: pending || r.status !== "awaiting_cutting",
+                              hint:
+                                r.status !== "awaiting_cutting"
+                                  ? "Already cut, returned, or otherwise no longer waiting."
+                                  : undefined,
+                              onSelect: () => setCutting(r),
+                            },
+                            {
+                              label: "Generate QR codes",
+                              disabled: pending || r.qrGeneratedCount >= r.thaanCount || r.thaanCount === 0,
+                              hint:
+                                r.thaanCount === 0
+                                  ? "This bale hasn't been cut yet."
+                                  : r.qrGeneratedCount >= r.thaanCount
+                                    ? "Every Thaan from this bale already has a code."
+                                    : undefined,
+                              onSelect: () => run(() => generateQrCodes(r.id)),
+                            },
+                            {
+                              label: "Print QR codes",
+                              disabled: r.qrGeneratedCount === 0,
+                              hint:
+                                r.qrGeneratedCount === 0
+                                  ? "No Thaans here have a QR code yet."
+                                  : undefined,
+                              onSelect: () => router.push(`/thaans/print/${r.id}`),
+                            },
                             {
                               label: "Mark returned",
                               danger: true,
@@ -205,8 +264,70 @@ export function Bales({
         />
       )}
 
+      {cutting !== null && (
+        <CutDrawer
+          bale={cutting}
+          pending={pending}
+          onClose={() => setCutting(null)}
+          onRun={run}
+        />
+      )}
+
       <ToastBar toast={toast} onDismiss={() => showToast(null)} />
     </div>
+  );
+}
+
+function CutDrawer({
+  bale,
+  pending,
+  onClose,
+  onRun,
+}: {
+  bale: BaleRow;
+  pending: boolean;
+  onClose: () => void;
+  onRun: (action: () => Promise<ActionResult>, onOk?: () => void) => void;
+}) {
+  const [thaanCount, setThaanCount] = useState("");
+
+  const valid = Number.isInteger(Number(thaanCount)) && Number(thaanCount) > 0;
+
+  return (
+    <Drawer
+      open
+      title={`Cut ${bale.code}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            tone="primary"
+            disabled={pending || !valid}
+            onClick={() => onRun(() => cutBale(bale.id, thaanCount), onClose)}
+          >
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-5">
+        <Field
+          label="Number of Thaans"
+          hint="How many pieces the whole bale was cut into. Entered once — cutting is done in one sitting."
+        >
+          <input
+            type="number"
+            min="1"
+            step="1"
+            autoFocus
+            className={inputClass}
+            value={thaanCount}
+            onChange={(e) => setThaanCount(e.target.value)}
+          />
+        </Field>
+      </div>
+    </Drawer>
   );
 }
 

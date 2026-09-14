@@ -230,7 +230,46 @@ export const bale = pgTable(
   ],
 );
 
+/**
+ * One cut unit of cloth from a bale — the spreadsheet's own "Thaan"
+ * (see its "Per Thaan Mtr" column). Deliberately not named `piece`: the
+ * catalogue already has a `piece` table meaning a finished, identified
+ * saree, and this is neither — it is what a bale becomes before any of
+ * that is decided. See
+ * docs/decisions/0002-a-piece-can-exist-before-its-product-does.md.
+ *
+ * Created in bulk when a bale is cut — one row per piece, all at once,
+ * matching "the total count of cut pieces are entered" rather than one at
+ * a time. `code` starts null: cutting and assigning the permanent code are
+ * two separate, deliberate acts (a "Generate QR codes" action on the
+ * bale), not one.
+ */
+export const thaan = pgTable(
+  "thaan",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    baleId: uuid("bale_id")
+      .notNull()
+      .references(() => bale.id, { onDelete: "restrict" }),
+
+    /** "T100001" — assigned once, by `thaan_code_seq`, when its QR is generated. Permanent after that. */
+    code: text("code"),
+
+    qrGeneratedAt: timestamp("qr_generated_at", { withTimezone: true }),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("thaan_code_key").on(t.code)],
+);
+
 export type Supplier = typeof supplier.$inferSelect;
 export type ClothItem = typeof clothItem.$inferSelect;
 export type Vendor = typeof vendor.$inferSelect;
 export type Bale = typeof bale.$inferSelect;
+export type Thaan = typeof thaan.$inferSelect;

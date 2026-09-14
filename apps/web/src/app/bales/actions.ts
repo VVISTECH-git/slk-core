@@ -155,3 +155,72 @@ export async function markBaleReturned(baleId: string): Promise<ActionResult> {
 
   return { ok: true, message: `${row.code} marked returned.` };
 }
+
+/**
+ * Cutting a bale: the whole thing, in one sitting — the business's own
+ * rule, not a technical shortcut — so this creates every Thaan the bale
+ * becomes at once, rather than accumulating them over several visits.
+ * Codes are not assigned here; that is `generateQrCodes`, a deliberate
+ * second act.
+ */
+export async function cutBale(baleId: string, thaanCount: string): Promise<ActionResult> {
+  const denied = await guard("floor");
+  if (denied !== null) return denied;
+
+  const count = Number(thaanCount);
+  if (!Number.isInteger(count) || count <= 0) {
+    return { ok: false, message: "Number of pieces must be a whole number greater than zero." };
+  }
+
+  const code = await db.transaction(async (tx) => {
+    const [row] = await tx.execute<{ code: string }>(sql`
+      update bale
+      set status = 'cut', updated_at = now()
+      where id = ${baleId} and status = 'awaiting_cutting'
+      returning code
+    `);
+
+    if (row === undefined) return null;
+
+    await tx.execute(sql`
+      insert into thaan (bale_id)
+      select ${baleId} from generate_series(1, ${count})
+    `);
+
+    return row.code;
+  });
+
+  if (code === null) {
+    return { ok: false, message: "That bale can no longer be cut." };
+  }
+
+  revalidate();
+
+  return { ok: true, message: `${code} cut into ${count} Thaan${count === 1 ? "" : "s"}.` };
+}
+
+/**
+ * Assigns every Thaan from this bale still waiting on one its permanent
+ * code, via `thaan_code_seq` — one statement, so a bale's Thaans are never
+ * left half-coded by something failing partway through.
+ */
+export async function generateQrCodes(baleId: string): Promise<ActionResult> {
+  const denied = await guard("floor");
+  if (denied !== null) return denied;
+
+  const updated = await db.execute<{ id: string }>(sql`
+    update thaan
+    set code = 'T' || nextval('thaan_code_seq'), qr_generated_at = now(), updated_at = now()
+    where bale_id = ${baleId} and code is null
+    returning id
+  `);
+
+  if (updated.length === 0) {
+    return { ok: false, message: "No Thaans here are waiting on a QR code." };
+  }
+
+  revalidate();
+  revalidatePath("/thaans");
+
+  return { ok: true, message: `Generated ${updated.length} QR code${updated.length === 1 ? "" : "s"}.` };
+}

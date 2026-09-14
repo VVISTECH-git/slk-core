@@ -428,6 +428,13 @@
       "when": 1789476305000,
       "tag": "0060_registration_details",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1789476306000,
+      "tag": "0061_cutting_and_thaans",
+      "breakpoints": true
     }
   ]
 }

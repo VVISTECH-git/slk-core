@@ -27,6 +27,10 @@ export type BaleRow = {
   status: "awaiting_cutting" | "cut" | "returned";
   receivedAt: string;
   recordedByName: string | null;
+  /** How many Thaans this bale was cut into. Zero while it's still awaiting cutting. */
+  thaanCount: number;
+  /** Of those, how many already have a QR code. Never more than `thaanCount`. */
+  qrGeneratedCount: number;
 };
 
 export async function loadBales(): Promise<BaleRow[]> {
@@ -48,11 +52,21 @@ export async function loadBales(): Promise<BaleRow[]> {
       b.notes,
       b.status,
       to_char(b.received_at, 'DD Mon YYYY')         as "receivedAt",
-      a.name                                         as "recordedByName"
+      a.name                                         as "recordedByName",
+      coalesce(t.thaan_count, 0)                    as "thaanCount",
+      coalesce(t.qr_count, 0)                       as "qrGeneratedCount"
     from bale b
     join supplier s on s.id = b.supplier_id
     join cloth_item i on i.id = b.item_id
     left join actor a on a.id = b.recorded_by_id
+    left join (
+      select
+        bale_id,
+        count(*)::int              as thaan_count,
+        count(qr_generated_at)::int as qr_count
+      from thaan
+      group by bale_id
+    ) t on t.bale_id = b.id
     order by b.received_at desc, b.code desc
   `);
 }

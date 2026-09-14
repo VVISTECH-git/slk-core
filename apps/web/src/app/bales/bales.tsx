@@ -729,11 +729,14 @@ function BaleFields({
       <Field label="Item" hint="Not on the list? Add it from Cloth Items first.">
         <select className={inputClass} value={draft.itemId} onChange={(e) => set("itemId", e.target.value)}>
           <option value="">Choose…</option>
-          {clothItems.map((i) => (
-            <option key={i.id} value={i.id}>
-              {i.name}
-            </option>
-          ))}
+          {clothItems
+            .filter((i) => i.status === "active" || i.id === draft.itemId)
+            .map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.name}
+                {i.status === "inactive" ? " (inactive)" : ""}
+              </option>
+            ))}
         </select>
       </Field>
 
@@ -817,11 +820,14 @@ function AddDrawer({
             autoFocus
           >
             <option value="">Choose…</option>
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
+            {suppliers
+              .filter((s) => s.status === "active" || s.id === draft.supplierId)
+              .map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                  {s.status === "inactive" ? " (inactive)" : ""}
+                </option>
+              ))}
           </select>
         </Field>
 

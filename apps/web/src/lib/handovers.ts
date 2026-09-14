@@ -64,6 +64,7 @@ export async function checkThaanForSend(
     itemName: string;
     openStage: string | null;
     completedStages: number;
+    voidedAt: string | null;
   }>(sql`
     select
       t.id, t.code,
@@ -71,7 +72,8 @@ export async function checkThaanForSend(
       b.type                                              as "baleType",
       i.name                                               as "itemName",
       open_h.stage                                         as "openStage",
-      coalesce(done.n, 0)::int                              as "completedStages"
+      coalesce(done.n, 0)::int                              as "completedStages",
+      t.voided_at                                           as "voidedAt"
     from thaan t
     join bale b on b.id = t.bale_id
     join cloth_item i on i.id = b.item_id
@@ -84,6 +86,9 @@ export async function checkThaanForSend(
 
   if (thaan === undefined) {
     return { ok: false, message: `No Thaan with code "${trimmed}".` };
+  }
+  if (thaan.voidedAt !== null) {
+    return { ok: false, message: `${thaan.code} has been voided — it can't be sent anywhere.` };
   }
   if (thaan.openStage !== null) {
     return { ok: false, message: `${thaan.code} is already out for ${thaan.openStage}.` };

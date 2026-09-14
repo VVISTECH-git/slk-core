@@ -3,10 +3,10 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Button, Drawer, Field, Header, ToastBar, inputClass, useToast } from "@/components/ui";
+import { Button, Drawer, Field, Header, RowMenu, ToastBar, inputClass, useToast } from "@/components/ui";
 import type { SupplierRow } from "@/lib/bales";
 
-import { createSupplier, type ActionResult, type SupplierDraft } from "./actions";
+import { createSupplier, setSupplierStatus, updateSupplier, type ActionResult, type SupplierDraft } from "./actions";
 
 /**
  * Who kora cloth is bought from. Its own screen, same reasoning as Bale
@@ -19,6 +19,7 @@ export function Suppliers({ rows }: { rows: SupplierRow[] }) {
   const [pending, start] = useTransition();
   const [toast, showToast] = useToast();
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<SupplierRow | null>(null);
 
   function run(action: () => Promise<ActionResult>, onOk?: () => void) {
     start(async () => {
@@ -73,11 +74,22 @@ export function Suppliers({ rows }: { rows: SupplierRow[] }) {
                     <th scope="col" className="w-20 px-3 py-2 text-right text-[11.5px] font-medium text-muted">
                       Bales
                     </th>
+                    <th scope="col" className="w-24 px-3 py-2 text-[11.5px] font-medium text-muted">
+                      Status
+                    </th>
+                    <th scope="col" className="w-14 px-3 py-2 text-[11.5px] font-medium text-muted">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((r) => (
-                    <tr key={r.id} className="h-11 border-b border-rule last:border-b-0 hover:bg-surface-2">
+                    <tr
+                      key={r.id}
+                      className={`h-11 border-b border-rule last:border-b-0 hover:bg-surface-2 ${
+                        r.status === "inactive" ? "opacity-60" : ""
+                      }`}
+                    >
                       <td className="px-4 text-ink" title={r.address ?? ""}>
                         {r.name}
                       </td>
@@ -87,6 +99,33 @@ export function Suppliers({ rows }: { rows: SupplierRow[] }) {
                       <td className="px-3 text-ink-2">{r.contactPerson ?? "—"}</td>
                       <td className="px-3 text-right font-mono text-[12.5px] text-ink-2 tabular-nums">
                         {r.baleCount}
+                      </td>
+                      <td className="px-3">
+                        <span
+                          className="rounded px-1.5 py-0.5 text-[11px] font-medium"
+                          style={
+                            r.status === "active"
+                              ? { background: "var(--ok-soft)", color: "var(--ok)" }
+                              : { background: "var(--surface-3)", color: "var(--muted)" }
+                          }
+                        >
+                          {r.status === "active" ? "Active" : "Inactive"}
+                        </span>
+                      </td>
+                      <td className="px-3">
+                        <RowMenu
+                          label={r.name}
+                          items={[
+                            { label: "Edit", onSelect: () => setEditing(r) },
+                            {
+                              label: r.status === "active" ? "Mark inactive" : "Mark active",
+                              onSelect: () =>
+                                run(() =>
+                                  setSupplierStatus(r.id, r.status === "active" ? "inactive" : "active"),
+                                ),
+                            },
+                          ]}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -101,8 +140,88 @@ export function Suppliers({ rows }: { rows: SupplierRow[] }) {
         <AddDrawer pending={pending} onClose={() => setAdding(false)} onRun={run} />
       )}
 
+      {editing !== null && (
+        <EditDrawer
+          supplier={editing}
+          pending={pending}
+          onClose={() => setEditing(null)}
+          onRun={run}
+        />
+      )}
+
       <ToastBar toast={toast} onDismiss={() => showToast(null)} />
     </div>
+  );
+}
+
+function SupplierFields({
+  draft,
+  set,
+}: {
+  draft: SupplierDraft;
+  set: <K extends keyof SupplierDraft>(key: K, value: SupplierDraft[K]) => void;
+}) {
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Name">
+          <input
+            className={inputClass}
+            value={draft.name}
+            onChange={(e) => set("name", e.target.value)}
+            autoFocus
+          />
+        </Field>
+
+        <Field
+          label="Code"
+          hint="1 to 4 letters. A short reference for this supplier — bales are numbered separately."
+        >
+          <input
+            className={inputClass}
+            value={draft.codePrefix}
+            onChange={(e) => set("codePrefix", e.target.value.toUpperCase())}
+            maxLength={4}
+            style={{ textTransform: "uppercase" }}
+          />
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Phone" hint="Who to call about a bale issue or return.">
+          <input
+            className={inputClass}
+            value={draft.phone}
+            onChange={(e) => set("phone", e.target.value)}
+          />
+        </Field>
+
+        <Field label="GSTIN" hint="Optional — not every supplier is GST-registered.">
+          <input
+            className={inputClass}
+            value={draft.gstin}
+            onChange={(e) => set("gstin", e.target.value.toUpperCase())}
+          />
+        </Field>
+      </div>
+
+      <Field label="Contact person" hint="When the supplier is a firm rather than an individual.">
+        <input
+          className={inputClass}
+          value={draft.contactPerson}
+          onChange={(e) => set("contactPerson", e.target.value)}
+        />
+      </Field>
+
+      <Field label="Address">
+        <textarea
+          className={inputClass}
+          rows={2}
+          value={draft.address}
+          onChange={(e) => set("address", e.target.value)}
+        />
+      </Field>
+    </>
   );
 }
 
@@ -148,64 +267,57 @@ function AddDrawer({
       }
     >
       <div className="flex flex-col gap-5">
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Name">
-            <input
-              className={inputClass}
-              value={draft.name}
-              onChange={(e) => set("name", e.target.value)}
-              autoFocus
-            />
-          </Field>
+        <SupplierFields draft={draft} set={set} />
+      </div>
+    </Drawer>
+  );
+}
 
-          <Field
-            label="Code"
-            hint="1 to 4 letters. A short reference for this supplier — bales are numbered separately."
+function EditDrawer({
+  supplier,
+  pending,
+  onClose,
+  onRun,
+}: {
+  supplier: SupplierRow;
+  pending: boolean;
+  onClose: () => void;
+  onRun: (action: () => Promise<ActionResult>, onOk?: () => void) => void;
+}) {
+  const [draft, setDraft] = useState<SupplierDraft>({
+    name: supplier.name,
+    codePrefix: supplier.codePrefix,
+    phone: supplier.phone ?? "",
+    gstin: supplier.gstin ?? "",
+    address: supplier.address ?? "",
+    contactPerson: supplier.contactPerson ?? "",
+  });
+
+  const set = <K extends keyof SupplierDraft>(key: K, value: SupplierDraft[K]) =>
+    setDraft((prev) => ({ ...prev, [key]: value }));
+
+  const valid = draft.name.trim() !== "" && /^[A-Za-z]{1,4}$/.test(draft.codePrefix.trim());
+
+  return (
+    <Drawer
+      open
+      title={`Edit ${supplier.name}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            tone="primary"
+            disabled={pending || !valid}
+            onClick={() => onRun(() => updateSupplier(supplier.id, draft), onClose)}
           >
-            <input
-              className={inputClass}
-              value={draft.codePrefix}
-              onChange={(e) => set("codePrefix", e.target.value.toUpperCase())}
-              maxLength={4}
-              style={{ textTransform: "uppercase" }}
-            />
-          </Field>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Phone" hint="Who to call about a bale issue or return.">
-            <input
-              className={inputClass}
-              value={draft.phone}
-              onChange={(e) => set("phone", e.target.value)}
-            />
-          </Field>
-
-          <Field label="GSTIN" hint="Optional — not every supplier is GST-registered.">
-            <input
-              className={inputClass}
-              value={draft.gstin}
-              onChange={(e) => set("gstin", e.target.value.toUpperCase())}
-            />
-          </Field>
-        </div>
-
-        <Field label="Contact person" hint="When the supplier is a firm rather than an individual.">
-          <input
-            className={inputClass}
-            value={draft.contactPerson}
-            onChange={(e) => set("contactPerson", e.target.value)}
-          />
-        </Field>
-
-        <Field label="Address">
-          <textarea
-            className={inputClass}
-            rows={2}
-            value={draft.address}
-            onChange={(e) => set("address", e.target.value)}
-          />
-        </Field>
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-5">
+        <SupplierFields draft={draft} set={set} />
       </div>
     </Drawer>
   );

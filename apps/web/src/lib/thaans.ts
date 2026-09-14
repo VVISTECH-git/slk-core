@@ -14,8 +14,16 @@ export type ThaanRow = {
   baleCode: string;
   supplierName: string;
   itemName: string;
+  /** Cascaded from the bale — the same "Sarees, Fabric, Chunnies..." set. */
+  baleType: string;
+  billEntryDate: string;
+  /** Metres received ÷ Thaans cut from that bale — this Thaan's own share. */
+  perThaanMetres: number | null;
   qrGeneratedAt: string | null;
+  qrGeneratedByName: string | null;
   createdAt: string;
+  voidedAt: string | null;
+  voidedByName: string | null;
 };
 
 export async function loadThaans(): Promise<ThaanRow[]> {
@@ -27,12 +35,21 @@ export async function loadThaans(): Promise<ThaanRow[]> {
       b.code                                                 as "baleCode",
       s.name                                                  as "supplierName",
       i.name                                                  as "itemName",
+      b.type                                                  as "baleType",
+      to_char(b.bill_entry_date, 'DD Mon YYYY')              as "billEntryDate",
+      round(b.metres_received / count(*) over (partition by t.bale_id), 2)::double precision
+                                                               as "perThaanMetres",
       to_char(t.qr_generated_at, 'DD Mon YYYY, HH12:MI AM')  as "qrGeneratedAt",
-      to_char(t.created_at, 'DD Mon YYYY')                   as "createdAt"
+      qr_by.name                                              as "qrGeneratedByName",
+      to_char(t.created_at, 'DD Mon YYYY')                   as "createdAt",
+      to_char(t.voided_at, 'DD Mon YYYY, HH12:MI AM')        as "voidedAt",
+      void_by.name                                            as "voidedByName"
     from thaan t
     join bale b on b.id = t.bale_id
     join supplier s on s.id = b.supplier_id
     join cloth_item i on i.id = b.item_id
+    left join actor qr_by on qr_by.id = t.qr_generated_by_id
+    left join actor void_by on void_by.id = t.voided_by_id
     order by t.created_at desc, t.code
   `);
 }
@@ -64,17 +81,29 @@ export interface ThaanPrintBatch {
   rows: ThaanPrintRow[];
 }
 
-/** The Thaans from one bale that already have a code — what "Print QR codes" hands to the printer. */
-export async function loadThaanPrintBatch(baleId: string): Promise<ThaanPrintBatch> {
+/**
+ * The Thaans from one bale that already have a code — what "Print QR codes"
+ * hands to the printer. `onlyThaanId` narrows it to a single reprint, from
+ * a Thaan row's own "Print QR code" action.
+ */
+export async function loadThaanPrintBatch(baleId: string, onlyThaanId?: string): Promise<ThaanPrintBatch> {
   const [bale] = await db.execute<{ code: string }>(sql`
     select code from bale where id = ${baleId}
   `);
 
-  const thaans = await db.execute<{ id: string; code: string }>(sql`
-    select id, code from thaan
-    where bale_id = ${baleId} and code is not null
-    order by code
-  `);
+  const thaans = await db.execute<{ id: string; code: string }>(
+    onlyThaanId === undefined
+      ? sql`
+          select id, code from thaan
+          where bale_id = ${baleId} and code is not null
+          order by code
+        `
+      : sql`
+          select id, code from thaan
+          where bale_id = ${baleId} and code is not null and id = ${onlyThaanId}
+          order by code
+        `,
+  );
 
   const rows = await Promise.all(
     thaans.map(async (t) => ({ id: t.id, code: t.code, qr: await qr(t.code) })),

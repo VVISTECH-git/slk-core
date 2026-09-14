@@ -61,6 +61,14 @@ export const supplier = pgTable(
     /** The person to reach, when the supplier is a firm rather than an individual. */
     contactPerson: text("contact_person"),
 
+    /**
+     * `active` or `inactive` — a supplier stops being offered for a new
+     * bale without erasing their history. Every bale already on file keeps
+     * pointing at them either way; only the Bale Intake dropdown reads
+     * this.
+     */
+    status: text("status").notNull().default("active"),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -71,6 +79,7 @@ export const supplier = pgTable(
   (t) => [
     uniqueIndex("supplier_name_key").on(t.name),
     uniqueIndex("supplier_code_prefix_key").on(t.codePrefix),
+    check("supplier_status_known", sql`${t.status} in ('active', 'inactive')`),
   ],
 );
 
@@ -86,6 +95,10 @@ export const clothItem = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
+
+    /** `active` or `inactive` — same reasoning as `supplier.status`. */
+    status: text("status").notNull().default("active"),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -93,7 +106,10 @@ export const clothItem = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [uniqueIndex("cloth_item_name_key").on(t.name)],
+  (t) => [
+    uniqueIndex("cloth_item_name_key").on(t.name),
+    check("cloth_item_status_known", sql`${t.status} in ('active', 'inactive')`),
+  ],
 );
 
 /**
@@ -301,6 +317,15 @@ export const thaan = pgTable(
 
     /** Who ran the "Generate QR codes" action — the same person for every Thaan generated together. */
     qrGeneratedBy: uuid("qr_generated_by_id").references(() => actor.id, { onDelete: "restrict" }),
+
+    /**
+     * Set when a Thaan is flagged damaged, miscounted, or otherwise unusable
+     * — reversible (see `restoreThaan`), unlike deleting the row, which
+     * would break every Handover that already references it. Null means
+     * still good. A voided Thaan is refused by `checkThaanForSend`.
+     */
+    voidedAt: timestamp("voided_at", { withTimezone: true }),
+    voidedBy: uuid("voided_by_id").references(() => actor.id, { onDelete: "restrict" }),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

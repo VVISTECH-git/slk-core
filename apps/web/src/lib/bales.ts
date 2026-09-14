@@ -104,6 +104,7 @@ export type SupplierRow = {
   gstin: string | null;
   address: string | null;
   contactPerson: string | null;
+  status: "active" | "inactive";
   baleCount: number;
 };
 
@@ -117,17 +118,19 @@ export async function loadSuppliers(): Promise<SupplierRow[]> {
       s.gstin,
       s.address,
       s.contact_person                     as "contactPerson",
+      s.status,
       count(b.id)::int                     as "baleCount"
     from supplier s
     left join bale b on b.supplier_id = s.id
     group by s.id
-    order by s.name
+    order by (s.status = 'active') desc, s.name
   `);
 }
 
 export type ClothItemRow = {
   id: string;
   name: string;
+  status: "active" | "inactive";
   baleCount: number;
 };
 
@@ -136,10 +139,11 @@ export async function loadClothItems(): Promise<ClothItemRow[]> {
     select
       i.id,
       i.name,
+      i.status,
       count(b.id)::int                     as "baleCount"
     from cloth_item i
     left join bale b on b.item_id = i.id
     group by i.id
-    order by i.name
+    order by (i.status = 'active') desc, i.name
   `);
 }

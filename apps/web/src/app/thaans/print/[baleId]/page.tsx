@@ -14,13 +14,16 @@ export const dynamic = "force-dynamic";
  */
 export default async function PrintThaansPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ baleId: string }>;
+  searchParams: Promise<{ thaan?: string }>;
 }) {
   await requirePage();
 
   const { baleId } = await params;
-  const batch = await loadThaanPrintBatch(baleId);
+  const { thaan } = await searchParams;
+  const batch = await loadThaanPrintBatch(baleId, thaan);
 
   if (batch.baleCode === "" || batch.rows.length === 0) {
     notFound();

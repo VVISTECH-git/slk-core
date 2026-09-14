@@ -11,6 +11,7 @@ import {
   FilterChips,
   FilterControl,
   HeaderCell,
+  Pager,
   activeFilters,
   useColumnDrag,
   type Filters,
@@ -56,9 +57,8 @@ const STATUS_STYLE: Record<BaleRow["status"], { background: string; color: strin
 /**
  * Bale Intake's own grid, on the same furniture Product Management's is
  * built from (`@/components/grid`) — resizable, reorderable, hideable
- * columns and a filter panel, rather than a bespoke lesser version. No
- * pager: a bale is added by hand a few times a week, not imported by the
- * thousand, so there's nothing yet for one to page through.
+ * columns, a filter panel, and the same `Pager` that screen uses, so a
+ * year of bales doesn't mean a year of scrolling.
  */
 const COLUMNS = [
   { key: "code", label: "Bale ID", width: 90 },
@@ -76,6 +76,7 @@ const COLUMNS = [
 
 type ColumnKey = (typeof COLUMNS)[number]["key"];
 const COLUMN_KEYS: readonly string[] = COLUMNS.map((c) => c.key);
+const PER_PAGE = 50;
 const NUMERIC = new Set<ColumnKey>([
   "quantity",
   "baleCount",
@@ -198,6 +199,7 @@ export function Bales({
 
   const [filters, setFilters] = useState<Filters<ColumnKey>>({});
   const [sort, setSort] = useState<{ key: ColumnKey; dir: 1 | -1 } | null>(null);
+  const [page, setPage] = useState(1);
 
   const { visible, setVisible, reset: resetColumns, chosen: columnsChosen } = useVisibleColumns(
     "bales",
@@ -244,6 +246,11 @@ export function Bales({
   }, [rows, filters, sort]);
 
   const active = activeFilters(filters);
+
+  const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const currentPage = Math.min(page, pages);
+  const pageFrom = (currentPage - 1) * PER_PAGE;
+  const pageRows = filtered.slice(pageFrom, pageFrom + PER_PAGE);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden px-8 py-8">
@@ -373,7 +380,7 @@ export function Bales({
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((r) => (
+                  pageRows.map((r) => (
                     <tr
                       key={r.id}
                       onClick={() => setEditing(r)}
@@ -546,6 +553,10 @@ export function Bales({
               </tbody>
             </table>
           </div>
+        )}
+
+        {canAdd && rows.length > 0 && filtered.length > 0 && (
+          <Pager total={filtered.length} page={currentPage} perPage={PER_PAGE} onPage={setPage} />
         )}
       </div>
 

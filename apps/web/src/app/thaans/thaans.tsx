@@ -27,14 +27,27 @@ export function Thaans({ rows }: { rows: ThaanRow[] }) {
   const [toast, showToast] = useToast();
   const [page, setPage] = useState(1);
   const [voiding, setVoiding] = useState<ThaanRow | null>(null);
+  const [query, setQuery] = useState("");
 
   const withQr = rows.filter((r) => r.code !== null).length;
   const voided = rows.filter((r) => r.voidedAt !== null).length;
 
-  const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+  const q = query.trim().toLowerCase();
+  const filtered =
+    q === ""
+      ? rows
+      : rows.filter(
+          (r) =>
+            r.baleCode.toLowerCase().includes(q) ||
+            (r.code ?? "").toLowerCase().includes(q) ||
+            r.supplierName.toLowerCase().includes(q) ||
+            r.itemName.toLowerCase().includes(q),
+        );
+
+  const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const current = Math.min(page, pages);
   const from = (current - 1) * PER_PAGE;
-  const pageRows = rows.slice(from, from + PER_PAGE);
+  const pageRows = filtered.slice(from, from + PER_PAGE);
 
   function run(action: () => Promise<ActionResult>, onOk?: () => void) {
     start(async () => {
@@ -56,10 +69,35 @@ export function Thaans({ rows }: { rows: ThaanRow[] }) {
 
       <div className="flex min-h-0 flex-1 flex-col px-8 py-6">
         <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col">
+          {rows.length > 0 && (
+            <div className="mb-4 flex flex-none items-center gap-3">
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setPage(1);
+                }}
+                placeholder="Search by bale code, Thaan code, supplier, or item…"
+                aria-label="Search Thaans"
+                className="w-80 rounded-lg border border-rule-2 bg-surface px-3 py-2 text-[13.5px] text-ink placeholder:text-faint"
+              />
+              {q !== "" && (
+                <span className="text-[12.5px] text-muted">
+                  {filtered.length} match{filtered.length === 1 ? "" : "es"}
+                </span>
+              )}
+            </div>
+          )}
+
           {rows.length === 0 ? (
             <p className="rounded-lg border border-dashed border-rule-2 px-4 py-10 text-center text-[13px] text-muted">
               No Thaans yet. They appear here once a bale is cut, from Bale
               Intake.
+            </p>
+          ) : filtered.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-rule-2 px-4 py-10 text-center text-[13px] text-muted">
+              No Thaans match &ldquo;{query.trim()}&rdquo;.
             </p>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-rule bg-surface">
@@ -146,7 +184,7 @@ export function Thaans({ rows }: { rows: ThaanRow[] }) {
                 </table>
               </div>
 
-              <Pager total={rows.length} page={current} perPage={PER_PAGE} onPage={setPage} />
+              <Pager total={filtered.length} page={current} perPage={PER_PAGE} onPage={setPage} />
             </div>
           )}
         </div>

@@ -1,14 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import {
+  Cell,
+  ColumnsControl,
+  FilterChips,
+  FilterControl,
+  HeaderCell,
+  activeFilters,
+  useColumnDrag,
+  type Filters,
+} from "@/components/grid";
+import { useColumnOrder, useColumnWidths, useVisibleColumns } from "@/lib/column-widths";
 import {
   Button,
   Drawer,
   Field,
-  Header,
   RowMenu,
   ToastBar,
   inputClass,
@@ -22,8 +32,10 @@ import {
   cutBale,
   generateQrCodes,
   markBaleReturned,
+  updateBale,
   type ActionResult,
   type BaleDraft,
+  type BaleEditDraft,
 } from "./actions";
 
 const STATUS_LABEL: Record<BaleRow["status"], string> = {
@@ -37,6 +49,86 @@ const STATUS_STYLE: Record<BaleRow["status"], { background: string; color: strin
   cut: { background: "var(--ok-soft)", color: "var(--ok)" },
   returned: { background: "var(--brick-soft)", color: "var(--brick)" },
 };
+
+/**
+ * Bale Intake's own grid, on the same furniture Product Management's is
+ * built from (`@/components/grid`) — resizable, reorderable, hideable
+ * columns and a filter panel, rather than a bespoke lesser version. No
+ * pager: a bale is added by hand a few times a week, not imported by the
+ * thousand, so there's nothing yet for one to page through.
+ */
+const COLUMNS = [
+  { key: "code", label: "Bale", width: 90 },
+  { key: "supplierName", label: "Supplier", width: 150 },
+  { key: "type", label: "Type", width: 100 },
+  { key: "itemName", label: "Item", width: 200 },
+  { key: "quantity", label: "Quantity", width: 110 },
+  { key: "baleCount", label: "Bales", width: 70 },
+  { key: "receivedAt", label: "Received", width: 110 },
+  { key: "status", label: "Status", width: 140 },
+  { key: "thaans", label: "Thaans", width: 150 },
+] as const;
+
+type ColumnKey = (typeof COLUMNS)[number]["key"];
+const COLUMN_KEYS: readonly string[] = COLUMNS.map((c) => c.key);
+const NUMERIC = new Set<ColumnKey>(["quantity", "baleCount", "thaans"]);
+const ACTIONS_WIDTH = 56;
+
+/** The columns a filter dropdown actually makes sense for — not a unique code or a date. */
+const FILTERABLE = new Set<ColumnKey>(["supplierName", "type", "itemName", "status"]);
+
+function cellText(row: BaleRow, key: ColumnKey): string {
+  switch (key) {
+    case "code":
+      return row.code;
+    case "supplierName":
+      return row.supplierName;
+    case "type":
+      return row.type;
+    case "itemName":
+      return row.itemName;
+    case "quantity":
+      return String(row.metresReceived);
+    case "baleCount":
+      return String(row.baleCount);
+    case "receivedAt":
+      return row.receivedAt;
+    case "status":
+      return STATUS_LABEL[row.status];
+    case "thaans":
+      return String(row.thaanCount);
+  }
+}
+
+function sortValue(row: BaleRow, key: ColumnKey): string | number {
+  switch (key) {
+    case "quantity":
+      return row.metresReceived;
+    case "baleCount":
+      return row.baleCount;
+    case "thaans":
+      return row.thaanCount;
+    case "receivedAt":
+      return row.receivedOn;
+    default:
+      return cellText(row, key).toLowerCase();
+  }
+}
+
+function draftFrom(row: BaleRow): BaleDraft {
+  return {
+    supplierId: row.supplierId,
+    transporter: row.transporter ?? "",
+    invoiceNumber: row.invoiceNumber ?? "",
+    invoiceDate: row.invoiceDate ?? "",
+    type: row.type,
+    metresReceived: String(row.metresReceived),
+    uom: row.uom,
+    itemId: row.itemId,
+    baleCount: String(row.baleCount),
+    notes: row.notes ?? "",
+  };
+}
 
 /**
  * Kora to Shelf, step one: receiving a bale.
@@ -59,6 +151,8 @@ export function Bales({
   const [toast, showToast] = useToast();
   const [adding, setAdding] = useState(false);
   const [cutting, setCutting] = useState<BaleRow | null>(null);
+  const [editing, setEditing] = useState<BaleRow | null>(null);
+  const [duplicating, setDuplicating] = useState<BaleRow | null>(null);
 
   function run(action: () => Promise<ActionResult>, onOk?: () => void) {
     start(async () => {
@@ -74,135 +168,264 @@ export function Bales({
   const awaitingCutting = rows.filter((r) => r.status === "awaiting_cutting").length;
   const canAdd = suppliers.length > 0 && clothItems.length > 0;
 
+  const [filters, setFilters] = useState<Filters<ColumnKey>>({});
+  const [sort, setSort] = useState<{ key: ColumnKey; dir: 1 | -1 } | null>(null);
+
+  const { visible, setVisible, reset: resetColumns, chosen: columnsChosen } = useVisibleColumns(
+    "bales",
+    COLUMN_KEYS,
+  );
+  const { widths, setWidth, reset: resetWidths, resized } = useColumnWidths("bales");
+  const { order, move, reset: resetOrder, ordered } = useColumnOrder("bales", COLUMN_KEYS);
+
+  const columns = order
+    .map((key) => COLUMNS.find((c) => c.key === key))
+    .filter((c): c is (typeof COLUMNS)[number] => c !== undefined && visible.has(c.key));
+
+  const drag = useColumnDrag<ColumnKey>(
+    columns.map((c) => c.key),
+    move,
+  );
+
+  const widthOf = (c: { key: ColumnKey; width: number }) => widths[c.key] ?? c.width;
+
+  const valuesFor = (key: ColumnKey): string[] =>
+    NUMERIC.has(key) ? [] : [...new Set(rows.map((r) => cellText(r, key)))].sort();
+
+  const filtered = useMemo(() => {
+    let out = rows.filter((row) => {
+      for (const [key, want] of Object.entries(filters)) {
+        if (want === undefined || want.length === 0) continue;
+        if (!want.includes(cellText(row, key as ColumnKey))) return false;
+      }
+      return true;
+    });
+
+    if (sort !== null) {
+      const { key, dir } = sort;
+      out = [...out].sort((a, b) => {
+        const x = sortValue(a, key);
+        const y = sortValue(b, key);
+        if (x < y) return -dir;
+        if (x > y) return dir;
+        return 0;
+      });
+    }
+
+    return out;
+  }, [rows, filters, sort]);
+
+  const active = activeFilters(filters);
+
   return (
-    <div className="flex min-h-screen flex-col">
-      <Header
-        title="Bale Intake"
-        lede={`Kora cloth received from suppliers. ${rows.length} bale${rows.length === 1 ? "" : "s"} recorded${awaitingCutting > 0 ? `, ${awaitingCutting} awaiting cutting` : ""}.`}
-        actions={
-          canAdd ? (
-            <Button tone="primary" onClick={() => setAdding(true)}>
-              Add bale
-            </Button>
-          ) : undefined
+    <div className="flex h-screen flex-col overflow-hidden px-8 py-8">
+      <header className="relative z-30 mb-5 flex flex-none flex-wrap items-end gap-3">
+        <div className="mr-auto">
+          <h1 className="text-[24px] font-semibold tracking-tight text-ink">Bale Intake</h1>
+          <p className="mt-0.5 text-[13px] text-muted">
+            Kora cloth received from suppliers. {rows.length} bale{rows.length === 1 ? "" : "s"}{" "}
+            recorded{awaitingCutting > 0 ? `, ${awaitingCutting} awaiting cutting` : ""}.
+          </p>
+        </div>
+
+        {canAdd && (
+          <Button tone="primary" onClick={() => setAdding(true)}>
+            Add bale
+          </Button>
+        )}
+
+        <FilterControl
+          columns={COLUMNS.filter((c) => FILTERABLE.has(c.key))}
+          valuesFor={valuesFor}
+          filters={filters}
+          onChange={(key, values) => setFilters((prev) => ({ ...prev, [key]: values }))}
+          onClearAll={() => setFilters({})}
+        />
+
+        <ColumnsControl
+          columns={COLUMNS}
+          order={order}
+          visible={visible}
+          onChange={setVisible}
+          onMove={move}
+          chosen={columnsChosen}
+          resized={resized}
+          ordered={ordered}
+          onResetColumns={resetColumns}
+          onResetWidths={resetWidths}
+          onResetOrder={resetOrder}
+        />
+      </header>
+
+      <FilterChips
+        columns={COLUMNS}
+        filters={filters}
+        onRemove={(key) =>
+          setFilters((prev) => {
+            const { [key]: _drop, ...rest } = prev;
+            return rest;
+          })
         }
+        onClearAll={() => setFilters({})}
       />
 
-      <div className="flex-1 px-8 py-6">
-        <div className="mx-auto max-w-5xl">
-          {!canAdd ? (
-            <p className="rounded-lg border border-dashed border-rule-2 px-4 py-10 text-center text-[13px] text-muted">
-              {suppliers.length === 0 && (
-                <>
-                  No suppliers on file yet.{" "}
-                  <Link href="/suppliers" className="text-brick underline">
-                    Add one
-                  </Link>
-                  .
-                </>
-              )}
-              {suppliers.length === 0 && clothItems.length === 0 && <br />}
-              {clothItems.length === 0 && (
-                <>
-                  No cloth items on file yet.{" "}
-                  <Link href="/items" className="text-brick underline">
-                    Add one
-                  </Link>
-                  .
-                </>
-              )}
-            </p>
-          ) : rows.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-rule-2 px-4 py-10 text-center text-[13px] text-muted">
-              No bales recorded yet. Add the first one to get started.
-            </p>
-          ) : (
-            <div className="overflow-hidden rounded-lg border border-rule bg-surface">
-              <table className="w-full border-collapse text-[13px]">
-                <thead>
-                  <tr className="border-b border-rule bg-surface-2 text-left">
-                    <th scope="col" className="px-4 py-2 text-[11.5px] font-medium text-muted">
-                      Bale
-                    </th>
-                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
-                      Supplier
-                    </th>
-                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
-                      Type
-                    </th>
-                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
-                      Item
-                    </th>
-                    <th scope="col" className="px-3 py-2 text-right text-[11.5px] font-medium text-muted">
-                      Quantity
-                    </th>
-                    <th scope="col" className="px-3 py-2 text-right text-[11.5px] font-medium text-muted">
-                      Bales
-                    </th>
-                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
-                      Received
-                    </th>
-                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
-                      Status
-                    </th>
-                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
-                      Thaans
-                    </th>
-                    <th scope="col" className="w-12 px-3 py-2">
-                      <span className="sr-only">Actions</span>
-                    </th>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-rule bg-surface">
+        {!canAdd ? (
+          <p className="px-4 py-16 text-center text-[13px] text-muted">
+            {suppliers.length === 0 && (
+              <>
+                No suppliers on file yet.{" "}
+                <Link href="/suppliers" className="text-brick underline">
+                  Add one
+                </Link>
+                .
+              </>
+            )}
+            {suppliers.length === 0 && clothItems.length === 0 && <br />}
+            {clothItems.length === 0 && (
+              <>
+                No cloth items on file yet.{" "}
+                <Link href="/items" className="text-brick underline">
+                  Add one
+                </Link>
+                .
+              </>
+            )}
+          </p>
+        ) : rows.length === 0 ? (
+          <p className="px-4 py-16 text-center text-[13px] text-muted">
+            No bales recorded yet. Add the first one to get started.
+          </p>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-auto">
+            <table
+              className="w-full table-fixed text-[13.5px]"
+              style={{ minWidth: columns.reduce((sum, c) => sum + widthOf(c), 0) + ACTIONS_WIDTH }}
+            >
+              <thead>
+                <tr>
+                  {columns.map((c) => (
+                    <HeaderCell
+                      key={c.key}
+                      column={c}
+                      width={widthOf(c)}
+                      numeric={NUMERIC.has(c.key)}
+                      sortDir={sort?.key === c.key ? sort.dir : null}
+                      onSort={() =>
+                        setSort((prev) =>
+                          prev?.key === c.key
+                            ? { key: c.key, dir: prev.dir === 1 ? -1 : 1 }
+                            : { key: c.key, dir: 1 },
+                        )
+                      }
+                      onResize={(w) => setWidth(c.key, w)}
+                      drag={drag}
+                    />
+                  ))}
+                  <th
+                    style={{ width: ACTIONS_WIDTH }}
+                    className={`sticky top-0 z-20 border-b border-rule bg-surface px-3 py-2.5 text-right text-[12px] font-medium text-muted ${
+                      drag.active !== null && drag.before === "end"
+                        ? "shadow-[inset_2px_0_0_0_var(--brick)]"
+                        : ""
+                    }`}
+                  >
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={columns.length + 1} className="px-4 py-16 text-center">
+                      <p className="text-[13.5px] text-muted">
+                        No bales match {active.length > 0 ? "these filters" : "that"}.
+                      </p>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.id} className="h-11 border-b border-rule last:border-b-0 hover:bg-surface-2">
-                      <td className="px-4 font-mono text-[12.5px] text-ink">{r.code}</td>
-                      <td className="px-3 text-ink-2">{r.supplierName}</td>
-                      <td className="px-3 text-ink-2">{r.type}</td>
-                      <td
-                        className="max-w-0 truncate px-3 text-ink-2"
-                        title={[r.itemName, r.notes].filter(Boolean).join(" — ")}
-                      >
-                        {r.itemName}
-                      </td>
-                      <td className="px-3 text-right font-mono text-[12.5px] text-ink-2 tabular-nums">
-                        {r.metresReceived.toLocaleString("en-IN")} {r.uom}
-                      </td>
-                      <td className="px-3 text-right font-mono text-[12.5px] text-ink-2 tabular-nums">
-                        {r.baleCount}
-                      </td>
-                      <td className="px-3 text-ink-2">{r.receivedAt}</td>
-                      <td className="px-3">
-                        <span
-                          className="rounded px-1.5 py-0.5 text-[11px] font-medium"
-                          style={STATUS_STYLE[r.status]}
-                        >
-                          {STATUS_LABEL[r.status]}
-                        </span>
-                      </td>
-                      <td className="px-3 text-ink-2">
-                        {r.thaanCount === 0 ? (
-                          "—"
-                        ) : (
-                          <>
-                            {r.thaanCount}{" "}
-                            <span
-                              className="rounded px-1.5 py-0.5 text-[11px] font-medium"
-                              style={
-                                r.qrGeneratedCount >= r.thaanCount
-                                  ? { background: "var(--ok-soft)", color: "var(--ok)" }
-                                  : { background: "var(--warn-soft)", color: "var(--warn)" }
-                              }
-                            >
-                              {r.qrGeneratedCount >= r.thaanCount ? "QR ready" : "QR pending"}
-                            </span>
-                          </>
-                        )}
-                      </td>
-                      <td className="px-3">
+                ) : (
+                  filtered.map((r) => (
+                    <tr
+                      key={r.id}
+                      onClick={() => setEditing(r)}
+                      className="h-11 cursor-pointer border-b border-rule last:border-b-0 hover:bg-surface-2"
+                    >
+                      {columns.map((c) => {
+                        if (c.key === "status") {
+                          return (
+                            <Cell key={c.key} title={STATUS_LABEL[r.status]}>
+                              <span
+                                className="rounded px-1.5 py-0.5 text-[11px] font-medium"
+                                style={STATUS_STYLE[r.status]}
+                              >
+                                {STATUS_LABEL[r.status]}
+                              </span>
+                            </Cell>
+                          );
+                        }
+
+                        if (c.key === "thaans") {
+                          return (
+                            <Cell key={c.key} title={cellText(r, c.key)}>
+                              {r.thaanCount === 0 ? (
+                                "—"
+                              ) : (
+                                <>
+                                  {r.thaanCount}{" "}
+                                  <span
+                                    className="rounded px-1.5 py-0.5 text-[11px] font-medium"
+                                    style={
+                                      r.qrGeneratedCount >= r.thaanCount
+                                        ? { background: "var(--ok-soft)", color: "var(--ok)" }
+                                        : { background: "var(--warn-soft)", color: "var(--warn)" }
+                                    }
+                                  >
+                                    {r.qrGeneratedCount >= r.thaanCount ? "QR ready" : "QR pending"}
+                                  </span>
+                                </>
+                              )}
+                            </Cell>
+                          );
+                        }
+
+                        if (c.key === "quantity") {
+                          return (
+                            <Cell key={c.key} numeric title={`${r.metresReceived} ${r.uom}`}>
+                              {r.metresReceived.toLocaleString("en-IN")} {r.uom}
+                            </Cell>
+                          );
+                        }
+
+                        if (c.key === "itemName") {
+                          return (
+                            <Cell key={c.key} title={[r.itemName, r.notes].filter(Boolean).join(" — ")}>
+                              {r.itemName}
+                            </Cell>
+                          );
+                        }
+
+                        return (
+                          <Cell
+                            key={c.key}
+                            numeric={NUMERIC.has(c.key)}
+                            title={cellText(r, c.key)}
+                            className={c.key === "code" ? "font-mono text-ink" : ""}
+                          >
+                            {cellText(r, c.key)}
+                          </Cell>
+                        );
+                      })}
+
+                      <td className="px-3 text-right" onClick={(e) => e.stopPropagation()}>
                         <RowMenu
                           label={r.code}
                           items={[
+                            {
+                              label: "Duplicate",
+                              disabled: pending,
+                              onSelect: () => setDuplicating(r),
+                            },
                             {
                               label: "Record cutting",
                               disabled: pending || r.status !== "awaiting_cutting",
@@ -246,12 +469,12 @@ export function Bales({
                         />
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {adding && (
@@ -264,17 +487,271 @@ export function Bales({
         />
       )}
 
-      {cutting !== null && (
-        <CutDrawer
-          bale={cutting}
+      {duplicating !== null && (
+        <AddDrawer
+          suppliers={suppliers}
+          clothItems={clothItems}
           pending={pending}
-          onClose={() => setCutting(null)}
+          initial={draftFrom(duplicating)}
+          onClose={() => setDuplicating(null)}
           onRun={run}
         />
       )}
 
+      {editing !== null && (
+        <EditDrawer
+          bale={editing}
+          clothItems={clothItems}
+          pending={pending}
+          onClose={() => setEditing(null)}
+          onRun={run}
+        />
+      )}
+
+      {cutting !== null && (
+        <CutDrawer bale={cutting} pending={pending} onClose={() => setCutting(null)} onRun={run} />
+      )}
+
       <ToastBar toast={toast} onDismiss={() => showToast(null)} />
     </div>
+  );
+}
+
+/**
+ * The fields shared by adding a bale, duplicating one, and editing one —
+ * everything but the supplier, which only Add can set.
+ */
+function BaleFields({
+  draft,
+  set,
+  clothItems,
+}: {
+  draft: Omit<BaleDraft, "supplierId">;
+  set: <K extends keyof Omit<BaleDraft, "supplierId">>(
+    key: K,
+    value: Omit<BaleDraft, "supplierId">[K],
+  ) => void;
+  clothItems: ClothItemRow[];
+}) {
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Type">
+          <select className={inputClass} value={draft.type} onChange={(e) => set("type", e.target.value)}>
+            <option value="">Choose…</option>
+            {BALE_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Transporter" hint="Optional — who delivered it.">
+          <input
+            className={inputClass}
+            value={draft.transporter}
+            onChange={(e) => set("transporter", e.target.value)}
+          />
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <Field label="Invoice number" hint="Leave blank if it hasn't arrived yet.">
+          <input
+            className={inputClass}
+            value={draft.invoiceNumber}
+            onChange={(e) => set("invoiceNumber", e.target.value)}
+          />
+        </Field>
+        <Field label="Invoice date">
+          <input
+            type="date"
+            className={inputClass}
+            value={draft.invoiceDate}
+            onChange={(e) => set("invoiceDate", e.target.value)}
+          />
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <Field label="Quantity received">
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            className={inputClass}
+            value={draft.metresReceived}
+            onChange={(e) => set("metresReceived", e.target.value)}
+          />
+        </Field>
+        <Field label="Unit">
+          <select className={inputClass} value={draft.uom} onChange={(e) => set("uom", e.target.value)}>
+            {UOMS.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Number of bales">
+          <input
+            type="number"
+            min="1"
+            step="1"
+            className={inputClass}
+            value={draft.baleCount}
+            onChange={(e) => set("baleCount", e.target.value)}
+          />
+        </Field>
+      </div>
+
+      <Field label="Item" hint="Not on the list? Add it from Cloth Items first.">
+        <select className={inputClass} value={draft.itemId} onChange={(e) => set("itemId", e.target.value)}>
+          <option value="">Choose…</option>
+          {clothItems.map((i) => (
+            <option key={i.id} value={i.id}>
+              {i.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <Field label="Notes" hint="Anything else worth recording about this entry.">
+        <textarea
+          className={inputClass}
+          rows={2}
+          value={draft.notes}
+          onChange={(e) => set("notes", e.target.value)}
+        />
+      </Field>
+    </div>
+  );
+}
+
+function AddDrawer({
+  suppliers,
+  clothItems,
+  pending,
+  initial,
+  onClose,
+  onRun,
+}: {
+  suppliers: SupplierRow[];
+  clothItems: ClothItemRow[];
+  pending: boolean;
+  /** Set when opened as "Duplicate" — the same fields as the row it was copied from. */
+  initial?: BaleDraft;
+  onClose: () => void;
+  onRun: (action: () => Promise<ActionResult>, onOk?: () => void) => void;
+}) {
+  const [draft, setDraft] = useState<BaleDraft>(
+    initial ?? {
+      supplierId: "",
+      transporter: "",
+      invoiceNumber: "",
+      invoiceDate: "",
+      type: "",
+      metresReceived: "",
+      uom: "Mtrs",
+      itemId: "",
+      baleCount: "1",
+      notes: "",
+    },
+  );
+
+  const set = <K extends keyof BaleDraft>(key: K, value: BaleDraft[K]) =>
+    setDraft((prev) => ({ ...prev, [key]: value }));
+
+  const valid =
+    draft.supplierId !== "" && draft.itemId !== "" && draft.type !== "" && Number(draft.metresReceived) > 0;
+
+  return (
+    <Drawer
+      open
+      title={initial === undefined ? "New bale" : "Duplicate bale"}
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            tone="primary"
+            disabled={pending || !valid}
+            onClick={() => onRun(() => createBale(draft), onClose)}
+          >
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-5">
+        <Field label="Supplier">
+          <select
+            className={inputClass}
+            value={draft.supplierId}
+            onChange={(e) => set("supplierId", e.target.value)}
+            autoFocus
+          >
+            <option value="">Choose…</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <BaleFields draft={draft} set={set} clothItems={clothItems} />
+      </div>
+    </Drawer>
+  );
+}
+
+function EditDrawer({
+  bale,
+  clothItems,
+  pending,
+  onClose,
+  onRun,
+}: {
+  bale: BaleRow;
+  clothItems: ClothItemRow[];
+  pending: boolean;
+  onClose: () => void;
+  onRun: (action: () => Promise<ActionResult>, onOk?: () => void) => void;
+}) {
+  const [draft, setDraft] = useState<BaleEditDraft>(draftFrom(bale));
+
+  const set = <K extends keyof BaleEditDraft>(key: K, value: BaleEditDraft[K]) =>
+    setDraft((prev) => ({ ...prev, [key]: value }));
+
+  const valid = draft.itemId !== "" && draft.type !== "" && Number(draft.metresReceived) > 0;
+
+  return (
+    <Drawer
+      open
+      title={bale.code}
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            tone="primary"
+            disabled={pending || !valid}
+            onClick={() => onRun(() => updateBale(bale.id, draft), onClose)}
+          >
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-5">
+        <Field label="Supplier" hint="Fixed — the bale's own code already carries this supplier's letter.">
+          <input className={inputClass} value={bale.supplierName} disabled />
+        </Field>
+
+        <BaleFields draft={draft} set={set} clothItems={clothItems} />
+      </div>
+    </Drawer>
   );
 }
 
@@ -324,182 +801,6 @@ function CutDrawer({
             className={inputClass}
             value={thaanCount}
             onChange={(e) => setThaanCount(e.target.value)}
-          />
-        </Field>
-      </div>
-    </Drawer>
-  );
-}
-
-function AddDrawer({
-  suppliers,
-  clothItems,
-  pending,
-  onClose,
-  onRun,
-}: {
-  suppliers: SupplierRow[];
-  clothItems: ClothItemRow[];
-  pending: boolean;
-  onClose: () => void;
-  onRun: (action: () => Promise<ActionResult>, onOk?: () => void) => void;
-}) {
-  const [draft, setDraft] = useState<BaleDraft>({
-    supplierId: "",
-    transporter: "",
-    invoiceNumber: "",
-    invoiceDate: "",
-    type: "",
-    metresReceived: "",
-    uom: "Mtrs",
-    itemId: "",
-    baleCount: "1",
-    notes: "",
-  });
-
-  const set = <K extends keyof BaleDraft>(key: K, value: BaleDraft[K]) =>
-    setDraft((prev) => ({ ...prev, [key]: value }));
-
-  const valid =
-    draft.supplierId !== "" &&
-    draft.itemId !== "" &&
-    draft.type !== "" &&
-    Number(draft.metresReceived) > 0;
-
-  return (
-    <Drawer
-      open
-      title="New bale"
-      onClose={onClose}
-      footer={
-        <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button
-            tone="primary"
-            disabled={pending || !valid}
-            onClick={() => onRun(() => createBale(draft), onClose)}
-          >
-            Save
-          </Button>
-        </>
-      }
-    >
-      <div className="flex flex-col gap-5">
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Supplier">
-            <select
-              className={inputClass}
-              value={draft.supplierId}
-              onChange={(e) => set("supplierId", e.target.value)}
-              autoFocus
-            >
-              <option value="">Choose…</option>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Type">
-            <select
-              className={inputClass}
-              value={draft.type}
-              onChange={(e) => set("type", e.target.value)}
-            >
-              <option value="">Choose…</option>
-              {BALE_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-
-        <Field label="Transporter" hint="Optional — who delivered it.">
-          <input
-            className={inputClass}
-            value={draft.transporter}
-            onChange={(e) => set("transporter", e.target.value)}
-          />
-        </Field>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Invoice number" hint="Leave blank if it hasn't arrived yet.">
-            <input
-              className={inputClass}
-              value={draft.invoiceNumber}
-              onChange={(e) => set("invoiceNumber", e.target.value)}
-            />
-          </Field>
-          <Field label="Invoice date">
-            <input
-              type="date"
-              className={inputClass}
-              value={draft.invoiceDate}
-              onChange={(e) => set("invoiceDate", e.target.value)}
-            />
-          </Field>
-        </div>
-
-        <div className="grid grid-cols-3 gap-4">
-          <Field label="Quantity received">
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              className={inputClass}
-              value={draft.metresReceived}
-              onChange={(e) => set("metresReceived", e.target.value)}
-            />
-          </Field>
-          <Field label="Unit">
-            <select
-              className={inputClass}
-              value={draft.uom}
-              onChange={(e) => set("uom", e.target.value)}
-            >
-              {UOMS.map((u) => (
-                <option key={u} value={u}>
-                  {u}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Number of bales">
-            <input
-              type="number"
-              min="1"
-              step="1"
-              className={inputClass}
-              value={draft.baleCount}
-              onChange={(e) => set("baleCount", e.target.value)}
-            />
-          </Field>
-        </div>
-
-        <Field label="Item" hint="Not on the list? Add it from Cloth Items first.">
-          <select
-            className={inputClass}
-            value={draft.itemId}
-            onChange={(e) => set("itemId", e.target.value)}
-          >
-            <option value="">Choose…</option>
-            {clothItems.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="Notes" hint="Anything else worth recording about this entry.">
-          <textarea
-            className={inputClass}
-            rows={2}
-            value={draft.notes}
-            onChange={(e) => set("notes", e.target.value)}
           />
         </Field>
       </div>

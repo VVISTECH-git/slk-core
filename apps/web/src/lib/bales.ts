@@ -26,6 +26,8 @@ export type BaleRow = {
   notes: string | null;
   status: "awaiting_cutting" | "cut" | "returned";
   receivedAt: string;
+  /** "2026-09-14" — for sorting the "Received" column; "DD Mon YYYY" doesn't sort chronologically as text. */
+  receivedOn: string;
   recordedByName: string | null;
   /** How many Thaans this bale was cut into. Zero while it's still awaiting cutting. */
   thaanCount: number;
@@ -52,6 +54,7 @@ export async function loadBales(): Promise<BaleRow[]> {
       b.notes,
       b.status,
       to_char(b.received_at, 'DD Mon YYYY')         as "receivedAt",
+      to_char(b.received_at, 'YYYY-MM-DD')          as "receivedOn",
       a.name                                         as "recordedByName",
       coalesce(t.thaan_count, 0)                    as "thaanCount",
       coalesce(t.qr_count, 0)                       as "qrGeneratedCount"

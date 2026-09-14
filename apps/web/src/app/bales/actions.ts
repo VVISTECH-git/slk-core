@@ -40,18 +40,30 @@ export interface BaleDraft {
   notes: string;
 }
 
+/** Everything about a bale except who supplied it — that's fixed once the bale's code is minted. */
+export type BaleEditDraft = Omit<BaleDraft, "supplierId">;
+
 function revalidate() {
   revalidatePath("/bales");
   revalidatePath("/suppliers");
 }
 
-export async function createBale(draft: BaleDraft): Promise<ActionResult> {
-  const denied = await guard("floor");
-  if (denied !== null) return denied;
+interface ParsedBaleFields {
+  type: string;
+  metresReceived: number;
+  uom: string;
+  itemId: string;
+  baleCount: number;
+  invoiceDate: string | null;
+}
 
-  if (draft.supplierId.trim() === "") {
-    return { ok: false, message: "Choose a supplier." };
-  }
+/**
+ * The checks `createBale` and `updateBale` both need. Returns the failure
+ * to show as-is, rather than a boolean, so the caller can just return it.
+ */
+function parseBaleFields(
+  draft: Pick<BaleDraft, "type" | "metresReceived" | "uom" | "itemId" | "baleCount" | "invoiceDate">,
+): ParsedBaleFields | ActionResult {
   if (draft.itemId.trim() === "") {
     return { ok: false, message: "Choose an item." };
   }
@@ -72,7 +84,32 @@ export async function createBale(draft: BaleDraft): Promise<ActionResult> {
     return { ok: false, message: "Number of bales must be a whole number greater than zero." };
   }
 
-  const invoiceDate = draft.invoiceDate.trim() === "" ? null : draft.invoiceDate;
+  return {
+    type: draft.type,
+    metresReceived,
+    uom: draft.uom,
+    itemId: draft.itemId,
+    baleCount,
+    invoiceDate: draft.invoiceDate.trim() === "" ? null : draft.invoiceDate,
+  };
+}
+
+function isFailure(x: ParsedBaleFields | ActionResult): x is ActionResult {
+  return "ok" in x;
+}
+
+export async function createBale(draft: BaleDraft): Promise<ActionResult> {
+  const denied = await guard("floor");
+  if (denied !== null) return denied;
+
+  if (draft.supplierId.trim() === "") {
+    return { ok: false, message: "Choose a supplier." };
+  }
+
+  const parsed = parseBaleFields(draft);
+  if (isFailure(parsed)) return parsed;
+  const { type, metresReceived, uom, itemId, baleCount, invoiceDate } = parsed;
+
   const actorId = await actingId();
 
   const code = await db.transaction(async (tx) => {
@@ -106,10 +143,10 @@ export async function createBale(draft: BaleDraft): Promise<ActionResult> {
         ${draft.transporter.trim() || null},
         ${draft.invoiceNumber.trim() || null},
         ${invoiceDate},
-        ${draft.type},
+        ${type},
         ${metresReceived},
-        ${draft.uom},
-        ${draft.itemId},
+        ${uom},
+        ${itemId},
         ${baleCount},
         ${draft.notes.trim() || null},
         ${actorId}
@@ -129,6 +166,46 @@ export async function createBale(draft: BaleDraft): Promise<ActionResult> {
   revalidate();
 
   return { ok: true, message: `Saved as ${code}.` };
+}
+
+/**
+ * Fixing what was entered — everything except who supplied it. The
+ * supplier is fixed once the bale's code is minted, because that code
+ * already carries their letter; changing it after the fact would leave a
+ * code pointing at the wrong supplier.
+ */
+export async function updateBale(baleId: string, draft: BaleEditDraft): Promise<ActionResult> {
+  const denied = await guard("floor");
+  if (denied !== null) return denied;
+
+  const parsed = parseBaleFields(draft);
+  if (isFailure(parsed)) return parsed;
+  const { type, metresReceived, uom, itemId, baleCount, invoiceDate } = parsed;
+
+  const [row] = await db.execute<{ code: string }>(sql`
+    update bale
+    set
+      transporter = ${draft.transporter.trim() || null},
+      invoice_number = ${draft.invoiceNumber.trim() || null},
+      invoice_date = ${invoiceDate},
+      type = ${type},
+      metres_received = ${metresReceived},
+      uom = ${uom},
+      item_id = ${itemId},
+      bale_count = ${baleCount},
+      notes = ${draft.notes.trim() || null},
+      updated_at = now()
+    where id = ${baleId}
+    returning code
+  `);
+
+  if (row === undefined) {
+    return { ok: false, message: "That bale no longer exists." };
+  }
+
+  revalidate();
+
+  return { ok: true, message: `${row.code} updated.` };
 }
 
 /**

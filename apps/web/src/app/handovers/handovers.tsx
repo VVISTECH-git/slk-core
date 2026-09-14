@@ -130,6 +130,13 @@ function SendPanel({
     setItems((prev) => [...prev, result.thaan]);
   }
 
+  /** One scan is one code; typing (or pasting) several at once, comma- or space-separated, works too. */
+  async function scanMany(raw: string) {
+    for (const code of raw.split(/[,\s]+/).map((c) => c.trim()).filter((c) => c !== "")) {
+      await scan(code);
+    }
+  }
+
   function removeItem(id: string) {
     setItems((prev) => prev.filter((t) => t.id !== id));
   }
@@ -200,7 +207,7 @@ function SendPanel({
       <ScanControls
         disabled={stage === ""}
         onCamera={() => setCameraOpen(true)}
-        onManual={(code) => void scan(code)}
+        onManual={(code) => void scanMany(code)}
         error={scanError}
       />
 
@@ -269,6 +276,13 @@ function ReceivePanel({
     setItems((prev) => [...prev, result.thaan]);
   }
 
+  /** One scan is one code; typing (or pasting) several at once, comma- or space-separated, works too. */
+  async function scanMany(raw: string) {
+    for (const code of raw.split(/[,\s]+/).map((c) => c.trim()).filter((c) => c !== "")) {
+      await scan(code);
+    }
+  }
+
   function removeItem(id: string) {
     setItems((prev) => prev.filter((t) => t.id !== id));
   }
@@ -295,7 +309,7 @@ function ReceivePanel({
       <ScanControls
         disabled={false}
         onCamera={() => setCameraOpen(true)}
-        onManual={(code) => void scan(code)}
+        onManual={(code) => void scanMany(code)}
         error={scanError}
       />
 
@@ -359,7 +373,9 @@ function ScanControls({
           className={inputClass}
           value={value}
           disabled={disabled}
-          placeholder={disabled ? "Choose a stage first" : "Scan, or type a Thaan code and press Enter"}
+          placeholder={
+            disabled ? "Choose a stage first" : "Scan, or type Thaan codes (comma or space separated) and press Enter"
+          }
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && value.trim() !== "") {

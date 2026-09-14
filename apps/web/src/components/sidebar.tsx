@@ -62,6 +62,14 @@ const NAV = [
     icon: "M7 17v-5a3 3 0 0 1 6 0v5 M5 17h10 M10 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
   },
   {
+    // Every vendor's billing together, not one drawer at a time. Money
+    // moving, same access tier as recording a payment already needs.
+    href: "/vendor-ledger",
+    label: "Vendor Ledger",
+    icon: "M4 4h12v12H4z M7 8h6 M7 11h6 M7 14h3",
+    minRole: "office",
+  },
+  {
     href: "/records",
     label: "Product Management",
     icon: "M3 4h14v12H3z M3 8h14 M8 8v8",

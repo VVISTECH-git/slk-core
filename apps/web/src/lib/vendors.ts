@@ -89,3 +89,48 @@ export async function loadVendorLedger(vendorId: string): Promise<VendorLedgerEn
 
   return rows.map(({ sortAt: _sortAt, ...entry }) => entry);
 }
+
+export type LedgerEntryRow = VendorLedgerEntry & {
+  vendorId: string;
+  vendorName: string;
+};
+
+/** Every vendor's billing history together — what's owed and what's been paid, across the whole business. */
+export async function loadAllVendorLedgers(): Promise<LedgerEntryRow[]> {
+  const rows = await db.execute<LedgerEntryRow & { sortAt: string }>(sql`
+    (
+      select
+        'transaction' as "kind",
+        vt.id,
+        to_char(vt.transaction_date, 'DD Mon YYYY') as "date",
+        vt.stage,
+        vt.piece_count as "pieceCount",
+        vt.amount::double precision as "amount",
+        vt.notes,
+        vt.vendor_id as "vendorId",
+        v.name as "vendorName",
+        vt.created_at as "sortAt"
+      from vendor_transaction vt
+      join vendor v on v.id = vt.vendor_id
+    )
+    union all
+    (
+      select
+        'payment' as "kind",
+        vp.id,
+        to_char(vp.paid_on, 'DD Mon YYYY') as "date",
+        null as "stage",
+        null as "pieceCount",
+        vp.amount::double precision as "amount",
+        vp.notes,
+        vp.vendor_id as "vendorId",
+        v.name as "vendorName",
+        vp.created_at as "sortAt"
+      from vendor_payment vp
+      join vendor v on v.id = vp.vendor_id
+    )
+    order by "sortAt" desc
+  `);
+
+  return rows.map(({ sortAt: _sortAt, ...entry }) => entry);
+}

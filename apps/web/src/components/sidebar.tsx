@@ -39,6 +39,13 @@ const NAV = [
     icon: "M4 6h5v5H4z M11 9h5v5h-5z M9 8.5l2 1 M6.5 6V4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1",
   },
   {
+    // What Handovers used to carry alongside Send/Receive — its own page
+    // now, so scanning stays the point of that one.
+    href: "/outstanding",
+    label: "Currently Out",
+    icon: "M10 4v6l4 2 M10 17a7 7 0 1 0 0-14 7 7 0 0 0 0 14z",
+  },
+  {
     // Who kora cloth is bought from — Kora to Shelf's own vocabulary, kept
     // beside Bale Intake rather than under Master Lists, which manages the
     // catalogue's controlled vocabulary and nothing here.

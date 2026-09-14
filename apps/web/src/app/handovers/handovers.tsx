@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import jsQR from "jsqr";
 
 import { Button, ConfirmDialog, Header, ToastBar, inputClass, useToast } from "@/components/ui";
-import type { OutstandingGroup, ThaanForReceive, ThaanForSend } from "@/lib/handovers";
+import type { ThaanForReceive, ThaanForSend } from "@/lib/handovers";
 import { STAGES } from "@/lib/stages";
 import type { VendorRow } from "@/lib/vendors";
 
@@ -25,13 +25,7 @@ const IN_HOUSE = "in-house";
  * a vendor by scanning it, not by ticking a box in a list they might not
  * have the physical piece in front of.
  */
-export function Handovers({
-  vendors,
-  outstanding,
-}: {
-  vendors: VendorRow[];
-  outstanding: OutstandingGroup[];
-}) {
+export function Handovers({ vendors }: { vendors: VendorRow[] }) {
   const router = useRouter();
   const [mode, setMode] = useState<"send" | "receive">("send");
   const [toast, showToast] = useToast();
@@ -63,8 +57,6 @@ export function Handovers({
           ) : (
             <ReceivePanel showToast={showToast} onDone={() => router.refresh()} />
           )}
-
-          <OutstandingTable rows={outstanding} />
         </div>
       </div>
 
@@ -374,6 +366,12 @@ function ScanControls({
 }) {
   const [value, setValue] = useState("");
 
+  function submit() {
+    if (value.trim() === "") return;
+    onManual(value.trim());
+    setValue("");
+  }
+
   return (
     <div>
       <div className="flex gap-2">
@@ -383,12 +381,14 @@ function ScanControls({
           placeholder="Scan, or type Thaan codes (comma or space separated) and press Enter"
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && value.trim() !== "") {
-              onManual(value.trim());
-              setValue("");
-            }
+            if (e.key === "Enter") submit();
           }}
         />
+        {/* A physical Enter key isn't always reliable on a tablet's on-screen
+            keyboard — this does exactly what pressing Enter does. */}
+        <Button onClick={submit} disabled={value.trim() === ""}>
+          Enter
+        </Button>
         <Button onClick={onCamera}>Camera</Button>
       </div>
       {error !== null && <p className="mt-1.5 text-[12.5px] text-brick">{error}</p>}
@@ -555,43 +555,3 @@ function describeTally<T>(items: T[], keyFn: (t: T) => string): string {
     .join(", ");
 }
 
-/* --------------------------------------------------------- outstanding */
-
-function OutstandingTable({ rows }: { rows: OutstandingGroup[] }) {
-  return (
-    <section>
-      <h2 className="mb-2 text-[13px] font-medium text-ink-2">
-        Currently out {rows.length > 0 && `(${rows.reduce((n, r) => n + r.count, 0)} Thaans)`}
-      </h2>
-
-      {rows.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-rule-2 px-4 py-8 text-center text-[13px] text-muted">
-          Nothing is out for a stage right now.
-        </p>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-rule bg-surface">
-          <table className="w-full border-collapse text-[13px]">
-            <thead>
-              <tr className="border-b border-rule bg-surface-2 text-left">
-                <th scope="col" className="px-4 py-2 text-[11.5px] font-medium text-muted">Stage</th>
-                <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Vendor</th>
-                <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Count</th>
-                <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Out since</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={`${r.stage}::${r.vendorId ?? "in-house"}`} className="h-11 border-b border-rule last:border-b-0 hover:bg-surface-2">
-                  <td className="px-4 text-ink">{r.stage}</td>
-                  <td className="px-3 text-ink-2">{r.vendorName}</td>
-                  <td className="px-3 text-ink-2">{r.count}</td>
-                  <td className="px-3 text-ink-2">{r.earliestSentAt}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
-  );
-}

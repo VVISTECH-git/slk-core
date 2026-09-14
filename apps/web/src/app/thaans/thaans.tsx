@@ -12,12 +12,14 @@ import { restoreThaan, voidThaan, type ActionResult } from "./actions";
 
 const PER_PAGE = 50;
 
-const STITCH_STATUS_STYLE: Record<ThaanRow["stitchStatus"], { background: string; color: string }> = {
-  "QR Pending": { background: "var(--warn-soft)", color: "var(--warn)" },
-  "QR Generated": { background: "var(--off-soft)", color: "var(--off)" },
-  "Label Pending": { background: "var(--off-soft)", color: "var(--off)" },
-  Labelled: { background: "var(--ok-soft)", color: "var(--ok)" },
-};
+/** Matched by prefix, not exact value — "Out for X"/"Ready for X" name a different X per row. */
+function pipelineStatusStyle(status: string): { background: string; color: string } {
+  if (status === "Finished") return { background: "var(--ok-soft)", color: "var(--ok)" };
+  if (status.startsWith("Out for ")) return { background: "var(--off-soft)", color: "var(--off)" };
+  if (status === "QR Generated") return { background: "var(--off-soft)", color: "var(--off)" };
+  // "QR Pending" and "Ready for X" both mean the same thing: waiting on someone to act.
+  return { background: "var(--warn-soft)", color: "var(--warn)" };
+}
 
 /**
  * What a bale becomes once it's cut — cascaded with the bale and item
@@ -141,9 +143,9 @@ export function Thaans({ rows }: { rows: ThaanRow[] }) {
                         <td className="px-3">
                           <span
                             className="rounded px-1.5 py-0.5 text-[11px] font-medium"
-                            style={STITCH_STATUS_STYLE[r.stitchStatus]}
+                            style={pipelineStatusStyle(r.pipelineStatus)}
                           >
-                            {r.stitchStatus}
+                            {r.pipelineStatus}
                           </span>
                         </td>
                         <td className="px-3">

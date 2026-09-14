@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import QRCode from "qrcode";
 
 import { db } from "@/lib/db";
+import { STAGES } from "@/lib/stages";
 
 /**
  * Thaans — what a bale becomes once it's cut. See
@@ -25,17 +26,21 @@ export type ThaanRow = {
   voidedAt: string | null;
   voidedByName: string | null;
   /**
-   * Where this Thaan actually is right now, in plain terms: no code yet
-   * ("QR Pending"), coded but not yet sent for stitching — shouldn't really
-   * persist, since QR generation sends it automatically, but can happen if
-   * no vendor does Label Stitching yet ("QR Generated"), out with whoever
-   * stitches labels ("Label Pending"), or back and done ("Labelled").
+   * Where this Thaan actually is right now, in plain terms — computed
+   * against the whole pipeline, not just Label Stitching: no code yet
+   * ("QR Pending"), coded but nothing sent for its first stage yet — can
+   * happen with no vendor doing Label Stitching ("QR Generated"), out for
+   * whichever stage currently has it ("Out for Salava"), back from one
+   * stage and waiting to be sent for the next ("Ready for Karakkaya"), or
+   * through every stage ("Finished").
    */
-  stitchStatus: "QR Pending" | "QR Generated" | "Label Pending" | "Labelled";
+  pipelineStatus: string;
 };
 
 export async function loadThaans(): Promise<ThaanRow[]> {
-  return db.execute<ThaanRow>(sql`
+  const rows = await db.execute<
+    Omit<ThaanRow, "pipelineStatus"> & { openStage: string | null; completedStages: number }
+  >(sql`
     select
       t.id,
       t.code,
@@ -52,21 +57,33 @@ export async function loadThaans(): Promise<ThaanRow[]> {
       to_char(t.created_at, 'DD Mon YYYY')                   as "createdAt",
       to_char(t.voided_at, 'DD Mon YYYY, HH12:MI AM')        as "voidedAt",
       void_by.name                                            as "voidedByName",
-      case
-        when t.code is null then 'QR Pending'
-        when lh.thaan_id is null then 'QR Generated'
-        when lh.received_at is null then 'Label Pending'
-        else 'Labelled'
-      end                                                      as "stitchStatus"
+      open_h.stage                                            as "openStage",
+      coalesce(done.n, 0)::int                                as "completedStages"
     from thaan t
     join bale b on b.id = t.bale_id
     join supplier s on s.id = b.supplier_id
     join cloth_item i on i.id = b.item_id
     left join actor qr_by on qr_by.id = t.qr_generated_by_id
     left join actor void_by on void_by.id = t.voided_by_id
-    left join handover lh on lh.thaan_id = t.id and lh.stage = 'Label Stitching'
+    left join handover open_h on open_h.thaan_id = t.id and open_h.received_at is null
+    left join (
+      select thaan_id, count(*)::int as n from handover where received_at is not null group by thaan_id
+    ) done on done.thaan_id = t.id
     order by t.created_at desc, t.code
   `);
+
+  return rows.map(({ openStage, completedStages, ...row }) => ({
+    ...row,
+    pipelineStatus: pipelineStatus(row.code, openStage, completedStages),
+  }));
+}
+
+function pipelineStatus(code: string | null, openStage: string | null, completedStages: number): string {
+  if (code === null) return "QR Pending";
+  if (openStage !== null) return `Out for ${openStage}`;
+  if (completedStages === 0) return "QR Generated";
+  if (completedStages >= STAGES.length) return "Finished";
+  return `Ready for ${STAGES[completedStages]}`;
 }
 
 /**

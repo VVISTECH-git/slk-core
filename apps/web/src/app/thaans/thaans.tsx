@@ -38,8 +38,12 @@ export function Thaans({ rows }: { rows: ThaanRow[] }) {
       ? rows
       : rows.filter(
           (r) =>
-            r.baleCode.toLowerCase().includes(q) ||
-            (r.code ?? "").toLowerCase().includes(q) ||
+            // Bale and Thaan codes match from the start only — codes share
+            // one number line ("1004" the bale, "T1004" a Thaan from a
+            // different bale entirely, since QR codes draw from one global
+            // sequence), so a substring match on "1004" would surface both.
+            r.baleCode.toLowerCase().startsWith(q) ||
+            (r.code ?? "").toLowerCase().startsWith(q) ||
             r.supplierName.toLowerCase().includes(q) ||
             r.itemName.toLowerCase().includes(q),
         );

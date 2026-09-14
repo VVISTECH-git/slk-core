@@ -5,8 +5,13 @@
  * named step). Order matters here — it's what "sequential" means for a
  * Thaan moving through Handovers: it must finish stage N before stage N+1
  * can start. See `packages/db/src/schema/production.ts`.
+ *
+ * "Label Stitching" comes first: the QR code label is stitched onto the
+ * Thaan by the Master as soon as it's cut and coded, before any of the
+ * other processing stages begin.
  */
 export const STAGES = [
+  "Label Stitching",
   "Salava",
   "Karakkaya",
   "Print",

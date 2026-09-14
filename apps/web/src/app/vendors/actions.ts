@@ -104,6 +104,37 @@ export async function updateVendor(vendorId: string, draft: VendorDraft): Promis
 }
 
 /**
+ * Marks one vendor as "the Master" — who every freshly QR-coded batch of
+ * Thaans is automatically sent to for Label Stitching. Clearing the flag
+ * from whoever held it before setting it on the new one, in the same
+ * transaction, is what keeps "at most one Master" true even between these
+ * two statements — the unique index alone would just reject the second
+ * write instead.
+ */
+export async function setLabelMaster(vendorId: string): Promise<ActionResult> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
+  const name = await db.transaction(async (tx) => {
+    await tx.execute(sql`update vendor set is_label_master = false where is_label_master`);
+    const [row] = await tx.execute<{ name: string }>(sql`
+      update vendor set is_label_master = true, updated_at = now()
+      where id = ${vendorId}
+      returning name
+    `);
+    return row?.name ?? null;
+  });
+
+  if (name === null) {
+    return { ok: false, message: "That vendor no longer exists." };
+  }
+
+  revalidatePath("/vendors");
+
+  return { ok: true, message: `${name} is now the Label Stitching Master.` };
+}
+
+/**
  * What a vendor charges per piece for one stage. `unitPrice` of `null`
  * clears the rate rather than setting it to zero — a vendor with no rate
  * set is "not priced yet", which is a different fact than "does this stage

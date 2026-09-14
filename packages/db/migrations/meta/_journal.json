@@ -519,6 +519,20 @@
       "when": 1789476318000,
       "tag": "0073_bale_grade_code",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1789476319000,
+      "tag": "0074_label_stitching_is_a_stage",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1789476320000,
+      "tag": "0075_the_label_stitching_master",
+      "breakpoints": true
     }
   ]
 }

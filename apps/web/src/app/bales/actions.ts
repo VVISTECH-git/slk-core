@@ -362,15 +362,39 @@ export async function generateQrCodes(baleId: string): Promise<ActionResult> {
 
   const actorId = await actingId();
 
-  const updated = await db.execute<{ id: string }>(sql`
-    update thaan
-    set code = 'T' || lpad(nextval('thaan_code_seq')::text, 8, '0'),
-        qr_generated_at = now(),
-        qr_generated_by_id = ${actorId},
-        updated_at = now()
-    where bale_id = ${baleId} and code is null
-    returning id
-  `);
+  const { updated, masterName } = await db.transaction(async (tx) => {
+    const updated = await tx.execute<{ id: string }>(sql`
+      update thaan
+      set code = 'T' || lpad(nextval('thaan_code_seq')::text, 8, '0'),
+          qr_generated_at = now(),
+          qr_generated_by_id = ${actorId},
+          updated_at = now()
+      where bale_id = ${baleId} and code is null
+      returning id
+    `);
+
+    if (updated.length === 0) return { updated, masterName: null };
+
+    // A freshly coded Thaan has no physical label on it yet — nothing to
+    // scan — so it can't go through the normal scan-to-send flow the other
+    // stages use. Sending it for Label Stitching happens automatically,
+    // right here, to whichever vendor is marked "the Master". Coming back
+    // still goes through the ordinary scan-to-receive screen: once the
+    // Master has actually stitched the label on, it's scannable again.
+    const [master] = await tx.execute<{ id: string; name: string }>(sql`
+      select id, name from vendor where is_label_master limit 1
+    `);
+
+    if (master !== undefined) {
+      await tx.execute(sql`
+        insert into handover (thaan_id, stage, vendor_id, recorded_by_id)
+        select id, 'Label Stitching', ${master.id}, ${actorId}
+        from thaan where id in (${sql.join(updated.map((r) => sql`${r.id}`), sql`, `)})
+      `);
+    }
+
+    return { updated, masterName: master?.name ?? null };
+  });
 
   if (updated.length === 0) {
     return { ok: false, message: "No Thaans here are waiting on a QR code." };
@@ -378,6 +402,11 @@ export async function generateQrCodes(baleId: string): Promise<ActionResult> {
 
   revalidate();
   revalidatePath("/thaans");
+  revalidatePath("/handovers");
 
-  return { ok: true, message: `Generated ${updated.length} QR code${updated.length === 1 ? "" : "s"}.` };
+  const count = `Generated ${updated.length} QR code${updated.length === 1 ? "" : "s"}.`;
+  if (masterName === null) {
+    return { ok: true, message: `${count} No Label Stitching Master is set — sent nowhere. Mark one on Vendors.` };
+  }
+  return { ok: true, message: `${count} Sent to ${masterName} for Label Stitching.` };
 }

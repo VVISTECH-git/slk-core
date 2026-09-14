@@ -40,7 +40,7 @@ export function Handovers({
     <div className="flex min-h-screen flex-col">
       <Header
         title="Handovers"
-        lede="A Thaan's trip through the stage pipeline — Salava through Ironing. Scan to send, scan to receive."
+        lede="A Thaan's trip through the stage pipeline — Label Stitching through Ironing. Label Stitching is sent automatically when QR codes are generated; scan to send anything after that, scan to receive any of it."
       />
 
       <div className="flex-1 px-8 py-6">
@@ -166,7 +166,10 @@ function SendPanel({
             }}
           >
             <option value="">Choose…</option>
-            {STAGES.map((s) => (
+            {/* Label Stitching is sent automatically when QR codes are generated —
+                there's nothing on a fresh Thaan to scan yet, so it never
+                belongs in a manual-scan picker. */}
+            {STAGES.filter((s) => s !== "Label Stitching").map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>

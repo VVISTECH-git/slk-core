@@ -48,7 +48,7 @@ export async function lookupForReceive(
  * returns null past the end, which is exactly "no next stage" for a Thaan
  * that has finished every one.
  */
-const STAGE_ARRAY_SQL = sql`array['Salava','Karakkaya','Print','Second Print','Nellateeta','Udukulu','Ironing']::text[]`;
+const STAGE_ARRAY_SQL = sql`array['Label Stitching','Salava','Karakkaya','Print','Second Print','Nellateeta','Udukulu','Ironing']::text[]`;
 
 /**
  * Sends a scanned batch off for one stage, to one vendor (or in-house).

@@ -1,4 +1,4 @@
-import { check, date, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, date, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 import { actor } from "./access";
@@ -149,6 +149,15 @@ export const vendor = pgTable(
     /** A standard rate, a special arrangement — whatever doesn't fit a field above. */
     notes: text("notes"),
 
+    /**
+     * Whether this is "the Master" — the tailor every batch of freshly
+     * QR-coded Thaans is automatically sent to for Label Stitching, the
+     * moment "Generate QR codes" runs. At most one vendor at a time: the
+     * partial unique index below is what makes that a guarantee. False for
+     * everyone until someone is deliberately marked.
+     */
+    isLabelMaster: boolean("is_label_master").notNull().default(false),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -156,7 +165,12 @@ export const vendor = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [uniqueIndex("vendor_name_key").on(t.name)],
+  (t) => [
+    uniqueIndex("vendor_name_key").on(t.name),
+    uniqueIndex("vendor_one_label_master")
+      .on(t.isLabelMaster)
+      .where(sql`${t.isLabelMaster}`),
+  ],
 );
 
 /**
@@ -184,7 +198,7 @@ export const vendorRate = pgTable(
     check(
       "vendor_rate_stage_known",
       sql`${t.stage} in (
-        'Salava', 'Karakkaya', 'Print', 'Second Print', 'Nellateeta', 'Udukulu', 'Ironing'
+        'Label Stitching', 'Salava', 'Karakkaya', 'Print', 'Second Print', 'Nellateeta', 'Udukulu', 'Ironing'
       )`,
     ),
   ],
@@ -380,7 +394,7 @@ export const vendorTransaction = pgTable(
     check(
       "vendor_transaction_stage_known",
       sql`${t.stage} in (
-        'Salava', 'Karakkaya', 'Print', 'Second Print', 'Nellateeta', 'Udukulu', 'Ironing'
+        'Label Stitching', 'Salava', 'Karakkaya', 'Print', 'Second Print', 'Nellateeta', 'Udukulu', 'Ironing'
       )`,
     ),
   ],
@@ -411,8 +425,9 @@ export const vendorPayment = pgTable("vendor_payment", {
 /**
  * One Thaan's trip through one stage — sent to a vendor (or kept in-house,
  * when `vendorId` is null) on `sentAt`, and back on `receivedAt` once it's
- * done. The stage pipeline itself: Salava, Karakkaya, Print, Second Print,
- * Nellateeta, Udukulu, Ironing, in that order (`apps/web/src/lib/stages.ts`)
+ * done. The stage pipeline itself: Label Stitching, Salava, Karakkaya,
+ * Print, Second Print, Nellateeta, Udukulu, Ironing, in that order
+ * (`apps/web/src/lib/stages.ts`)
  * — each one the name of the process itself, not a "from → to" label — a
  * Thaan must finish one before the next can start, checked in the server
  * action rather than here, since stage order is a fact about the business,
@@ -476,7 +491,7 @@ export const handover = pgTable(
     check(
       "handover_stage_known",
       sql`${t.stage} in (
-        'Salava', 'Karakkaya', 'Print', 'Second Print', 'Nellateeta', 'Udukulu', 'Ironing'
+        'Label Stitching', 'Salava', 'Karakkaya', 'Print', 'Second Print', 'Nellateeta', 'Udukulu', 'Ironing'
       )`,
     ),
   ],

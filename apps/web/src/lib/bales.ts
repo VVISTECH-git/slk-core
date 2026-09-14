@@ -25,14 +25,17 @@ export type BaleRow = {
   baleCount: number;
   notes: string | null;
   status: "awaiting_cutting" | "cut" | "returned";
-  receivedAt: string;
-  /** "2026-09-14" — for sorting the "Received" column; "DD Mon YYYY" doesn't sort chronologically as text. */
-  receivedOn: string;
+  /** "14 Sep 2026" — when this bale was entered, not when the invoice was prepared. */
+  billEntryDate: string;
+  /** "2026-09-14" — for sorting; "DD Mon YYYY" doesn't sort chronologically as text. */
+  billEntryDateOn: string;
   recordedByName: string | null;
   /** How many Thaans this bale was cut into. Zero while it's still awaiting cutting. */
   thaanCount: number;
   /** Of those, how many already have a QR code. Never more than `thaanCount`. */
   qrGeneratedCount: number;
+  /** Metres received ÷ Thaans — the spreadsheet's own "Per Thaan Mtr". Null until cut. */
+  perThaanMetres: number | null;
 };
 
 export async function loadBales(): Promise<BaleRow[]> {
@@ -53,11 +56,15 @@ export async function loadBales(): Promise<BaleRow[]> {
       b.bale_count                                  as "baleCount",
       b.notes,
       b.status,
-      to_char(b.received_at, 'DD Mon YYYY')         as "receivedAt",
-      to_char(b.received_at, 'YYYY-MM-DD')          as "receivedOn",
+      to_char(b.bill_entry_date, 'DD Mon YYYY')     as "billEntryDate",
+      to_char(b.bill_entry_date, 'YYYY-MM-DD')      as "billEntryDateOn",
       a.name                                         as "recordedByName",
       coalesce(t.thaan_count, 0)                    as "thaanCount",
-      coalesce(t.qr_count, 0)                       as "qrGeneratedCount"
+      coalesce(t.qr_count, 0)                       as "qrGeneratedCount",
+      case when coalesce(t.thaan_count, 0) > 0
+        then round(b.metres_received / t.thaan_count, 2)
+        else null
+      end::double precision                          as "perThaanMetres"
     from bale b
     join supplier s on s.id = b.supplier_id
     join cloth_item i on i.id = b.item_id
@@ -70,7 +77,7 @@ export async function loadBales(): Promise<BaleRow[]> {
       from thaan
       group by bale_id
     ) t on t.bale_id = b.id
-    order by b.received_at desc, b.code desc
+    order by b.bill_entry_date desc, b.code desc
   `);
 }
 

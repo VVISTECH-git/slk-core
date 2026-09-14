@@ -64,14 +64,15 @@ const COLUMNS = [
   { key: "itemName", label: "Item", width: 200 },
   { key: "quantity", label: "Quantity", width: 110 },
   { key: "baleCount", label: "Bales", width: 70 },
-  { key: "receivedAt", label: "Received", width: 110 },
+  { key: "perThaanMetres", label: "Per Thaan Mtr", width: 120 },
+  { key: "billEntryDate", label: "Bill Entry Date", width: 130 },
   { key: "status", label: "Status", width: 140 },
   { key: "thaans", label: "Thaans", width: 150 },
 ] as const;
 
 type ColumnKey = (typeof COLUMNS)[number]["key"];
 const COLUMN_KEYS: readonly string[] = COLUMNS.map((c) => c.key);
-const NUMERIC = new Set<ColumnKey>(["quantity", "baleCount", "thaans"]);
+const NUMERIC = new Set<ColumnKey>(["quantity", "baleCount", "thaans", "perThaanMetres"]);
 const ACTIONS_WIDTH = 56;
 
 /** The columns a filter dropdown actually makes sense for — not a unique code or a date. */
@@ -91,8 +92,10 @@ function cellText(row: BaleRow, key: ColumnKey): string {
       return String(row.metresReceived);
     case "baleCount":
       return String(row.baleCount);
-    case "receivedAt":
-      return row.receivedAt;
+    case "perThaanMetres":
+      return row.perThaanMetres === null ? "" : String(row.perThaanMetres);
+    case "billEntryDate":
+      return row.billEntryDate;
     case "status":
       return STATUS_LABEL[row.status];
     case "thaans":
@@ -108,16 +111,23 @@ function sortValue(row: BaleRow, key: ColumnKey): string | number {
       return row.baleCount;
     case "thaans":
       return row.thaanCount;
-    case "receivedAt":
-      return row.receivedOn;
+    case "perThaanMetres":
+      return row.perThaanMetres ?? -1;
+    case "billEntryDate":
+      return row.billEntryDateOn;
     default:
       return cellText(row, key).toLowerCase();
   }
 }
 
+function todayIsoDate(): string {
+  return new Date().toLocaleDateString("en-CA");
+}
+
 function draftFrom(row: BaleRow): BaleDraft {
   return {
     supplierId: row.supplierId,
+    billEntryDate: row.billEntryDateOn,
     transporter: row.transporter ?? "",
     invoiceNumber: row.invoiceNumber ?? "",
     invoiceDate: row.invoiceDate ?? "",
@@ -405,6 +415,14 @@ export function Bales({
                           );
                         }
 
+                        if (c.key === "perThaanMetres") {
+                          return (
+                            <Cell key={c.key} numeric title={r.perThaanMetres === null ? "" : String(r.perThaanMetres)}>
+                              {r.perThaanMetres === null ? "—" : r.perThaanMetres.toLocaleString("en-IN")}
+                            </Cell>
+                          );
+                        }
+
                         return (
                           <Cell
                             key={c.key}
@@ -536,6 +554,17 @@ function BaleFields({
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-2 gap-4">
+        <Field
+          label="Bill entry date"
+          hint="When you're entering this — not the invoice's own date. Back-date it for an old bale."
+        >
+          <input
+            type="date"
+            className={inputClass}
+            value={draft.billEntryDate}
+            onChange={(e) => set("billEntryDate", e.target.value)}
+          />
+        </Field>
         <Field label="Type">
           <select className={inputClass} value={draft.type} onChange={(e) => set("type", e.target.value)}>
             <option value="">Choose…</option>
@@ -546,14 +575,15 @@ function BaleFields({
             ))}
           </select>
         </Field>
-        <Field label="Transporter" hint="Optional — who delivered it.">
-          <input
-            className={inputClass}
-            value={draft.transporter}
-            onChange={(e) => set("transporter", e.target.value)}
-          />
-        </Field>
       </div>
+
+      <Field label="Transporter" hint="Optional — who delivered it.">
+        <input
+          className={inputClass}
+          value={draft.transporter}
+          onChange={(e) => set("transporter", e.target.value)}
+        />
+      </Field>
 
       <div className="grid grid-cols-2 gap-4">
         <Field label="Invoice number" hint="Leave blank if it hasn't arrived yet.">
@@ -645,18 +675,21 @@ function AddDrawer({
   onRun: (action: () => Promise<ActionResult>, onOk?: () => void) => void;
 }) {
   const [draft, setDraft] = useState<BaleDraft>(
-    initial ?? {
-      supplierId: "",
-      transporter: "",
-      invoiceNumber: "",
-      invoiceDate: "",
-      type: "",
-      metresReceived: "",
-      uom: "Mtrs",
-      itemId: "",
-      baleCount: "1",
-      notes: "",
-    },
+    initial !== undefined
+      ? { ...initial, billEntryDate: todayIsoDate() }
+      : {
+          supplierId: "",
+          billEntryDate: todayIsoDate(),
+          transporter: "",
+          invoiceNumber: "",
+          invoiceDate: "",
+          type: "",
+          metresReceived: "",
+          uom: "Mtrs",
+          itemId: "",
+          baleCount: "1",
+          notes: "",
+        },
   );
 
   const set = <K extends keyof BaleDraft>(key: K, value: BaleDraft[K]) =>

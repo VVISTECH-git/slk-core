@@ -29,6 +29,8 @@ export interface ActionResult {
 
 export interface BaleDraft {
   supplierId: string;
+  /** When this bale is being entered — not the invoice's own date. "YYYY-MM-DD". */
+  billEntryDate: string;
   transporter: string;
   invoiceNumber: string;
   invoiceDate: string;
@@ -55,6 +57,7 @@ interface ParsedBaleFields {
   itemId: string;
   baleCount: number;
   invoiceDate: string | null;
+  billEntryDate: string;
 }
 
 /**
@@ -62,7 +65,10 @@ interface ParsedBaleFields {
  * to show as-is, rather than a boolean, so the caller can just return it.
  */
 function parseBaleFields(
-  draft: Pick<BaleDraft, "type" | "metresReceived" | "uom" | "itemId" | "baleCount" | "invoiceDate">,
+  draft: Pick<
+    BaleDraft,
+    "type" | "metresReceived" | "uom" | "itemId" | "baleCount" | "invoiceDate" | "billEntryDate"
+  >,
 ): ParsedBaleFields | ActionResult {
   if (draft.itemId.trim() === "") {
     return { ok: false, message: "Choose an item." };
@@ -72,6 +78,9 @@ function parseBaleFields(
   }
   if (!(UOMS as readonly string[]).includes(draft.uom)) {
     return { ok: false, message: "Choose a unit." };
+  }
+  if (draft.billEntryDate.trim() === "") {
+    return { ok: false, message: "Bill entry date is required." };
   }
 
   const metresReceived = Number(draft.metresReceived);
@@ -91,6 +100,7 @@ function parseBaleFields(
     itemId: draft.itemId,
     baleCount,
     invoiceDate: draft.invoiceDate.trim() === "" ? null : draft.invoiceDate,
+    billEntryDate: draft.billEntryDate,
   };
 }
 
@@ -108,7 +118,7 @@ export async function createBale(draft: BaleDraft): Promise<ActionResult> {
 
   const parsed = parseBaleFields(draft);
   if (isFailure(parsed)) return parsed;
-  const { type, metresReceived, uom, itemId, baleCount, invoiceDate } = parsed;
+  const { type, metresReceived, uom, itemId, baleCount, invoiceDate, billEntryDate } = parsed;
 
   const actorId = await actingId();
 
@@ -135,11 +145,12 @@ export async function createBale(draft: BaleDraft): Promise<ActionResult> {
 
     await tx.execute(sql`
       insert into bale (
-        code, supplier_id, transporter, invoice_number, invoice_date, type,
+        code, supplier_id, bill_entry_date, transporter, invoice_number, invoice_date, type,
         metres_received, uom, item_id, bale_count, notes, recorded_by_id
       ) values (
         ${code},
         ${draft.supplierId},
+        ${billEntryDate},
         ${draft.transporter.trim() || null},
         ${draft.invoiceNumber.trim() || null},
         ${invoiceDate},
@@ -180,11 +191,12 @@ export async function updateBale(baleId: string, draft: BaleEditDraft): Promise<
 
   const parsed = parseBaleFields(draft);
   if (isFailure(parsed)) return parsed;
-  const { type, metresReceived, uom, itemId, baleCount, invoiceDate } = parsed;
+  const { type, metresReceived, uom, itemId, baleCount, invoiceDate, billEntryDate } = parsed;
 
   const [row] = await db.execute<{ code: string }>(sql`
     update bale
     set
+      bill_entry_date = ${billEntryDate},
       transporter = ${draft.transporter.trim() || null},
       invoice_number = ${draft.invoiceNumber.trim() || null},
       invoice_date = ${invoiceDate},

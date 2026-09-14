@@ -203,9 +203,16 @@ export const bale = pgTable(
      */
     status: text("status").notNull().default("awaiting_cutting"),
 
-    receivedAt: timestamp("received_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    /**
+     * When this bale was entered into the system — the spreadsheet's own
+     * "Bill Entry Date", and a different thing from `invoiceDate`: the
+     * invoice is dated whenever the supplier prepared it, this is dated
+     * whenever staff actually sat down and typed it in, which can be days
+     * later. Defaults to today but editable, so an old bale can be
+     * back-entered with its real date rather than the day someone got
+     * around to it.
+     */
+    billEntryDate: date("bill_entry_date").notNull().default(sql`current_date`),
 
     /** Who made this entry. Nullable for the same reason `movement.actorId` is. */
     recordedBy: uuid("recorded_by_id").references(() => actor.id, {

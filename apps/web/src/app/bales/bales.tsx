@@ -791,7 +791,7 @@ function BaleFields({
             </select>
           </Field>
         </div>
-        <Field label="Code" hint="SLK's own mark for how premium this batch is — not from the supplier.">
+        <Field label="Code" hint="identifier">
           <input
             className={inputClass}
             value={draft.gradeCode}

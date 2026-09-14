@@ -253,7 +253,7 @@ export const thaan = pgTable(
       .notNull()
       .references(() => bale.id, { onDelete: "restrict" }),
 
-    /** "T100001" — assigned once, by `thaan_code_seq`, when its QR is generated. Permanent after that. */
+    /** "T1001" — assigned once, by `thaan_code_seq`, when its QR is generated. Permanent after that. */
     code: text("code"),
 
     qrGeneratedAt: timestamp("qr_generated_at", { withTimezone: true }),

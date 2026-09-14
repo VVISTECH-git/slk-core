@@ -10,6 +10,7 @@ import { stockAt } from "@slk/domain/stock";
 // than following this client component into the browser bundle.
 import type { LocationRow } from "@/lib/locations";
 
+import { Pager } from "@/components/grid";
 import {
   Button,
   Drawer,
@@ -26,6 +27,8 @@ import {
   saveLocation,
   type ActionResult,
 } from "./actions";
+
+const PER_PAGE = 50;
 
 /**
  * Locations have a screen of their own rather than a place among the lookup
@@ -143,6 +146,12 @@ function Group({
   onEdit: (id: string) => void;
   onRun: (action: () => Promise<ActionResult>) => void;
 }) {
+  const [page, setPage] = useState(1);
+  const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+  const currentPage = Math.min(page, pages);
+  const pageFrom = (currentPage - 1) * PER_PAGE;
+  const pageRows = rows.slice(pageFrom, pageFrom + PER_PAGE);
+
   return (
     <section>
       <h2 className="text-[14px] font-semibold text-ink">
@@ -189,7 +198,7 @@ function Group({
             </thead>
 
             <tbody>
-              {rows.map((l) => (
+              {pageRows.map((l) => (
                 <tr
                   key={l.id}
                   className="h-11 border-b border-rule last:border-b-0 hover:bg-surface-2"
@@ -256,6 +265,8 @@ function Group({
               ))}
             </tbody>
           </table>
+
+          <Pager total={rows.length} page={currentPage} perPage={PER_PAGE} onPage={setPage} />
         </div>
       )}
     </section>

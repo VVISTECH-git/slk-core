@@ -3,10 +3,13 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { Pager } from "@/components/grid";
 import { Button, Drawer, Field, Header, ToastBar, inputClass, useToast } from "@/components/ui";
 import type { JobRoleRow } from "@/lib/job-roles";
 
 import { createJobRole, type ActionResult } from "./actions";
+
+const PER_PAGE = 50;
 
 /**
  * Job functions — "Bale Custodian" is the first. Assigning people to
@@ -19,6 +22,12 @@ export function JobRoles({ rows }: { rows: JobRoleRow[] }) {
   const [pending, start] = useTransition();
   const [toast, showToast] = useToast();
   const [adding, setAdding] = useState(false);
+  const [page, setPage] = useState(1);
+
+  const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+  const currentPage = Math.min(page, pages);
+  const pageFrom = (currentPage - 1) * PER_PAGE;
+  const pageRows = rows.slice(pageFrom, pageFrom + PER_PAGE);
 
   function run(action: () => Promise<ActionResult>, onOk?: () => void) {
     start(async () => {
@@ -64,7 +73,7 @@ export function JobRoles({ rows }: { rows: JobRoleRow[] }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
+                  {pageRows.map((r) => (
                     <tr key={r.id} className="h-11 border-b border-rule last:border-b-0 hover:bg-surface-2">
                       <td className="px-4 text-ink">{r.name}</td>
                       <td className="px-3 text-right font-mono text-[12.5px] text-ink-2 tabular-nums">
@@ -74,6 +83,8 @@ export function JobRoles({ rows }: { rows: JobRoleRow[] }) {
                   ))}
                 </tbody>
               </table>
+
+              <Pager total={rows.length} page={currentPage} perPage={PER_PAGE} onPage={setPage} />
             </div>
           )}
         </div>

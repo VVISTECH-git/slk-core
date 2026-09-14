@@ -3,10 +3,13 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { Pager } from "@/components/grid";
 import { Button, Drawer, Field, Header, ToastBar, inputClass, useToast } from "@/components/ui";
 import type { ClothItemRow } from "@/lib/bales";
 
 import { createClothItem, updateClothItem, type ActionResult } from "./actions";
+
+const PER_PAGE = 50;
 
 /**
  * The specific cloth names a bale's contents are picked from. Its own
@@ -19,6 +22,12 @@ export function ClothItems({ rows }: { rows: ClothItemRow[] }) {
   const [toast, showToast] = useToast();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<ClothItemRow | null>(null);
+  const [page, setPage] = useState(1);
+
+  const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+  const currentPage = Math.min(page, pages);
+  const pageFrom = (currentPage - 1) * PER_PAGE;
+  const pageRows = rows.slice(pageFrom, pageFrom + PER_PAGE);
 
   function run(action: () => Promise<ActionResult>, onOk?: () => void) {
     start(async () => {
@@ -67,7 +76,7 @@ export function ClothItems({ rows }: { rows: ClothItemRow[] }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
+                  {pageRows.map((r) => (
                     <tr
                       key={r.id}
                       onClick={() => setEditing(r)}
@@ -95,6 +104,8 @@ export function ClothItems({ rows }: { rows: ClothItemRow[] }) {
                   ))}
                 </tbody>
               </table>
+
+              <Pager total={rows.length} page={currentPage} perPage={PER_PAGE} onPage={setPage} />
             </div>
           )}
         </div>

@@ -6,7 +6,10 @@ import { useState, useTransition } from "react";
 import type { ChannelRow, ChannelSellableRow } from "@/lib/channels";
 import { publishBatchToChannel } from "@/app/records/publish-actions";
 import type { ActionResult } from "@/app/records/actions";
+import { Pager } from "@/components/grid";
 import { Header } from "@/components/ui";
+
+const PER_PAGE = 50;
 
 /**
  * Every channel, every consignment it could sell, and whether each one is
@@ -85,6 +88,15 @@ function ChannelSection({
   const pooled = rows.filter((r) => !r.isSerialised);
   const listable = rows.filter((r) => r.isSerialised);
   const listed = listable.filter((r) => r.shopifyProductId !== null);
+
+  // Republish-all always works over every listed consignment, regardless of
+  // which page the table happens to be showing — paging is a display
+  // concern, not a scope for the bulk action.
+  const [page, setPage] = useState(1);
+  const pages = Math.max(1, Math.ceil(listable.length / PER_PAGE));
+  const currentPage = Math.min(page, pages);
+  const pageFrom = (currentPage - 1) * PER_PAGE;
+  const pageRows = listable.slice(pageFrom, pageFrom + PER_PAGE);
 
   const publishOne = (batchId: string) => {
     setBusy(batchId);
@@ -173,7 +185,7 @@ function ChannelSection({
               </tr>
             </thead>
             <tbody>
-              {listable.map((r) => {
+              {pageRows.map((r) => {
                 const live = r.shopifyProductId !== null;
                 const outcome = outcomes[r.batchId];
                 const isBusy = busy === r.batchId;
@@ -241,6 +253,8 @@ function ChannelSection({
               })}
             </tbody>
           </table>
+
+          <Pager total={listable.length} page={currentPage} perPage={PER_PAGE} onPage={setPage} />
         </div>
       )}
     </section>

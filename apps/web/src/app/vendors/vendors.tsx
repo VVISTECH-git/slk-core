@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { Pager } from "@/components/grid";
 import { Button, Drawer, Field, Header, ToastBar, inputClass, useToast } from "@/components/ui";
 import type { VendorLedgerEntry } from "@/lib/vendors";
 import { STAGES } from "@/lib/stages";
@@ -19,6 +20,8 @@ import {
   type VendorDraft,
 } from "./actions";
 
+const PER_PAGE = 50;
+
 /**
  * Who does a stage of processing — cutting, salava, karakkaya, printing,
  * ironing — what they charge for it, and what's still owed. See
@@ -31,6 +34,12 @@ export function Vendors({ rows }: { rows: VendorRow[] }) {
   const [toast, showToast] = useToast();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<VendorRow | null>(null);
+  const [page, setPage] = useState(1);
+
+  const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+  const currentPage = Math.min(page, pages);
+  const pageFrom = (currentPage - 1) * PER_PAGE;
+  const pageRows = rows.slice(pageFrom, pageFrom + PER_PAGE);
 
   function run(action: () => Promise<ActionResult>, onOk?: () => void) {
     start(async () => {
@@ -74,7 +83,7 @@ export function Vendors({ rows }: { rows: VendorRow[] }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
+                  {pageRows.map((r) => (
                     <tr
                       key={r.id}
                       onClick={() => setEditing(r)}
@@ -98,6 +107,8 @@ export function Vendors({ rows }: { rows: VendorRow[] }) {
                   ))}
                 </tbody>
               </table>
+
+              <Pager total={rows.length} page={currentPage} perPage={PER_PAGE} onPage={setPage} />
             </div>
           )}
         </div>

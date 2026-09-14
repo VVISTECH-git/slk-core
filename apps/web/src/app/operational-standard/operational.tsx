@@ -7,6 +7,7 @@ import { findDuplicates } from "@slk/domain/vocabulary";
 
 import type { Category, Classification } from "@/lib/operational";
 
+import { Pager } from "@/components/grid";
 import {
   Button,
   Drawer,
@@ -39,6 +40,7 @@ import {
 
 const LIST_STATUSES = ["draft", "active", "retired"];
 const VALUE_STATUSES = ["draft", "proposed", "active", "retired"];
+const PER_PAGE = 50;
 
 /**
  * What a pending delete is waiting to be told.
@@ -235,6 +237,15 @@ function Classifications({
   const chosen = [...picked].filter((id) => shown.some((r) => r.id === id));
   const current = rows.find((r) => r.id === editing) ?? null;
 
+  // `shown` stays the full filtered-and-sorted list — "select all", the
+  // chosen count and the bulk actions all need every match, not just the
+  // page in view. Only the render below is sliced.
+  const [page, setPage] = useState(1);
+  const pages = Math.max(1, Math.ceil(shown.length / PER_PAGE));
+  const currentPage = Math.min(page, pages);
+  const pageFrom = (currentPage - 1) * PER_PAGE;
+  const pageRows = shown.slice(pageFrom, pageFrom + PER_PAGE);
+
   return (
     <section>
       <SectionHead
@@ -325,8 +336,9 @@ function Classifications({
             }
           />
         }
+        footer={<Pager total={shown.length} page={currentPage} perPage={PER_PAGE} onPage={setPage} />}
       >
-        {shown.map((row) => (
+        {pageRows.map((row) => (
           <tr
             key={row.id}
             className={`h-11 border-b border-rule last:border-b-0 hover:bg-surface-2 ${
@@ -506,6 +518,14 @@ function Categories({
   const chosen = [...picked].filter((id) => shown.some((r) => r.id === id));
   const current = rows.find((r) => r.id === editing) ?? null;
   const chosenList = classifications.find((c) => c.id === list) ?? null;
+
+  // Same split as Classifications: `shown` stays the full list for
+  // selection and bulk actions, the render below gets one page of it.
+  const [page, setPage] = useState(1);
+  const pages = Math.max(1, Math.ceil(shown.length / PER_PAGE));
+  const currentPage = Math.min(page, pages);
+  const pageFrom = (currentPage - 1) * PER_PAGE;
+  const pageRows = shown.slice(pageFrom, pageFrom + PER_PAGE);
 
   // Colour is the one classification whose values have a look as well as a
   // name, and a row of names is a poor way to pick one.
@@ -722,8 +742,9 @@ function Categories({
             }
           />
         }
+        footer={<Pager total={shown.length} page={currentPage} perPage={PER_PAGE} onPage={setPage} />}
       >
-        {shown.map((row) => (
+        {pageRows.map((row) => (
           <tr
             key={row.id}
             className={`h-11 border-b border-rule last:border-b-0 hover:bg-surface-2 ${
@@ -1642,10 +1663,13 @@ function Table({
   head,
   empty,
   children,
+  footer,
 }: {
   head: React.ReactNode;
   empty?: string | null;
   children: React.ReactNode;
+  /** A `Pager`, rendered inside the same card as the table it paginates. */
+  footer?: React.ReactNode;
 }) {
   if (empty != null) {
     return (
@@ -1661,6 +1685,7 @@ function Table({
         {head}
         <tbody>{children}</tbody>
       </table>
+      {footer}
     </div>
   );
 }

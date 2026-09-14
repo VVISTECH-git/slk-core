@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 
+import { Pager } from "@/components/grid";
 import {
   Button,
   Drawer,
@@ -56,6 +57,8 @@ const ROLES = [
   },
 ] as const;
 
+const PER_PAGE = 50;
+
 export function Staff({
   rows,
   jobRoles,
@@ -71,6 +74,12 @@ export function Staff({
 
   const [adding, setAdding] = useState(false);
   const [pinFor, setPinFor] = useState<StaffRow | null>(null);
+  const [page, setPage] = useState(1);
+
+  const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+  const currentPage = Math.min(page, pages);
+  const pageFrom = (currentPage - 1) * PER_PAGE;
+  const pageRows = rows.slice(pageFrom, pageFrom + PER_PAGE);
 
   function run(action: () => Promise<Result>, onOk?: () => void) {
     start(async () => {
@@ -129,7 +138,7 @@ export function Staff({
                   </td>
                 </tr>
               ) : (
-                rows.map((row) => (
+                pageRows.map((row) => (
                   <tr
                     key={row.id}
                     className={`h-12 border-b border-rule last:border-b-0 ${
@@ -228,6 +237,10 @@ export function Staff({
               )}
             </tbody>
           </table>
+
+          {rows.length > 0 && (
+            <Pager total={rows.length} page={currentPage} perPage={PER_PAGE} onPage={setPage} />
+          )}
         </div>
 
         <p className="mt-4 max-w-2xl text-[12.5px] leading-relaxed text-muted">

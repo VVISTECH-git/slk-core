@@ -143,6 +143,37 @@ export const vendor = pgTable(
   (t) => [uniqueIndex("vendor_name_key").on(t.name)],
 );
 
+/**
+ * What a vendor charges for one stage, per piece — "Karakkaya: ₹5",
+ * "Ironing: ₹2". A vendor doing more than one stage can charge a different
+ * rate for each, so this is its own table rather than a single column on
+ * `vendor`. Optional: a vendor can be on the list, even doing work, before
+ * anyone has typed in what they charge — nothing here blocks a handover,
+ * only the transaction that bills it (see `handover.vendorTransactionId`).
+ */
+export const vendorRate = pgTable(
+  "vendor_rate",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    vendorId: uuid("vendor_id")
+      .notNull()
+      .references(() => vendor.id, { onDelete: "cascade" }),
+    stage: text("stage").notNull(),
+    unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("vendor_rate_vendor_stage_key").on(t.vendorId, t.stage),
+    check(
+      "vendor_rate_stage_known",
+      sql`${t.stage} in (
+        'Salava', 'Karakkaya', 'Print', 'Second Print', 'Nellateeta', 'Udukulu', 'Ironing'
+      )`,
+    ),
+  ],
+);
+
 export const bale = pgTable(
   "bale",
   {
@@ -282,14 +313,72 @@ export const thaan = pgTable(
 );
 
 /**
+ * What a vendor is owed for one completed batch of work — created
+ * automatically when a batch of Thaans is scanned back in (see
+ * `handover.vendorTransactionId`), one row per distinct (vendor, stage) group
+ * in that batch. `unitPrice` and `amount` are captured here rather than
+ * recomputed from `vendorRate` later, so a rate change afterwards does not
+ * silently reprice work already billed.
+ */
+export const vendorTransaction = pgTable(
+  "vendor_transaction",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    vendorId: uuid("vendor_id")
+      .notNull()
+      .references(() => vendor.id, { onDelete: "restrict" }),
+    stage: text("stage").notNull(),
+    pieceCount: integer("piece_count").notNull(),
+    unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    transactionDate: date("transaction_date").notNull().default(sql`current_date`),
+    notes: text("notes"),
+    /** Who confirmed the receive batch that produced this. */
+    recordedBy: uuid("recorded_by_id").references(() => actor.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      "vendor_transaction_stage_known",
+      sql`${t.stage} in (
+        'Salava', 'Karakkaya', 'Print', 'Second Print', 'Nellateeta', 'Udukulu', 'Ironing'
+      )`,
+    ),
+  ],
+);
+
+/**
+ * Money actually paid to a vendor — kept separate from `vendorTransaction`
+ * rather than a paid flag on it, because a payment does not have to match
+ * one transaction: a vendor is usually settled against their running
+ * balance (everything billed, minus everything paid), not invoice by
+ * invoice.
+ */
+export const vendorPayment = pgTable("vendor_payment", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  vendorId: uuid("vendor_id")
+    .notNull()
+    .references(() => vendor.id, { onDelete: "restrict" }),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  paidOn: date("paid_on").notNull().default(sql`current_date`),
+  /** Cash, bank transfer, whatever — free text, not a maintained list. */
+  method: text("method"),
+  notes: text("notes"),
+  recordedBy: uuid("recorded_by_id").references(() => actor.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
  * One Thaan's trip through one stage — sent to a vendor (or kept in-house,
  * when `vendorId` is null) on `sentAt`, and back on `receivedAt` once it's
- * done. The stage pipeline itself: Kora to Salava, Salava to Karakkaya,
- * Karakkaya to Print, Second Print, Print to Nellateeta, Neelateeta to
- * Udukulu, Ironing, in that order (`apps/web/src/lib/stages.ts`) — a Thaan
- * must finish one before the next can start, checked in the server action
- * rather than here, since stage order is a fact about the business, not
- * something a column constraint can express.
+ * done. The stage pipeline itself: Salava, Karakkaya, Print, Second Print,
+ * Nellateeta, Udukulu, Ironing, in that order (`apps/web/src/lib/stages.ts`)
+ * — each one the name of the process itself, not a "from → to" label — a
+ * Thaan must finish one before the next can start, checked in the server
+ * action rather than here, since stage order is a fact about the business,
+ * not something a column constraint can express.
  *
  * A Thaan's current state is derived, not stored: no open row (`received_at`
  * is null) for it means it's at home, waiting on whichever stage it hasn't
@@ -326,6 +415,15 @@ export const handover = pgTable(
       onDelete: "restrict",
     }),
 
+    /**
+     * Which billing batch this row's cost was rolled into, once received —
+     * null for an in-house stage (nothing owed) and null until receipt even
+     * for a vendor stage (nothing to bill until the work is actually back).
+     */
+    vendorTransactionId: uuid("vendor_transaction_id").references(() => vendorTransaction.id, {
+      onDelete: "set null",
+    }),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -340,8 +438,7 @@ export const handover = pgTable(
     check(
       "handover_stage_known",
       sql`${t.stage} in (
-        'Kora to Salava', 'Salava to Karakkaya', 'Karakkaya to Print',
-        'Second Print', 'Print to Nellateeta', 'Neelateeta to Udukulu', 'Ironing'
+        'Salava', 'Karakkaya', 'Print', 'Second Print', 'Nellateeta', 'Udukulu', 'Ironing'
       )`,
     ),
   ],
@@ -350,6 +447,9 @@ export const handover = pgTable(
 export type Supplier = typeof supplier.$inferSelect;
 export type ClothItem = typeof clothItem.$inferSelect;
 export type Vendor = typeof vendor.$inferSelect;
+export type VendorRate = typeof vendorRate.$inferSelect;
 export type Bale = typeof bale.$inferSelect;
 export type Thaan = typeof thaan.$inferSelect;
+export type VendorTransaction = typeof vendorTransaction.$inferSelect;
+export type VendorPayment = typeof vendorPayment.$inferSelect;
 export type Handover = typeof handover.$inferSelect;

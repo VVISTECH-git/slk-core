@@ -31,6 +31,14 @@ const NAV = [
     icon: "M4 4h5v12H4z M11 4h5v12h-5z M4 4l5 12 M16 4l-5 12",
   },
   {
+    // A Thaan's trip through the stage pipeline, tracked by scanning its
+    // own QR code — kept right after Thaans since that's what a Thaan
+    // becomes once it exists.
+    href: "/handovers",
+    label: "Handovers",
+    icon: "M4 6h5v5H4z M11 9h5v5h-5z M9 8.5l2 1 M6.5 6V4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1",
+  },
+  {
     // Who kora cloth is bought from — Kora to Shelf's own vocabulary, kept
     // beside Bale Intake rather than under Master Lists, which manages the
     // catalogue's controlled vocabulary and nothing here.

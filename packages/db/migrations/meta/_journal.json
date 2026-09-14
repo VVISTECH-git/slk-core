@@ -477,6 +477,20 @@
       "when": 1789476312000,
       "tag": "0067_invoice_amount",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1789476313000,
+      "tag": "0068_vendor_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1789476314000,
+      "tag": "0069_stage_names_are_processes",
+      "breakpoints": true
     }
   ]
 }

@@ -1,0 +1,213 @@
+"use server";
+
+import { sql } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
+
+import { db } from "@/lib/db";
+import { checkThaanForReceive, checkThaanForSend, type ThaanForReceive, type ThaanForSend } from "@/lib/handovers";
+import { actingId, guard } from "@/lib/session";
+import { STAGES, type Stage } from "@/lib/stages";
+
+export interface ActionResult {
+  ok: boolean;
+  message: string;
+}
+
+/**
+ * Every scan calls this first — the same check `sendBatch` re-runs at
+ * commit time, just early enough to tell the reader right away rather than
+ * after they've scanned another twenty.
+ */
+export async function lookupForSend(
+  code: string,
+  stage: string,
+): Promise<{ ok: true; thaan: ThaanForSend } | { ok: false; message: string }> {
+  const denied = await guard("floor");
+  if (denied !== null) return denied;
+
+  if (!(STAGES as readonly string[]).includes(stage)) {
+    return { ok: false, message: "Choose a stage first." };
+  }
+
+  return checkThaanForSend(code, stage as Stage);
+}
+
+export async function lookupForReceive(
+  code: string,
+): Promise<{ ok: true; thaan: ThaanForReceive } | { ok: false; message: string }> {
+  const denied = await guard("floor");
+  if (denied !== null) return denied;
+
+  return checkThaanForReceive(code);
+}
+
+/**
+ * The literal stage order, duplicated here the same way the schema's own
+ * check constraints duplicate it — see
+ * `packages/db/src/schema/production.ts`. `array[...][n]` is 1-based and
+ * returns null past the end, which is exactly "no next stage" for a Thaan
+ * that has finished every one.
+ */
+const STAGE_ARRAY_SQL = sql`array['Salava','Karakkaya','Print','Second Print','Nellateeta','Udukulu','Ironing']::text[]`;
+
+/**
+ * Sends a scanned batch off for one stage, to one vendor (or in-house).
+ * Re-checks "not already out" and "this really is the next stage" per Thaan
+ * inside the insert itself, rather than trusting the client's own scan-time
+ * check — a second tab, or a batch left open a while, could otherwise send
+ * a Thaan twice or out of order.
+ */
+export async function sendBatch(
+  stage: string,
+  vendorId: string | null,
+  thaanIds: string[],
+): Promise<ActionResult> {
+  const denied = await guard("floor");
+  if (denied !== null) return denied;
+
+  if (!(STAGES as readonly string[]).includes(stage)) {
+    return { ok: false, message: "Choose a stage." };
+  }
+  if (thaanIds.length === 0) {
+    return { ok: false, message: "Nothing scanned yet." };
+  }
+
+  if (vendorId !== null) {
+    const [v] = await db.execute<{ id: string }>(sql`select id from vendor where id = ${vendorId}`);
+    if (v === undefined) return { ok: false, message: "That vendor no longer exists." };
+  }
+
+  const actorId = await actingId();
+
+  const sent = await db.transaction(async (tx) => {
+    let count = 0;
+    for (const thaanId of thaanIds) {
+      const [row] = await tx.execute<{ id: string }>(sql`
+        insert into handover (thaan_id, stage, vendor_id, recorded_by_id)
+        select ${thaanId}, ${stage}, ${vendorId}, ${actorId}
+        where not exists (
+          select 1 from handover where thaan_id = ${thaanId} and received_at is null
+        )
+        and coalesce(
+          (${STAGE_ARRAY_SQL})[
+            (select count(*) from handover where thaan_id = ${thaanId} and received_at is not null) + 1
+          ],
+          ''
+        ) = ${stage}
+        returning id
+      `);
+      if (row !== undefined) count++;
+    }
+    return count;
+  });
+
+  revalidatePath("/handovers");
+
+  if (sent === 0) {
+    return {
+      ok: false,
+      message: "None of those could be sent — check they aren't already out, or aren't due for this stage.",
+    };
+  }
+  if (sent < thaanIds.length) {
+    return {
+      ok: true,
+      message: `Sent ${sent} of ${thaanIds.length} — the rest changed since they were scanned. Re-scan to check them.`,
+    };
+  }
+
+  return { ok: true, message: `Sent ${sent} Thaan${sent === 1 ? "" : "s"} for ${stage}.` };
+}
+
+/**
+ * Marks a scanned batch received, and bills whatever came back from a
+ * vendor: one `vendor_transaction` per distinct (vendor, stage) group in
+ * the batch, at that vendor's rate for that stage. A group with no rate set
+ * still gets marked received — the alternative is refusing to record that
+ * the cloth is back, over a missing price — but is left unbilled, named in
+ * the result so it doesn't go unnoticed.
+ */
+export async function receiveBatch(thaanIds: string[]): Promise<ActionResult> {
+  const denied = await guard("floor");
+  if (denied !== null) return denied;
+
+  if (thaanIds.length === 0) {
+    return { ok: false, message: "Nothing scanned yet." };
+  }
+
+  const actorId = await actingId();
+
+  const result = await db.transaction(async (tx) => {
+    const closed: { id: string; stage: string; vendorId: string | null }[] = [];
+
+    for (const thaanId of thaanIds) {
+      const [row] = await tx.execute<{ id: string; stage: string; vendorId: string | null }>(sql`
+        update handover
+        set received_at = now(), received_by_id = ${actorId}, updated_at = now()
+        where thaan_id = ${thaanId} and received_at is null
+        returning id, stage, vendor_id as "vendorId"
+      `);
+      if (row !== undefined) closed.push(row);
+    }
+
+    const groups = new Map<string, { vendorId: string; stage: string; handoverIds: string[] }>();
+    for (const c of closed) {
+      if (c.vendorId === null) continue; // In-house: nothing owed, nothing to bill.
+      const key = `${c.vendorId}::${c.stage}`;
+      const group = groups.get(key) ?? { vendorId: c.vendorId, stage: c.stage, handoverIds: [] };
+      group.handoverIds.push(c.id);
+      groups.set(key, group);
+    }
+
+    const billed: string[] = [];
+    const unbilled: string[] = [];
+
+    for (const group of groups.values()) {
+      const [rate] = await tx.execute<{ unitPrice: string }>(sql`
+        select unit_price as "unitPrice" from vendor_rate
+        where vendor_id = ${group.vendorId} and stage = ${group.stage}
+      `);
+
+      if (rate === undefined) {
+        const [v] = await tx.execute<{ name: string }>(sql`select name from vendor where id = ${group.vendorId}`);
+        unbilled.push(`${v?.name ?? "that vendor"} — ${group.stage}`);
+        continue;
+      }
+
+      const unitPrice = Number(rate.unitPrice);
+      const pieceCount = group.handoverIds.length;
+      const amount = Math.round(unitPrice * pieceCount * 100) / 100;
+
+      const [txn] = await tx.execute<{ id: string }>(sql`
+        insert into vendor_transaction (vendor_id, stage, piece_count, unit_price, amount, recorded_by_id)
+        values (${group.vendorId}, ${group.stage}, ${pieceCount}, ${unitPrice}, ${amount}, ${actorId})
+        returning id
+      `);
+
+      await tx.execute(sql`
+        update handover
+        set vendor_transaction_id = ${txn.id}
+        where id in (${sql.join(group.handoverIds.map((id) => sql`${id}`), sql`, `)})
+      `);
+
+      billed.push(`${group.stage}: ${pieceCount} pc${pieceCount === 1 ? "" : "s"}, ₹${amount.toLocaleString("en-IN")}`);
+    }
+
+    return { received: closed.length, billed, unbilled };
+  });
+
+  revalidatePath("/handovers");
+  revalidatePath("/vendors");
+
+  if (result.received === 0) {
+    return { ok: false, message: "None of those are currently out for a stage." };
+  }
+
+  let message = `Received ${result.received} Thaan${result.received === 1 ? "" : "s"}.`;
+  if (result.billed.length > 0) message += ` Billed — ${result.billed.join("; ")}.`;
+  if (result.unbilled.length > 0) {
+    message += ` No rate set for ${result.unbilled.join(", ")} — received, not billed. Set a rate on Vendors first.`;
+  }
+
+  return { ok: true, message };
+}

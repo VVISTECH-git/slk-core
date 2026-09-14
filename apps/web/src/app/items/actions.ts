@@ -42,8 +42,17 @@ export async function createClothItem(name: string): Promise<ActionResult> {
   return { ok: true, message: `Added ${cleanName}.` };
 }
 
-/** Fixing a typo. The name check excludes this row itself. */
-export async function updateClothItem(itemId: string, name: string): Promise<ActionResult> {
+/**
+ * Fixing a typo, and active/inactive in the same save — a cloth item
+ * already on bales can't be erased without erasing their history, so
+ * status is the way one stops being offered for a new bale. The name
+ * check excludes this row itself.
+ */
+export async function updateClothItem(
+  itemId: string,
+  name: string,
+  status: "active" | "inactive",
+): Promise<ActionResult> {
   const denied = await guard("floor");
   if (denied !== null) return denied;
 
@@ -60,7 +69,10 @@ export async function updateClothItem(itemId: string, name: string): Promise<Act
   }
 
   const [row] = await db.execute<{ name: string }>(sql`
-    update cloth_item set name = ${cleanName}, updated_at = now() where id = ${itemId} returning name
+    update cloth_item
+    set name = ${cleanName}, status = ${status}, updated_at = now()
+    where id = ${itemId}
+    returning name
   `);
 
   if (row === undefined) {
@@ -70,25 +82,4 @@ export async function updateClothItem(itemId: string, name: string): Promise<Act
   revalidate();
 
   return { ok: true, message: `${row.name} updated.` };
-}
-
-/**
- * Active/inactive rather than delete — same reasoning as
- * `suppliers/actions.ts`'s `setSupplierStatus`.
- */
-export async function setClothItemStatus(itemId: string, status: "active" | "inactive"): Promise<ActionResult> {
-  const denied = await guard("floor");
-  if (denied !== null) return denied;
-
-  const [row] = await db.execute<{ name: string }>(sql`
-    update cloth_item set status = ${status}, updated_at = now() where id = ${itemId} returning name
-  `);
-
-  if (row === undefined) {
-    return { ok: false, message: "That item no longer exists." };
-  }
-
-  revalidate();
-
-  return { ok: true, message: `${row.name} marked ${status}.` };
 }

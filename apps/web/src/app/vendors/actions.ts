@@ -64,6 +64,45 @@ export async function createVendor(draft: VendorDraft): Promise<ActionResult> {
   return { ok: true, message: `Added ${cleanName}.` };
 }
 
+/** Fixing what was entered. The name check excludes this row itself. */
+export async function updateVendor(vendorId: string, draft: VendorDraft): Promise<ActionResult> {
+  const denied = await guard("floor");
+  if (denied !== null) return denied;
+
+  const cleanName = draft.name.trim();
+  if (cleanName === "") {
+    return { ok: false, message: "Name is required." };
+  }
+
+  const [clash] = await db.execute<{ name: string }>(sql`
+    select name from vendor where lower(name) = lower(${cleanName}) and id <> ${vendorId}
+  `);
+  if (clash !== undefined) {
+    return { ok: false, message: `"${clash.name}" is already on the list.` };
+  }
+
+  const [row] = await db.execute<{ name: string }>(sql`
+    update vendor
+    set
+      name = ${cleanName},
+      phone = ${draft.phone.trim() || null},
+      village = ${draft.village.trim() || null},
+      stages = ${pgTextArrayLiteral(draft.stages)}::text[],
+      notes = ${draft.notes.trim() || null},
+      updated_at = now()
+    where id = ${vendorId}
+    returning name
+  `);
+
+  if (row === undefined) {
+    return { ok: false, message: "That vendor no longer exists." };
+  }
+
+  revalidatePath("/vendors");
+
+  return { ok: true, message: `${row.name} updated.` };
+}
+
 /**
  * What a vendor charges per piece for one stage. `unitPrice` of `null`
  * clears the rate rather than setting it to zero — a vendor with no rate

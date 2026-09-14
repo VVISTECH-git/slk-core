@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { ConfirmDialog, Header, RowMenu, ToastBar, useToast } from "@/components/ui";
+import { ConfirmDialog, Header, ToastBar, useToast } from "@/components/ui";
 import { Pager } from "@/components/grid";
 import type { ThaanRow } from "@/lib/thaans";
 
@@ -16,9 +16,10 @@ const PER_PAGE = 50;
  * What a bale becomes once it's cut — cascaded with the bale and item
  * context that produced it, so this reads as the full picture rather than
  * a bare code list. Cutting and QR generation still happen from Bale
- * Intake's row menu, since they're bale-level acts; what's here is
- * Thaan-level: reprinting one QR code, and voiding a damaged or
- * miscounted piece.
+ * Intake's own row menu, since they're bale-level acts; what's here is
+ * Thaan-level and direct — a checkbox to void a damaged or miscounted
+ * piece, a link to reprint its own QR code — rather than another menu to
+ * open first.
  */
 export function Thaans({ rows }: { rows: ThaanRow[] }) {
   const router = useRouter();
@@ -74,8 +75,8 @@ export function Thaans({ rows }: { rows: ThaanRow[] }) {
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Bill entry date</th>
                       <th scope="col" className="px-3 py-2 text-right text-[11.5px] font-medium text-muted">Per Thaan Mtr</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">QR generated</th>
-                      <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Status</th>
-                      <th scope="col" className="w-14 px-3 py-2 text-[11.5px] font-medium text-muted">Actions</th>
+                      <th scope="col" className="w-16 px-3 py-2 text-[11.5px] font-medium text-muted">Void</th>
+                      <th scope="col" className="w-16 px-3 py-2 text-[11.5px] font-medium text-muted">Print</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -105,41 +106,39 @@ export function Thaans({ rows }: { rows: ThaanRow[] }) {
                         >
                           {r.qrGeneratedAt ?? "—"}
                         </td>
-                        <td className="px-3">
-                          {r.voidedAt !== null ? (
-                            <span
-                              className="rounded px-1.5 py-0.5 text-[11px] font-medium"
-                              style={{ background: "var(--brick-soft)", color: "var(--brick)" }}
-                              title={r.voidedByName !== null ? `Voided by ${r.voidedByName}, ${r.voidedAt}` : r.voidedAt}
-                            >
-                              Void
-                            </span>
-                          ) : (
-                            <span className="text-ink-2">—</span>
-                          )}
+                        <td
+                          className="px-3"
+                          title={
+                            r.voidedAt !== null
+                              ? r.voidedByName !== null
+                                ? `Voided by ${r.voidedByName}, ${r.voidedAt}`
+                                : r.voidedAt
+                              : "Mark this Thaan damaged, miscounted, or otherwise unusable"
+                          }
+                        >
+                          <input
+                            type="checkbox"
+                            checked={r.voidedAt !== null}
+                            disabled={pending}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setVoiding(r);
+                              } else {
+                                run(() => restoreThaan(r.id));
+                              }
+                            }}
+                          />
                         </td>
                         <td className="px-3">
-                          <RowMenu
-                            label={r.code ?? "this Thaan"}
-                            items={[
-                              {
-                                label: "Print QR code",
-                                disabled: r.code === null,
-                                hint: r.code === null ? "No QR code generated yet." : undefined,
-                                onSelect: () => {
-                                  if (r.code !== null) {
-                                    router.push(`/thaans/print/${r.baleId}?thaan=${r.id}`);
-                                  }
-                                },
-                              },
-                              r.voidedAt === null
-                                ? { label: "Void", danger: true, onSelect: () => setVoiding(r) }
-                                : {
-                                    label: "Restore",
-                                    onSelect: () => run(() => restoreThaan(r.id)),
-                                  },
-                            ]}
-                          />
+                          {r.code !== null && (
+                            <button
+                              type="button"
+                              onClick={() => router.push(`/thaans/print/${r.baleId}?thaan=${r.id}`)}
+                              className="text-[12.5px] text-brick underline"
+                            >
+                              Print
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}

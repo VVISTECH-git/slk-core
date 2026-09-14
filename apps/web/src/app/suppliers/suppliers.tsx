@@ -3,10 +3,10 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Button, Drawer, Field, Header, RowMenu, ToastBar, inputClass, useToast } from "@/components/ui";
+import { Button, Drawer, Field, Header, ToastBar, inputClass, useToast } from "@/components/ui";
 import type { SupplierRow } from "@/lib/bales";
 
-import { createSupplier, setSupplierStatus, updateSupplier, type ActionResult, type SupplierDraft } from "./actions";
+import { createSupplier, updateSupplier, type ActionResult, type SupplierDraft } from "./actions";
 
 /**
  * Who kora cloth is bought from. Its own screen, same reasoning as Bale
@@ -77,16 +77,14 @@ export function Suppliers({ rows }: { rows: SupplierRow[] }) {
                     <th scope="col" className="w-24 px-3 py-2 text-[11.5px] font-medium text-muted">
                       Status
                     </th>
-                    <th scope="col" className="w-14 px-3 py-2 text-[11.5px] font-medium text-muted">
-                      Actions
-                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((r) => (
                     <tr
                       key={r.id}
-                      className={`h-11 border-b border-rule last:border-b-0 hover:bg-surface-2 ${
+                      onClick={() => setEditing(r)}
+                      className={`h-11 cursor-pointer border-b border-rule last:border-b-0 hover:bg-surface-2 ${
                         r.status === "inactive" ? "opacity-60" : ""
                       }`}
                     >
@@ -111,21 +109,6 @@ export function Suppliers({ rows }: { rows: SupplierRow[] }) {
                         >
                           {r.status === "active" ? "Active" : "Inactive"}
                         </span>
-                      </td>
-                      <td className="px-3">
-                        <RowMenu
-                          label={r.name}
-                          items={[
-                            { label: "Edit", onSelect: () => setEditing(r) },
-                            {
-                              label: r.status === "active" ? "Mark inactive" : "Mark active",
-                              onSelect: () =>
-                                run(() =>
-                                  setSupplierStatus(r.id, r.status === "active" ? "inactive" : "active"),
-                                ),
-                            },
-                          ]}
-                        />
                       </td>
                     </tr>
                   ))}
@@ -241,6 +224,7 @@ function AddDrawer({
     gstin: "",
     address: "",
     contactPerson: "",
+    status: "active",
   });
 
   const set = <K extends keyof SupplierDraft>(key: K, value: SupplierDraft[K]) =>
@@ -291,6 +275,7 @@ function EditDrawer({
     gstin: supplier.gstin ?? "",
     address: supplier.address ?? "",
     contactPerson: supplier.contactPerson ?? "",
+    status: supplier.status,
   });
 
   const set = <K extends keyof SupplierDraft>(key: K, value: SupplierDraft[K]) =>
@@ -318,6 +303,15 @@ function EditDrawer({
     >
       <div className="flex flex-col gap-5">
         <SupplierFields draft={draft} set={set} />
+
+        <label className="flex items-center gap-2 text-[13px] text-ink-2">
+          <input
+            type="checkbox"
+            checked={draft.status === "active"}
+            onChange={(e) => set("status", e.target.checked ? "active" : "inactive")}
+          />
+          Active — offered when recording a new bale
+        </label>
       </div>
     </Drawer>
   );

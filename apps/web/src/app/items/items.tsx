@@ -3,10 +3,10 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Button, Drawer, Field, Header, RowMenu, ToastBar, inputClass, useToast } from "@/components/ui";
+import { Button, Drawer, Field, Header, ToastBar, inputClass, useToast } from "@/components/ui";
 import type { ClothItemRow } from "@/lib/bales";
 
-import { createClothItem, setClothItemStatus, updateClothItem, type ActionResult } from "./actions";
+import { createClothItem, updateClothItem, type ActionResult } from "./actions";
 
 /**
  * The specific cloth names a bale's contents are picked from. Its own
@@ -64,16 +64,14 @@ export function ClothItems({ rows }: { rows: ClothItemRow[] }) {
                     <th scope="col" className="w-24 px-3 py-2 text-[11.5px] font-medium text-muted">
                       Status
                     </th>
-                    <th scope="col" className="w-14 px-3 py-2 text-[11.5px] font-medium text-muted">
-                      Actions
-                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((r) => (
                     <tr
                       key={r.id}
-                      className={`h-11 border-b border-rule last:border-b-0 hover:bg-surface-2 ${
+                      onClick={() => setEditing(r)}
+                      className={`h-11 cursor-pointer border-b border-rule last:border-b-0 hover:bg-surface-2 ${
                         r.status === "inactive" ? "opacity-60" : ""
                       }`}
                     >
@@ -92,21 +90,6 @@ export function ClothItems({ rows }: { rows: ClothItemRow[] }) {
                         >
                           {r.status === "active" ? "Active" : "Inactive"}
                         </span>
-                      </td>
-                      <td className="px-3">
-                        <RowMenu
-                          label={r.name}
-                          items={[
-                            { label: "Edit", onSelect: () => setEditing(r) },
-                            {
-                              label: r.status === "active" ? "Mark inactive" : "Mark active",
-                              onSelect: () =>
-                                run(() =>
-                                  setClothItemStatus(r.id, r.status === "active" ? "inactive" : "active"),
-                                ),
-                            },
-                          ]}
-                        />
                       </td>
                     </tr>
                   ))}
@@ -186,6 +169,7 @@ function EditDrawer({
   onRun: (action: () => Promise<ActionResult>, onOk?: () => void) => void;
 }) {
   const [name, setName] = useState(item.name);
+  const [active, setActive] = useState(item.status === "active");
 
   return (
     <Drawer
@@ -198,7 +182,7 @@ function EditDrawer({
           <Button
             tone="primary"
             disabled={pending || name.trim() === ""}
-            onClick={() => onRun(() => updateClothItem(item.id, name), onClose)}
+            onClick={() => onRun(() => updateClothItem(item.id, name, active ? "active" : "inactive"), onClose)}
           >
             Save
           </Button>
@@ -209,6 +193,11 @@ function EditDrawer({
         <Field label="Name">
           <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
         </Field>
+
+        <label className="flex items-center gap-2 text-[13px] text-ink-2">
+          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
+          Active — offered when recording a new bale
+        </label>
       </div>
     </Drawer>
   );

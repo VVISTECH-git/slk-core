@@ -18,6 +18,7 @@ export interface SupplierDraft {
   gstin: string;
   address: string;
   contactPerson: string;
+  status: "active" | "inactive";
 }
 
 function revalidate() {
@@ -65,6 +66,8 @@ export async function createSupplier(draft: SupplierDraft): Promise<ActionResult
       ${draft.contactPerson.trim() || null}
     )
   `);
+  // status always starts "active" (the column's own default) — a new
+  // supplier has no history yet to be inactive about.
 
   revalidate();
 
@@ -113,6 +116,7 @@ export async function updateSupplier(supplierId: string, draft: SupplierDraft): 
       gstin = ${draft.gstin.trim() || null},
       address = ${draft.address.trim() || null},
       contact_person = ${draft.contactPerson.trim() || null},
+      status = ${draft.status},
       updated_at = now()
     where id = ${supplierId}
     returning name
@@ -125,27 +129,4 @@ export async function updateSupplier(supplierId: string, draft: SupplierDraft): 
   revalidate();
 
   return { ok: true, message: `${row.name} updated.` };
-}
-
-/**
- * Active/inactive rather than delete — a supplier already on bales can't be
- * erased without erasing their history, and staff still need to look them
- * up. Only the Bale Intake dropdown reads this; every existing bale is
- * unaffected either way.
- */
-export async function setSupplierStatus(supplierId: string, status: "active" | "inactive"): Promise<ActionResult> {
-  const denied = await guard("floor");
-  if (denied !== null) return denied;
-
-  const [row] = await db.execute<{ name: string }>(sql`
-    update supplier set status = ${status}, updated_at = now() where id = ${supplierId} returning name
-  `);
-
-  if (row === undefined) {
-    return { ok: false, message: "That supplier no longer exists." };
-  }
-
-  revalidate();
-
-  return { ok: true, message: `${row.name} marked ${status}.` };
 }

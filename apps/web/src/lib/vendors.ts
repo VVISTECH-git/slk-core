@@ -14,8 +14,6 @@ export type VendorRow = {
   village: string | null;
   stages: string[];
   notes: string | null;
-  /** "The Master" — who freshly QR-coded Thaans are automatically sent to for Label Stitching. At most one vendor. */
-  isLabelMaster: boolean;
   /** What this vendor charges per piece, by stage — only stages with a rate set. */
   rates: { stage: string; unitPrice: number }[];
   /** Everything billed to this vendor via `vendor_transaction`, ever. */
@@ -30,7 +28,6 @@ export async function loadVendors(): Promise<VendorRow[]> {
   const rows = await db.execute<Omit<VendorRow, "balanceDue">>(sql`
     select
       v.id, v.name, v.phone, v.village, v.stages, v.notes,
-      v.is_label_master as "isLabelMaster",
       coalesce(
         (select json_agg(json_build_object('stage', vr.stage, 'unitPrice', vr.unit_price::double precision) order by vr.stage)
          from vendor_rate vr where vr.vendor_id = v.id),

@@ -1,4 +1,4 @@
-import { boolean, check, date, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { check, date, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 import { actor } from "./access";
@@ -149,15 +149,6 @@ export const vendor = pgTable(
     /** A standard rate, a special arrangement — whatever doesn't fit a field above. */
     notes: text("notes"),
 
-    /**
-     * Whether this is "the Master" — the tailor every batch of freshly
-     * QR-coded Thaans is automatically sent to for Label Stitching, the
-     * moment "Generate QR codes" runs. At most one vendor at a time: the
-     * partial unique index below is what makes that a guarantee. False for
-     * everyone until someone is deliberately marked.
-     */
-    isLabelMaster: boolean("is_label_master").notNull().default(false),
-
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -165,12 +156,7 @@ export const vendor = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [
-    uniqueIndex("vendor_name_key").on(t.name),
-    uniqueIndex("vendor_one_label_master")
-      .on(t.isLabelMaster)
-      .where(sql`${t.isLabelMaster}`),
-  ],
+  (t) => [uniqueIndex("vendor_name_key").on(t.name)],
 );
 
 /**

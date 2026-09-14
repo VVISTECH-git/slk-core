@@ -13,7 +13,6 @@ import {
   createVendor,
   getVendorLedger,
   recordVendorPayment,
-  setLabelMaster,
   setVendorRate,
   updateVendor,
   type ActionResult,
@@ -279,12 +278,6 @@ function EditDrawer({
   const set = <K extends keyof VendorDraft>(key: K, value: VendorDraft[K]) =>
     setDraft((prev) => ({ ...prev, [key]: value }));
 
-  // Tracked separately from `vendor` itself: the drawer stays open after
-  // "Make the Master" succeeds (same reasoning as the ledger below), so the
-  // prop's own stale snapshot would otherwise keep reading "Not the Master"
-  // until the drawer is closed and reopened.
-  const [isMaster, setIsMaster] = useState(vendor.isLabelMaster);
-
   const initialRates = Object.fromEntries(vendor.rates.map((r) => [r.stage, String(r.unitPrice)]));
   const [rates, setRates] = useState<Record<string, string>>(initialRates);
 
@@ -357,57 +350,31 @@ function EditDrawer({
       <div className="flex flex-col gap-6">
         <VendorFields draft={draft} set={set} />
 
-        <section className="rounded-lg border border-rule-2 bg-surface-2 p-3">
-          <h3 className="mb-1 text-[13px] font-semibold text-ink">Label Stitching Master</h3>
-          {isMaster ? (
-            <p className="text-[12.5px] leading-relaxed text-muted">
-              This is the Master — every batch of freshly QR-coded Thaans is sent to them
-              automatically, no scan needed. To hand this off, make someone else the Master
-              instead.
-            </p>
-          ) : (
-            <>
-              <p className="mb-2 text-[12.5px] leading-relaxed text-muted">
-                Not the Master. Only one vendor holds this at a time — freshly QR-coded Thaans
-                are sent to whoever does.
-              </p>
-              <Button
-                disabled={pending}
-                onClick={() =>
-                  onRun(async () => {
-                    const result = await setLabelMaster(vendor.id);
-                    if (result.ok) setIsMaster(true);
-                    return result;
-                  })
-                }
-              >
-                Make {vendor.name} the Master
-              </Button>
-            </>
-          )}
-        </section>
-
         <section>
           <h3 className="mb-1 text-[13px] font-semibold text-ink">Rates</h3>
           <p className="mb-3 text-[12px] leading-relaxed text-muted">
-            ₹ per piece for each stage. Leave blank if not agreed yet — Thaans can still move
-            through it, just won&rsquo;t be billed until a rate is set.
+            ₹ per piece for each stage this vendor does. Leave blank if not agreed yet — Thaans
+            can still move through it, just won&rsquo;t be billed until a rate is set.
           </p>
-          <div className="flex flex-col gap-3">
-            {STAGES.map((stage) => (
-              <Field key={stage} label={stage}>
-                <input
-                  className={inputClass}
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="No rate set"
-                  value={rates[stage] ?? ""}
-                  onChange={(e) => setRates((prev) => ({ ...prev, [stage]: e.target.value }))}
-                />
-              </Field>
-            ))}
-          </div>
+          {draft.stages.length === 0 ? (
+            <p className="text-[12.5px] text-muted">Choose at least one stage above to set a rate for it.</p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {STAGES.filter((stage) => draft.stages.includes(stage)).map((stage) => (
+                <Field key={stage} label={stage}>
+                  <input
+                    className={inputClass}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="No rate set"
+                    value={rates[stage] ?? ""}
+                    onChange={(e) => setRates((prev) => ({ ...prev, [stage]: e.target.value }))}
+                  />
+                </Field>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="rounded-lg border border-rule bg-surface-2 p-4">

@@ -362,7 +362,7 @@ export async function generateQrCodes(baleId: string): Promise<ActionResult> {
 
   const actorId = await actingId();
 
-  const { updated, masterName } = await db.transaction(async (tx) => {
+  const { updated, routedTo } = await db.transaction(async (tx) => {
     const updated = await tx.execute<{ id: string }>(sql`
       update thaan
       set code = 'T' || lpad(nextval('thaan_code_seq')::text, 8, '0'),
@@ -373,27 +373,36 @@ export async function generateQrCodes(baleId: string): Promise<ActionResult> {
       returning id
     `);
 
-    if (updated.length === 0) return { updated, masterName: null };
+    if (updated.length === 0) return { updated, routedTo: null };
 
     // A freshly coded Thaan has no physical label on it yet — nothing to
     // scan — so it can't go through the normal scan-to-send flow the other
     // stages use. Sending it for Label Stitching happens automatically,
-    // right here, to whichever vendor is marked "the Master". Coming back
-    // still goes through the ordinary scan-to-receive screen: once the
-    // Master has actually stitched the label on, it's scannable again.
-    const [master] = await tx.execute<{ id: string; name: string }>(sql`
-      select id, name from vendor where is_label_master limit 1
+    // right here, to whichever vendor has "Label Stitching" among their own
+    // stages — the same list every other stage's routing already reads,
+    // not a second, separate designation. Coming back still goes through
+    // the ordinary scan-to-receive screen: once the label is actually
+    // stitched on, the Thaan is scannable again.
+    const doers = await tx.execute<{ id: string; name: string }>(sql`
+      select id, name from vendor where 'Label Stitching' = any(stages) order by name
     `);
 
-    if (master !== undefined) {
+    let routedTo: { ok: true; name: string } | { ok: false; reason: "none" | "many"; names?: string[] } | null;
+
+    if (doers.length === 1) {
       await tx.execute(sql`
         insert into handover (thaan_id, stage, vendor_id, recorded_by_id)
-        select id, 'Label Stitching', ${master.id}, ${actorId}
+        select id, 'Label Stitching', ${doers[0].id}, ${actorId}
         from thaan where id in (${sql.join(updated.map((r) => sql`${r.id}`), sql`, `)})
       `);
+      routedTo = { ok: true, name: doers[0].name };
+    } else if (doers.length === 0) {
+      routedTo = { ok: false, reason: "none" };
+    } else {
+      routedTo = { ok: false, reason: "many", names: doers.map((d) => d.name) };
     }
 
-    return { updated, masterName: master?.name ?? null };
+    return { updated, routedTo };
   });
 
   if (updated.length === 0) {
@@ -405,8 +414,14 @@ export async function generateQrCodes(baleId: string): Promise<ActionResult> {
   revalidatePath("/handovers");
 
   const count = `Generated ${updated.length} QR code${updated.length === 1 ? "" : "s"}.`;
-  if (masterName === null) {
-    return { ok: true, message: `${count} No Label Stitching Master is set — sent nowhere. Mark one on Vendors.` };
+  if (routedTo?.ok === true) {
+    return { ok: true, message: `${count} Sent to ${routedTo.name} for Label Stitching.` };
   }
-  return { ok: true, message: `${count} Sent to ${masterName} for Label Stitching.` };
+  if (routedTo?.reason === "many") {
+    return {
+      ok: true,
+      message: `${count} Not sent — ${routedTo.names?.join(", ")} all do Label Stitching. Only one vendor can at a time; adjust on Vendors.`,
+    };
+  }
+  return { ok: true, message: `${count} Not sent — no vendor does Label Stitching yet. Add one on Vendors.` };
 }

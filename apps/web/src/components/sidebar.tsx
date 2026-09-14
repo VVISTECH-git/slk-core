@@ -125,6 +125,14 @@ const NAV = [
     icon: "M4 5h12v4H4z M4 11h12v4H4z M6.5 7h.01 M6.5 13h.01",
     minRole: "office",
   },
+  {
+    // What the database itself costs, the same question Storage answers for
+    // the photograph bucket — same access tier, same reasoning.
+    href: "/database",
+    label: "Database",
+    icon: "M4 5a6 2 0 1 0 12 0a6 2 0 1 0-12 0 M4 5v8a6 2 0 0 0 12 0V5 M4 9a6 2 0 0 0 12 0",
+    minRole: "office",
+  },
 ] as const;
 
 /** Matches ROLE_RANK in @/lib/auth — duplicated so this client bundle never

@@ -44,7 +44,7 @@ import {
 } from "./actions";
 
 const STATUS_LABEL: Record<BaleRow["status"], string> = {
-  awaiting_cutting: "Awaiting cutting",
+  awaiting_cutting: "Awaiting Thaan cutting",
   cutting_in_progress: "Cutting in progress",
   cut: "Cut",
   returned: "Returned",

@@ -25,6 +25,10 @@ export type StaffRow = {
   lastSeen: string | null;
   /** Movements they have recorded. Nothing before the ledger named anyone. */
   movements: number;
+  /** Job functions they're assigned to — "Bale Custodian" — for display. */
+  jobRoles: string[];
+  /** The same, as ids, so the picker knows which checkboxes are ticked. */
+  jobRoleIds: string[];
 };
 
 export async function loadStaff(): Promise<StaffRow[]> {
@@ -38,7 +42,9 @@ export async function loadStaff(): Promise<StaffRow[]> {
       (a.secret_hash is not null)                    as "hasPin",
       coalesce(t.live, 0)::int                       as sessions,
       to_char(t.last_seen, 'DD Mon YYYY')            as "lastSeen",
-      coalesce(m.n, 0)::int                          as movements
+      coalesce(m.n, 0)::int                          as movements,
+      coalesce(jr.names, '{}')                       as "jobRoles",
+      coalesce(jr.ids, '{}')                         as "jobRoleIds"
     from actor a
     left join (
       select actor_id,
@@ -52,6 +58,15 @@ export async function loadStaff(): Promise<StaffRow[]> {
       select actor_id, count(*) as n from movement
       where actor_id is not null group by actor_id
     ) m on m.actor_id = a.id
+    left join (
+      select
+        ajr.actor_id,
+        array_agg(j.name order by j.name)    as names,
+        array_agg(j.id order by j.name)      as ids
+      from actor_job_role ajr
+      join job_role j on j.id = ajr.job_role_id
+      group by ajr.actor_id
+    ) jr on jr.actor_id = a.id
     -- Active first, then by name. A deactivated account is history: it has to
     -- stay reachable, and it should not be in the way.
     order by a.is_active desc, a.name

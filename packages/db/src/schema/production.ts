@@ -163,6 +163,8 @@ export const bale = pgTable(
      */
     invoiceNumber: text("invoice_number"),
     invoiceDate: date("invoice_date"),
+    /** The bill's own total, in rupees. Same nullability as the rest of the invoice. */
+    invoiceAmount: numeric("invoice_amount", { precision: 12, scale: 2 }),
 
     /**
      * The broad category — Sarees, Fabric, Chunnies, Bedsheets, Pillows —
@@ -214,6 +216,12 @@ export const bale = pgTable(
       onDelete: "restrict",
     }),
 
+    /** Who initiated cutting. Null while the bale is still awaiting it. */
+    cutBy: uuid("cut_by_id").references(() => actor.id, { onDelete: "restrict" }),
+
+    /** Who marked it returned. Null unless `status` is `returned`. */
+    returnedBy: uuid("returned_by_id").references(() => actor.id, { onDelete: "restrict" }),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -260,6 +268,9 @@ export const thaan = pgTable(
 
     qrGeneratedAt: timestamp("qr_generated_at", { withTimezone: true }),
 
+    /** Who ran the "Generate QR codes" action — the same person for every Thaan generated together. */
+    qrGeneratedBy: uuid("qr_generated_by_id").references(() => actor.id, { onDelete: "restrict" }),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -305,7 +316,13 @@ export const handover = pgTable(
 
     notes: text("notes"),
 
+    /** Who sent it — recorded at `sentAt`. */
     recordedBy: uuid("recorded_by_id").references(() => actor.id, {
+      onDelete: "restrict",
+    }),
+
+    /** Who confirmed it back — recorded at `receivedAt`. A different person, often a different shift. */
+    receivedBy: uuid("received_by_id").references(() => actor.id, {
       onDelete: "restrict",
     }),
 

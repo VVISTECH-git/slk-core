@@ -150,6 +150,34 @@ export async function setRole(actorId: string, role: string): Promise<Result> {
   return { ok: true, message: `${who.name} is now ${role}.` };
 }
 
+/**
+ * Which job functions this person is assigned to — "Bale Custodian" and
+ * whatever else gets named. Separate from `role` above (their access
+ * level): replaces the whole set at once, since the picker hands back
+ * everything ticked rather than one change at a time.
+ */
+export async function setJobRoles(actorId: string, jobRoleIds: string[]): Promise<Result> {
+  const denied = await guard("owner");
+  if (denied !== null) return denied;
+
+  const [who] = await db.select({ name: actor.name }).from(actor).where(eq(actor.id, actorId));
+  if (who === undefined) return { ok: false, message: "No such person." };
+
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`delete from actor_job_role where actor_id = ${actorId}`);
+    for (const jobRoleId of jobRoleIds) {
+      await tx.execute(sql`
+        insert into actor_job_role (actor_id, job_role_id) values (${actorId}, ${jobRoleId})
+      `);
+    }
+  });
+
+  revalidatePath("/staff");
+  revalidatePath("/job-roles");
+
+  return { ok: true, message: `Updated ${who.name}'s job roles.` };
+}
+
 export async function setActive(
   actorId: string,
   isActive: boolean,

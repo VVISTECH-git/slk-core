@@ -1,5 +1,6 @@
 import { MIN_PIN_LENGTH } from "@slk/domain";
 
+import { loadJobRoles } from "@/lib/job-roles";
 import { requirePage } from "@/lib/session";
 import { loadStaff } from "@/lib/staff";
 
@@ -13,9 +14,12 @@ export default async function StaffPage() {
   // somebody on their way to being refused.
   await requirePage("owner");
 
+  const [rows, jobRoles] = await Promise.all([loadStaff(), loadJobRoles()]);
+
   return (
     <Staff
-      rows={await loadStaff()}
+      rows={rows}
+      jobRoles={jobRoles}
       /*
         Passed down rather than imported in the client component. The rule
         lives in @slk/domain beside `pinProblem`, which is the function that

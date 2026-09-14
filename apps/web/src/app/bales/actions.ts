@@ -34,6 +34,8 @@ export interface BaleDraft {
   transporter: string;
   invoiceNumber: string;
   invoiceDate: string;
+  /** The bill's own total, in rupees. Blank until the bill arrives, same as the number and date. */
+  invoiceAmount: string;
   type: string;
   metresReceived: string;
   uom: string;
@@ -57,6 +59,7 @@ interface ParsedBaleFields {
   itemId: string;
   baleCount: number;
   invoiceDate: string | null;
+  invoiceAmount: number | null;
   billEntryDate: string;
 }
 
@@ -67,7 +70,14 @@ interface ParsedBaleFields {
 function parseBaleFields(
   draft: Pick<
     BaleDraft,
-    "type" | "metresReceived" | "uom" | "itemId" | "baleCount" | "invoiceDate" | "billEntryDate"
+    | "type"
+    | "metresReceived"
+    | "uom"
+    | "itemId"
+    | "baleCount"
+    | "invoiceDate"
+    | "invoiceAmount"
+    | "billEntryDate"
   >,
 ): ParsedBaleFields | ActionResult {
   if (draft.itemId.trim() === "") {
@@ -93,6 +103,14 @@ function parseBaleFields(
     return { ok: false, message: "Number of bales must be a whole number greater than zero." };
   }
 
+  let invoiceAmount: number | null = null;
+  if (draft.invoiceAmount.trim() !== "") {
+    invoiceAmount = Number(draft.invoiceAmount);
+    if (!Number.isFinite(invoiceAmount) || invoiceAmount < 0) {
+      return { ok: false, message: "Bill amount must be a number, zero or greater." };
+    }
+  }
+
   return {
     type: draft.type,
     metresReceived,
@@ -100,6 +118,7 @@ function parseBaleFields(
     itemId: draft.itemId,
     baleCount,
     invoiceDate: draft.invoiceDate.trim() === "" ? null : draft.invoiceDate,
+    invoiceAmount,
     billEntryDate: draft.billEntryDate,
   };
 }
@@ -118,7 +137,8 @@ export async function createBale(draft: BaleDraft): Promise<ActionResult> {
 
   const parsed = parseBaleFields(draft);
   if (isFailure(parsed)) return parsed;
-  const { type, metresReceived, uom, itemId, baleCount, invoiceDate, billEntryDate } = parsed;
+  const { type, metresReceived, uom, itemId, baleCount, invoiceDate, invoiceAmount, billEntryDate } =
+    parsed;
 
   const actorId = await actingId();
 
@@ -131,8 +151,8 @@ export async function createBale(draft: BaleDraft): Promise<ActionResult> {
 
   const [row] = await db.execute<{ code: string }>(sql`
     insert into bale (
-      code, supplier_id, bill_entry_date, transporter, invoice_number, invoice_date, type,
-      metres_received, uom, item_id, bale_count, notes, recorded_by_id
+      code, supplier_id, bill_entry_date, transporter, invoice_number, invoice_date,
+      invoice_amount, type, metres_received, uom, item_id, bale_count, notes, recorded_by_id
     ) values (
       nextval('bale_code_seq')::text,
       ${draft.supplierId},
@@ -140,6 +160,7 @@ export async function createBale(draft: BaleDraft): Promise<ActionResult> {
       ${draft.transporter.trim() || null},
       ${draft.invoiceNumber.trim() || null},
       ${invoiceDate},
+      ${invoiceAmount},
       ${type},
       ${metresReceived},
       ${uom},
@@ -168,7 +189,8 @@ export async function updateBale(baleId: string, draft: BaleEditDraft): Promise<
 
   const parsed = parseBaleFields(draft);
   if (isFailure(parsed)) return parsed;
-  const { type, metresReceived, uom, itemId, baleCount, invoiceDate, billEntryDate } = parsed;
+  const { type, metresReceived, uom, itemId, baleCount, invoiceDate, invoiceAmount, billEntryDate } =
+    parsed;
 
   const [row] = await db.execute<{ code: string }>(sql`
     update bale
@@ -177,6 +199,7 @@ export async function updateBale(baleId: string, draft: BaleEditDraft): Promise<
       transporter = ${draft.transporter.trim() || null},
       invoice_number = ${draft.invoiceNumber.trim() || null},
       invoice_date = ${invoiceDate},
+      invoice_amount = ${invoiceAmount},
       type = ${type},
       metres_received = ${metresReceived},
       uom = ${uom},
@@ -231,9 +254,11 @@ export async function markBaleReturned(baleId: string): Promise<ActionResult> {
   const denied = await guard("floor");
   if (denied !== null) return denied;
 
+  const actorId = await actingId();
+
   const [row] = await db.execute<{ code: string }>(sql`
     update bale
-    set status = 'returned', updated_at = now()
+    set status = 'returned', returned_by_id = ${actorId}, updated_at = now()
     where id = ${baleId} and status = 'awaiting_cutting'
     returning code
   `);
@@ -263,10 +288,12 @@ export async function cutBale(baleId: string, thaanCount: string): Promise<Actio
     return { ok: false, message: "Number of pieces must be a whole number greater than zero." };
   }
 
+  const actorId = await actingId();
+
   const code = await db.transaction(async (tx) => {
     const [row] = await tx.execute<{ code: string }>(sql`
       update bale
-      set status = 'cut', updated_at = now()
+      set status = 'cut', cut_by_id = ${actorId}, updated_at = now()
       where id = ${baleId} and status = 'awaiting_cutting'
       returning code
     `);
@@ -299,9 +326,14 @@ export async function generateQrCodes(baleId: string): Promise<ActionResult> {
   const denied = await guard("floor");
   if (denied !== null) return denied;
 
+  const actorId = await actingId();
+
   const updated = await db.execute<{ id: string }>(sql`
     update thaan
-    set code = 'T' || nextval('thaan_code_seq'), qr_generated_at = now(), updated_at = now()
+    set code = 'T' || nextval('thaan_code_seq'),
+        qr_generated_at = now(),
+        qr_generated_by_id = ${actorId},
+        updated_at = now()
     where bale_id = ${baleId} and code is null
     returning id
   `);

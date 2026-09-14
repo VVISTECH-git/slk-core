@@ -92,6 +92,15 @@ const NAV = [
     minRole: "owner",
   },
   {
+    // Job functions staff are assigned to — "Bale Custodian" is the
+    // first — kept beside Staff since that's where the assigning happens.
+    // Owner territory, same reasoning as Staff.
+    href: "/job-roles",
+    label: "Job Roles",
+    icon: "M6 8V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3 M3 8h14v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M8 8v4h4V8",
+    minRole: "owner",
+  },
+  {
     // Every storefront, every consignment on it, and the buttons that put
     // them there — owner territory, same reasoning as Staff. Not floor work.
     href: "/channels",

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 
 import {
@@ -12,12 +13,14 @@ import {
   inputClass,
   useToast,
 } from "@/components/ui";
+import type { JobRoleRow } from "@/lib/job-roles";
 import type { StaffRow } from "@/lib/staff";
 
 import {
   createStaff,
   revokeSessions,
   setActive,
+  setJobRoles,
   setPin,
   setRole,
   type Result,
@@ -53,7 +56,15 @@ const ROLES = [
   },
 ] as const;
 
-export function Staff({ rows, minPin }: { rows: StaffRow[]; minPin: number }) {
+export function Staff({
+  rows,
+  jobRoles,
+  minPin,
+}: {
+  rows: StaffRow[];
+  jobRoles: JobRoleRow[];
+  minPin: number;
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [toast, showToast] = useToast();
@@ -94,6 +105,7 @@ export function Staff({ rows, minPin }: { rows: StaffRow[]; minPin: number }) {
                 <th className="px-4 py-2.5">Name</th>
                 <th className="px-3 py-2.5">Code</th>
                 <th className="px-3 py-2.5">Role</th>
+                <th className="px-3 py-2.5">Job roles</th>
                 <th className="px-3 py-2.5 text-right">Signed in</th>
                 <th className="px-3 py-2.5">Last seen</th>
                 <th className="px-3 py-2.5 text-right">Movements</th>
@@ -104,7 +116,7 @@ export function Staff({ rows, minPin }: { rows: StaffRow[]; minPin: number }) {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-16 text-center">
+                  <td colSpan={8} className="px-4 py-16 text-center">
                     <p className="mb-1 text-[15px] font-medium text-ink">
                       Nobody yet
                     </p>
@@ -151,6 +163,17 @@ export function Staff({ rows, minPin }: { rows: StaffRow[]; minPin: number }) {
                           </option>
                         ))}
                       </select>
+                    </td>
+
+                    <td className="px-3">
+                      <JobRolesCell
+                        actorName={row.name}
+                        assignedIds={row.jobRoleIds}
+                        assignedNames={row.jobRoles}
+                        options={jobRoles}
+                        busy={pending}
+                        onChange={(jobRoleIds) => run(() => setJobRoles(row.id, jobRoleIds))}
+                      />
                     </td>
 
                     <td className="px-3 text-right font-mono text-[12.5px] tabular-nums text-ink-2">
@@ -398,3 +421,137 @@ function PinDrawer({
 
 /** Aliased because the drawer has a `setPin` of its own for the input. */
 const setPin2 = setPin;
+
+/**
+ * Which job functions this person is assigned to, changeable where it
+ * sits — the same reasoning as Bale Intake's inline Type cell, but a
+ * checklist rather than a single choice, since holding more than one job
+ * role is normal here.
+ */
+function JobRolesCell({
+  actorName,
+  assignedIds,
+  assignedNames,
+  options,
+  busy,
+  onChange,
+}: {
+  actorName: string;
+  assignedIds: string[];
+  assignedNames: string[];
+  options: JobRoleRow[];
+  busy: boolean;
+  onChange: (jobRoleIds: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const r = anchor.current?.getBoundingClientRect();
+    if (r) {
+      const height = menu.current?.offsetHeight ?? 220;
+      const below = window.innerHeight - r.bottom;
+      setAt({
+        top: below < height + 8 ? Math.max(8, r.top - height - 4) : r.bottom + 4,
+        left: Math.max(8, Math.min(r.left, window.innerWidth - 232)),
+      });
+    }
+
+    function onDown(e: MouseEvent) {
+      const t = e.target as Node;
+      if (anchor.current?.contains(t) || menu.current?.contains(t)) return;
+      setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <>
+      <button
+        ref={anchor}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={busy}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title={`Job roles for ${actorName} — click to change`}
+        className={`group -mx-1 flex max-w-full items-center gap-1.5 rounded px-1 text-left transition-colors hover:bg-surface-3 disabled:opacity-50 ${
+          open ? "bg-surface-3" : ""
+        }`}
+      >
+        <span className={`truncate text-[12.5px] ${assignedNames.length === 0 ? "text-faint" : "text-ink-2"}`}>
+          {assignedNames.length === 0 ? "—" : assignedNames.join(", ")}
+        </span>
+        <span
+          aria-hidden
+          className={`flex-none text-[10px] text-faint transition-opacity ${
+            open ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          }`}
+        >
+          ▾
+        </span>
+      </button>
+
+      {open &&
+        createPortal(
+          <div
+            ref={menu}
+            role="listbox"
+            aria-multiselectable="true"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "fixed",
+              top: at?.top ?? -9999,
+              left: at?.left ?? -9999,
+              visibility: at === null ? "hidden" : "visible",
+            }}
+            className="z-50 w-56 overflow-hidden rounded-lg border border-rule bg-surface py-1 shadow-[var(--shadow)]"
+          >
+            {options.length === 0 ? (
+              <p className="px-3 py-2 text-[12px] text-muted">
+                No job roles yet — add one from Job Roles first.
+              </p>
+            ) : (
+              options.map((o) => {
+                const checked = assignedIds.includes(o.id);
+                return (
+                  <label
+                    key={o.id}
+                    className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-[13px] text-ink-2 hover:bg-surface-2"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() =>
+                        onChange(
+                          checked
+                            ? assignedIds.filter((id) => id !== o.id)
+                            : [...assignedIds, o.id],
+                        )
+                      }
+                      className="accent-[var(--brick)]"
+                    />
+                    <span className="truncate">{o.name}</span>
+                  </label>
+                );
+              })
+            )}
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}

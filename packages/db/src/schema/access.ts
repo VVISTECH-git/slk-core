@@ -3,6 +3,7 @@ import {
   index,
   integer,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -70,6 +71,51 @@ export const actor = pgTable(
       .defaultNow(),
   },
   (t) => [uniqueIndex("actor_code_key").on(t.code)],
+);
+
+/**
+ * A named job function — "Bale Custodian" is the first. Separate from
+ * `actor.role` above, which is what someone is *allowed* to do
+ * (floor/office/owner, a permission tier); this is what they're actually
+ * responsible for day to day, and has nothing to do with permissions. A
+ * maintained list, not a fixed set: more of these get named as the
+ * business defines more of them, the same reasoning as `supplier` and
+ * `cloth_item` in `production.ts`.
+ */
+export const jobRole = pgTable(
+  "job_role",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [uniqueIndex("job_role_name_key").on(t.name)],
+);
+
+/**
+ * Who currently holds which job role. Many-to-many: a role can be held by
+ * more than one person (two Bale Custodians on different shifts), and
+ * nothing here stops one person holding more than one role.
+ */
+export const actorJobRole = pgTable(
+  "actor_job_role",
+  {
+    actorId: uuid("actor_id")
+      .notNull()
+      .references(() => actor.id, { onDelete: "cascade" }),
+    jobRoleId: uuid("job_role_id")
+      .notNull()
+      .references(() => jobRole.id, { onDelete: "restrict" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.actorId, t.jobRoleId] }),
+    index("actor_job_role_job_role_idx").on(t.jobRoleId),
+  ],
 );
 
 /**
@@ -203,6 +249,8 @@ export const idempotency = pgTable("idempotency", {
 });
 
 export type Actor = typeof actor.$inferSelect;
+export type JobRole = typeof jobRole.$inferSelect;
+export type ActorJobRole = typeof actorJobRole.$inferSelect;
 export type ActorToken = typeof actorToken.$inferSelect;
 export type LoginAttempt = typeof loginAttempt.$inferSelect;
 export type Idempotency = typeof idempotency.$inferSelect;

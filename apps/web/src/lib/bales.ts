@@ -17,6 +17,7 @@ export type BaleRow = {
   transporter: string | null;
   invoiceNumber: string | null;
   invoiceDate: string | null;
+  invoiceAmount: number | null;
   type: string;
   metresReceived: number;
   uom: "Mtrs" | "Nos";
@@ -30,6 +31,12 @@ export type BaleRow = {
   /** "2026-09-14" — for sorting; "DD Mon YYYY" doesn't sort chronologically as text. */
   billEntryDateOn: string;
   recordedByName: string | null;
+  /** Who initiated cutting. Null while the bale is still awaiting it. */
+  cutByName: string | null;
+  /** Who marked it returned. Null unless the bale is `returned`. */
+  returnedByName: string | null;
+  /** Who ran "Generate QR codes". Null until at least one Thaan has a code. */
+  qrGeneratedByName: string | null;
   /** How many Thaans this bale was cut into. Zero while it's still awaiting cutting. */
   thaanCount: number;
   /** Of those, how many already have a QR code. Never more than `thaanCount`. */
@@ -48,6 +55,7 @@ export async function loadBales(): Promise<BaleRow[]> {
       b.transporter,
       b.invoice_number                              as "invoiceNumber",
       to_char(b.invoice_date, 'YYYY-MM-DD')         as "invoiceDate",
+      b.invoice_amount::double precision            as "invoiceAmount",
       b.type,
       b.metres_received::double precision           as "metresReceived",
       b.uom,
@@ -59,6 +67,9 @@ export async function loadBales(): Promise<BaleRow[]> {
       to_char(b.bill_entry_date, 'DD Mon YYYY')     as "billEntryDate",
       to_char(b.bill_entry_date, 'YYYY-MM-DD')      as "billEntryDateOn",
       a.name                                         as "recordedByName",
+      cut_by.name                                    as "cutByName",
+      returned_by.name                               as "returnedByName",
+      t.qr_generated_by_name                         as "qrGeneratedByName",
       coalesce(t.thaan_count, 0)                    as "thaanCount",
       coalesce(t.qr_count, 0)                       as "qrGeneratedCount",
       case when coalesce(t.thaan_count, 0) > 0
@@ -69,13 +80,17 @@ export async function loadBales(): Promise<BaleRow[]> {
     join supplier s on s.id = b.supplier_id
     join cloth_item i on i.id = b.item_id
     left join actor a on a.id = b.recorded_by_id
+    left join actor cut_by on cut_by.id = b.cut_by_id
+    left join actor returned_by on returned_by.id = b.returned_by_id
     left join (
       select
-        bale_id,
-        count(*)::int              as thaan_count,
-        count(qr_generated_at)::int as qr_count
-      from thaan
-      group by bale_id
+        th.bale_id,
+        count(*)::int                        as thaan_count,
+        count(th.qr_generated_at)::int        as qr_count,
+        max(qr_by.name)                       as qr_generated_by_name
+      from thaan th
+      left join actor qr_by on qr_by.id = th.qr_generated_by_id
+      group by th.bale_id
     ) t on t.bale_id = b.id
     order by b.bill_entry_date desc, b.code desc
   `);

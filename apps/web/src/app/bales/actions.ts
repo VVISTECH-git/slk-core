@@ -122,61 +122,38 @@ export async function createBale(draft: BaleDraft): Promise<ActionResult> {
 
   const actorId = await actingId();
 
-  const code = await db.transaction(async (tx) => {
-    /*
-      Claiming this supplier's next number and writing it down happen in
-      one transaction, so two staff members recording a bale for the same
-      supplier at the same moment never walk away with the same code —
-      Postgres serialises the two UPDATEs on this row rather than letting
-      them both read "3" and both mint "A3".
-    */
-    const [supplierRow] = await tx.execute<{ codePrefix: string; number: number }>(sql`
-      update supplier
-      set next_bale_number = next_bale_number + 1, updated_at = now()
-      where id = ${draft.supplierId}
-      returning code_prefix as "codePrefix", next_bale_number - 1 as number
-    `);
-
-    if (supplierRow === undefined) {
-      throw new Error("NO_SUCH_SUPPLIER");
-    }
-
-    const code = `${supplierRow.codePrefix}${supplierRow.number}`;
-
-    await tx.execute(sql`
-      insert into bale (
-        code, supplier_id, bill_entry_date, transporter, invoice_number, invoice_date, type,
-        metres_received, uom, item_id, bale_count, notes, recorded_by_id
-      ) values (
-        ${code},
-        ${draft.supplierId},
-        ${billEntryDate},
-        ${draft.transporter.trim() || null},
-        ${draft.invoiceNumber.trim() || null},
-        ${invoiceDate},
-        ${type},
-        ${metresReceived},
-        ${uom},
-        ${itemId},
-        ${baleCount},
-        ${draft.notes.trim() || null},
-        ${actorId}
-      )
-    `);
-
-    return code;
-  }).catch((error: unknown) => {
-    if (error instanceof Error && error.message === "NO_SUCH_SUPPLIER") return null;
-    throw error;
-  });
-
-  if (code === null) {
+  const [supplierRow] = await db.execute<{ id: string }>(sql`
+    select id from supplier where id = ${draft.supplierId}
+  `);
+  if (supplierRow === undefined) {
     return { ok: false, message: "That supplier no longer exists." };
   }
 
+  const [row] = await db.execute<{ code: string }>(sql`
+    insert into bale (
+      code, supplier_id, bill_entry_date, transporter, invoice_number, invoice_date, type,
+      metres_received, uom, item_id, bale_count, notes, recorded_by_id
+    ) values (
+      nextval('bale_code_seq')::text,
+      ${draft.supplierId},
+      ${billEntryDate},
+      ${draft.transporter.trim() || null},
+      ${draft.invoiceNumber.trim() || null},
+      ${invoiceDate},
+      ${type},
+      ${metresReceived},
+      ${uom},
+      ${itemId},
+      ${baleCount},
+      ${draft.notes.trim() || null},
+      ${actorId}
+    )
+    returning code
+  `);
+
   revalidate();
 
-  return { ok: true, message: `Saved as ${code}.` };
+  return { ok: true, message: `Saved as ${row.code}.` };
 }
 
 /**
@@ -218,6 +195,31 @@ export async function updateBale(baleId: string, draft: BaleEditDraft): Promise<
   revalidate();
 
   return { ok: true, message: `${row.code} updated.` };
+}
+
+/**
+ * Changing just the Type, from the table cell rather than the full editor —
+ * the same column `updateBale` writes, so a faster path isn't a laxer one.
+ */
+export async function setBaleType(baleId: string, type: string): Promise<ActionResult> {
+  const denied = await guard("floor");
+  if (denied !== null) return denied;
+
+  if (!(BALE_TYPES as readonly string[]).includes(type)) {
+    return { ok: false, message: "Choose a type." };
+  }
+
+  const [row] = await db.execute<{ code: string }>(sql`
+    update bale set type = ${type}, updated_at = now() where id = ${baleId} returning code
+  `);
+
+  if (row === undefined) {
+    return { ok: false, message: "That bale no longer exists." };
+  }
+
+  revalidate();
+
+  return { ok: true, message: `${row.code} set to ${type}.` };
 }
 
 /**

@@ -160,7 +160,7 @@ function AddDrawer({
 
           <Field
             label="Code"
-            hint="1 to 4 letters. Every bale from this supplier is numbered under this letter — A1, A2, A3."
+            hint="1 to 4 letters. A short reference for this supplier — bales are numbered separately."
           >
             <input
               className={inputClass}

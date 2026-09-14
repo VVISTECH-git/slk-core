@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 
 import {
@@ -17,6 +18,7 @@ import {
 import { useColumnOrder, useColumnWidths, useVisibleColumns } from "@/lib/column-widths";
 import {
   Button,
+  ConfirmDialog,
   Drawer,
   Field,
   RowMenu,
@@ -32,6 +34,7 @@ import {
   cutBale,
   generateQrCodes,
   markBaleReturned,
+  setBaleType,
   updateBale,
   type ActionResult,
   type BaleDraft,
@@ -58,7 +61,7 @@ const STATUS_STYLE: Record<BaleRow["status"], { background: string; color: strin
  * thousand, so there's nothing yet for one to page through.
  */
 const COLUMNS = [
-  { key: "code", label: "Bale", width: 90 },
+  { key: "code", label: "Bale ID", width: 90 },
   { key: "supplierName", label: "Supplier", width: 150 },
   { key: "type", label: "Type", width: 100 },
   { key: "itemName", label: "Item", width: 200 },
@@ -163,6 +166,9 @@ export function Bales({
   const [cutting, setCutting] = useState<BaleRow | null>(null);
   const [editing, setEditing] = useState<BaleRow | null>(null);
   const [duplicating, setDuplicating] = useState<BaleRow | null>(null);
+  const [confirming, setConfirming] = useState<
+    { kind: "generateQr" | "markReturned"; bale: BaleRow } | null
+  >(null);
 
   function run(action: () => Promise<ActionResult>, onOk?: () => void) {
     start(async () => {
@@ -362,6 +368,18 @@ export function Bales({
                       className="h-11 cursor-pointer border-b border-rule last:border-b-0 hover:bg-surface-2"
                     >
                       {columns.map((c) => {
+                        if (c.key === "type") {
+                          return (
+                            <Cell key={c.key} title={r.type}>
+                              <InlineTypeCell
+                                value={r.type}
+                                busy={pending}
+                                onPick={(type) => run(() => setBaleType(r.id, type))}
+                              />
+                            </Cell>
+                          );
+                        }
+
                         if (c.key === "status") {
                           return (
                             <Cell key={c.key} title={STATUS_LABEL[r.status]}>
@@ -462,7 +480,7 @@ export function Bales({
                                   : r.qrGeneratedCount >= r.thaanCount
                                     ? "Every Thaan from this bale already has a code."
                                     : undefined,
-                              onSelect: () => run(() => generateQrCodes(r.id)),
+                              onSelect: () => setConfirming({ kind: "generateQr", bale: r }),
                             },
                             {
                               label: "Print QR codes",
@@ -481,7 +499,7 @@ export function Bales({
                                 r.status !== "awaiting_cutting"
                                   ? "Only a bale still awaiting cutting can be returned."
                                   : undefined,
-                              onSelect: () => run(() => markBaleReturned(r.id)),
+                              onSelect: () => setConfirming({ kind: "markReturned", bale: r }),
                             },
                           ]}
                         />
@@ -528,6 +546,33 @@ export function Bales({
 
       {cutting !== null && (
         <CutDrawer bale={cutting} pending={pending} onClose={() => setCutting(null)} onRun={run} />
+      )}
+
+      {confirming !== null && confirming.kind === "generateQr" && (
+        <ConfirmDialog
+          title={`Generate QR codes for ${confirming.bale.code}?`}
+          description={`Assigns a permanent code to each of its ${confirming.bale.thaanCount} Thaan${confirming.bale.thaanCount === 1 ? "" : "s"}. This can't be undone — a code, once generated, is fixed.`}
+          confirmLabel="Generate"
+          pending={pending}
+          onCancel={() => setConfirming(null)}
+          onConfirm={() =>
+            run(() => generateQrCodes(confirming.bale.id), () => setConfirming(null))
+          }
+        />
+      )}
+
+      {confirming !== null && confirming.kind === "markReturned" && (
+        <ConfirmDialog
+          title={`Mark ${confirming.bale.code} returned?`}
+          description="Records this bale as sent back to the supplier. It can no longer be cut."
+          confirmLabel="Mark returned"
+          danger
+          pending={pending}
+          onCancel={() => setConfirming(null)}
+          onConfirm={() =>
+            run(() => markBaleReturned(confirming.bale.id), () => setConfirming(null))
+          }
+        />
       )}
 
       <ToastBar toast={toast} onDismiss={() => showToast(null)} />
@@ -838,5 +883,135 @@ function CutDrawer({
         </Field>
       </div>
     </Drawer>
+  );
+}
+
+/**
+ * Type, changeable where it sits — same reasoning as Product Management's
+ * own inline lookup cells: five values is not worth a six-field drawer.
+ * A simplified version of that cell rather than a reuse of it: Type is
+ * never unset, so there's no "Not set" option to offer.
+ */
+function InlineTypeCell({
+  value,
+  busy,
+  onPick,
+}: {
+  value: string;
+  busy: boolean;
+  onPick: (type: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const r = anchor.current?.getBoundingClientRect();
+    if (r) {
+      const height = menu.current?.offsetHeight ?? 200;
+      const below = window.innerHeight - r.bottom;
+      setAt({
+        top: below < height + 8 ? Math.max(8, r.top - height - 4) : r.bottom + 4,
+        left: Math.max(8, Math.min(r.left, window.innerWidth - 168)),
+      });
+    }
+
+    function onDown(e: MouseEvent) {
+      const t = e.target as Node;
+      if (anchor.current?.contains(t) || menu.current?.contains(t)) return;
+      setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    function onScroll(e: Event) {
+      if (menu.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    }
+    function away() {
+      setOpen(false);
+    }
+
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", away);
+
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", away);
+    };
+  }, [open]);
+
+  return (
+    <>
+      <button
+        ref={anchor}
+        type="button"
+        onClick={(e) => {
+          // The row underneath opens the whole editor. This cell answers
+          // for itself instead.
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title={`${value} — click to change`}
+        className={`group -mx-1 flex w-[calc(100%+0.5rem)] items-center gap-1.5 rounded px-1 text-left transition-colors hover:bg-surface-3 ${
+          busy ? "opacity-50" : ""
+        } ${open ? "bg-surface-3" : ""}`}
+      >
+        <span className="truncate">{value}</span>
+        <span
+          aria-hidden
+          className={`ml-auto flex-none text-[10px] text-faint transition-opacity ${
+            open ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          }`}
+        >
+          ▾
+        </span>
+      </button>
+
+      {open &&
+        createPortal(
+          <div
+            ref={menu}
+            role="listbox"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "fixed",
+              top: at?.top ?? -9999,
+              left: at?.left ?? -9999,
+              visibility: at === null ? "hidden" : "visible",
+            }}
+            className="z-50 w-40 overflow-hidden rounded-lg border border-rule bg-surface py-1 shadow-[var(--shadow)]"
+          >
+            {BALE_TYPES.map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="option"
+                aria-selected={t === value}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOpen(false);
+                  if (t !== value) onPick(t);
+                }}
+                className={`block w-full px-3 py-1.5 text-left text-[13px] hover:bg-surface-2 ${
+                  t === value ? "bg-brick-soft font-medium text-brick" : "text-ink-2"
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }

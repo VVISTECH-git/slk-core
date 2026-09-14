@@ -416,6 +416,62 @@ export function Drawer({
   );
 }
 
+/* ---------------------------------------------------------------- confirm */
+
+/**
+ * A second click before something happens that can't be quietly undone —
+ * same shape as the catalogue's own `ArchiveDialog`, generalised: a title,
+ * what's about to happen, Cancel or go ahead.
+ */
+export function ConfirmDialog({
+  title,
+  description,
+  confirmLabel,
+  danger,
+  pending,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  danger?: boolean;
+  pending: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+      <button
+        type="button"
+        aria-label="Cancel"
+        onClick={onCancel}
+        className="absolute inset-0 cursor-default bg-ink/25"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="relative w-full max-w-md rounded-xl border border-rule bg-surface p-6 shadow-2xl"
+      >
+        <h2 className="mb-2 text-[18px] font-semibold text-ink">{title}</h2>
+        <p className="mb-5 text-[13.5px] leading-relaxed text-ink-2">{description}</p>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md px-3 py-2 text-[13.5px] text-muted hover:text-ink"
+          >
+            Cancel
+          </button>
+          <Button tone={danger === true ? "danger" : "primary"} disabled={pending} onClick={onConfirm}>
+            {confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* -------------------------------------------------------------------- field */
 
 export function Field({

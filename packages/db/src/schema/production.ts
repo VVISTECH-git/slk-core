@@ -42,7 +42,11 @@ export const supplier = pgTable(
      * checked against its real history, the same supplier was given
      * different letters at different times and the same letter went to
      * more than one supplier, so there is no clean mapping to carry
-     * forward. The client picks the letters going forward instead.
+     * forward.
+     *
+     * No longer feeds into a bale's own code — that's `bale_code_seq` now,
+     * one running number for every supplier — so this is purely a short
+     * reference for the supplier itself.
      */
     codePrefix: text("code_prefix").notNull(),
 
@@ -56,15 +60,6 @@ export const supplier = pgTable(
 
     /** The person to reach, when the supplier is a firm rather than an individual. */
     contactPerson: text("contact_person"),
-
-    /**
-     * The next bale number for this supplier. Incremented in the same
-     * transaction that mints a bale's code, by a plain `UPDATE ...
-     * RETURNING` rather than a Postgres sequence — a sequence is one
-     * counter for the whole table, and this needs one counter per
-     * supplier, starting at 1 each.
-     */
-    nextBaleNumber: integer("next_bale_number").notNull().default(1),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -153,7 +148,7 @@ export const bale = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
 
-    /** The supplier's prefix plus their own running number — "A3". */
+    /** "1001", "1002"... — one running number for every bale, from `bale_code_seq`. */
     code: text("code").notNull(),
 
     supplierId: uuid("supplier_id")

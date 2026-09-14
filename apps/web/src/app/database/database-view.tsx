@@ -1,10 +1,13 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { Pager } from "@/components/grid";
 import { Header } from "@/components/ui";
 import type { DbUsage } from "@/lib/db-usage";
+
+const PER_PAGE = 50;
 
 /**
  * How much of the database is actually spoken for — Storage's own question
@@ -13,8 +16,14 @@ import type { DbUsage } from "@/lib/db-usage";
 export function DbUsageView({ usage }: { usage: DbUsage }) {
   const router = useRouter();
   const [pending, startRefresh] = useTransition();
+  const [page, setPage] = useState(1);
 
   const largest = usage.tables[0];
+
+  const pages = Math.max(1, Math.ceil(usage.tables.length / PER_PAGE));
+  const currentPage = Math.min(page, pages);
+  const pageFrom = (currentPage - 1) * PER_PAGE;
+  const pageTables = usage.tables.slice(pageFrom, pageFrom + PER_PAGE);
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -56,13 +65,14 @@ export function DbUsageView({ usage }: { usage: DbUsage }) {
             ) : (
               <Table
                 head={["Table", "Rows (approx)", "Data", "Indexes", "Total"]}
-                rows={usage.tables.map((t) => [
+                rows={pageTables.map((t) => [
                   t.name,
                   `~${t.rowEstimate.toLocaleString("en-IN")}`,
                   formatBytes(t.tableBytes),
                   formatBytes(t.indexBytes),
                   formatBytes(t.totalBytes),
                 ])}
+                footer={<Pager total={usage.tables.length} page={currentPage} perPage={PER_PAGE} onPage={setPage} />}
               />
             )}
           </Section>
@@ -114,42 +124,45 @@ function Section({
   );
 }
 
-function Table({ head, rows }: { head: string[]; rows: string[][] }) {
+function Table({ head, rows, footer }: { head: string[]; rows: string[][]; footer?: React.ReactNode }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-[13px]">
-        <thead>
-          <tr className="border-b border-rule bg-surface-2">
-            {head.map((h, i) => (
-              <th
-                key={h}
-                className={`px-4 py-2 text-left text-[11.5px] font-medium text-muted ${
-                  i > 0 ? "text-right" : ""
-                }`}
-              >
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i} className="border-b border-rule last:border-b-0">
-              {row.map((cell, j) => (
-                <td
-                  key={j}
-                  className={`truncate px-4 py-2 font-mono text-[12px] ${
-                    j === 0 ? "max-w-xs text-ink" : "text-right text-ink-2"
+    <div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="border-b border-rule bg-surface-2">
+              {head.map((h, i) => (
+                <th
+                  key={h}
+                  className={`px-4 py-2 text-left text-[11.5px] font-medium text-muted ${
+                    i > 0 ? "text-right" : ""
                   }`}
-                  title={cell}
                 >
-                  {cell}
-                </td>
+                  {h}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((row, i) => (
+              <tr key={i} className="border-b border-rule last:border-b-0">
+                {row.map((cell, j) => (
+                  <td
+                    key={j}
+                    className={`truncate px-4 py-2 font-mono text-[12px] ${
+                      j === 0 ? "max-w-xs text-ink" : "text-right text-ink-2"
+                    }`}
+                    title={cell}
+                  >
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {footer}
     </div>
   );
 }

@@ -29,5 +29,9 @@ export default async function PrintThaansPage({
     notFound();
   }
 
-  return <PrintView batch={batch} />;
+  // A single-Thaan reprint only ever gets here from the Thaans screen's own
+  // row menu — the bulk print action on Bale Intake never sets `thaan`.
+  const back = thaan === undefined ? { href: "/bales", label: "Back to Bale Intake" } : { href: "/thaans", label: "Back to Thaans" };
+
+  return <PrintView batch={batch} back={back} />;
 }

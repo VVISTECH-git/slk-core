@@ -12,7 +12,13 @@ import type { ThaanPrintBatch } from "@/lib/thaans";
  * prints this at A4 with margins, and the roll printer either wastes most
  * of its paper or refuses the job.
  */
-export function PrintView({ batch }: { batch: ThaanPrintBatch }) {
+export function PrintView({
+  batch,
+  back,
+}: {
+  batch: ThaanPrintBatch;
+  back: { href: string; label: string };
+}) {
   const router = useRouter();
 
   return (
@@ -37,7 +43,7 @@ export function PrintView({ batch }: { batch: ThaanPrintBatch }) {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => router.push("/bales")}>Back to Bale Intake</Button>
+          <Button onClick={() => router.push(back.href)}>{back.label}</Button>
           <Button tone="primary" onClick={() => window.print()}>
             Print
           </Button>

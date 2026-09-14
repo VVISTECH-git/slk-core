@@ -610,7 +610,13 @@ export function Bales({
       {confirming !== null && confirming.kind === "generateQr" && (
         <ConfirmDialog
           title={`Generate QR codes for ${confirming.bale.code}?`}
-          description={`Assigns a permanent code to each of its ${confirming.bale.thaanCount} Thaan${confirming.bale.thaanCount === 1 ? "" : "s"}. This can't be undone — a code, once generated, is fixed.`}
+          description={(() => {
+            const remaining = confirming.bale.thaanCount - confirming.bale.qrGeneratedCount;
+            const already = confirming.bale.qrGeneratedCount;
+            return `Assigns a permanent code to the ${remaining} Thaan${remaining === 1 ? "" : "s"} still waiting on one${
+              already > 0 ? ` — the ${already} already coded ${already === 1 ? "stays" : "stay"} untouched` : ""
+            }. This can't be undone — a code, once generated, is fixed.`;
+          })()}
           confirmLabel="Generate"
           pending={pending}
           onCancel={() => setConfirming(null)}

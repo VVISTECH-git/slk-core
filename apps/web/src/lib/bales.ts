@@ -85,8 +85,8 @@ export async function loadBales(): Promise<BaleRow[]> {
     left join (
       select
         th.bale_id,
-        count(*)::int                        as thaan_count,
-        count(th.qr_generated_at)::int        as qr_count,
+        count(*) filter (where th.voided_at is null)::int       as thaan_count,
+        count(th.qr_generated_at) filter (where th.voided_at is null)::int as qr_count,
         max(qr_by.name)                       as qr_generated_by_name
       from thaan th
       left join actor qr_by on qr_by.id = th.qr_generated_by_id

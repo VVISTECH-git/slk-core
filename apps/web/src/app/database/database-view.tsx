@@ -10,6 +10,16 @@ import type { DbUsage } from "@/lib/db-usage";
 const PER_PAGE = 50;
 
 /**
+ * Neon's Free plan storage cap — 0.5 GB, as quoted on their pricing page.
+ * Not something Postgres itself knows (`pg_database_size` has no concept of
+ * a hosting plan's quota); this is a fact about our Neon project, not the
+ * database. Update this the day the project is upgraded off Free. Lives
+ * here rather than in `db-usage.ts` so this client component never pulls a
+ * value import from a file that reaches the `postgres` driver.
+ */
+const DB_CAPACITY_BYTES = 0.5 * 1024 ** 3;
+
+/**
  * How much of the database is actually spoken for — Storage's own question
  * (`storage-view.tsx`), asked of Postgres instead of the R2 bucket.
  */
@@ -24,6 +34,10 @@ export function DbUsageView({ usage }: { usage: DbUsage }) {
   const currentPage = Math.min(page, pages);
   const pageFrom = (currentPage - 1) * PER_PAGE;
   const pageTables = usage.tables.slice(pageFrom, pageFrom + PER_PAGE);
+
+  const usedFraction = Math.min(1, usage.totalBytes / DB_CAPACITY_BYTES);
+  const usedPercent = usedFraction * 100;
+  const remainingBytes = Math.max(0, DB_CAPACITY_BYTES - usage.totalBytes);
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -57,6 +71,25 @@ export function DbUsageView({ usage }: { usage: DbUsage }) {
               value={largest?.name ?? "—"}
               hint={largest !== undefined ? formatBytes(largest.totalBytes) : undefined}
             />
+          </div>
+
+          <div className="rounded-lg border border-rule bg-surface p-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <p className="text-[11.5px] font-medium text-muted">Neon Free plan — 0.5 GB storage</p>
+              <p className="text-[12.5px] text-ink-2">
+                {formatBytes(usage.totalBytes)} used, {formatBytes(remainingBytes)} remaining (
+                {usedPercent < 1 ? usedPercent.toFixed(1) : Math.round(usedPercent)}%)
+              </p>
+            </div>
+            <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-surface-2">
+              <div
+                className="h-full rounded-full"
+                style={{
+                  width: `${Math.max(2, usedFraction * 100)}%`,
+                  background: usedFraction > 0.9 ? "var(--brick)" : usedFraction > 0.7 ? "var(--warn)" : "var(--ok)",
+                }}
+              />
+            </div>
           </div>
 
           <Section title="Heaviest tables" lede="Every table in the database, by total size — data plus its own indexes.">

@@ -24,6 +24,23 @@ export type VendorRow = {
   balanceDue: number;
 };
 
+export type VendorSummary = {
+  id: string;
+  name: string;
+  stages: string[];
+};
+
+/**
+ * Just enough to fill a "who's this going to" picker — the Send screen on
+ * both web and mobile. Deliberately not `loadVendors`: that carries billing
+ * totals, which floor-level actors sending a batch have no reason to read.
+ */
+export async function loadVendorSummaries(): Promise<VendorSummary[]> {
+  return db.execute<VendorSummary>(sql`
+    select id, name, stages from vendor order by name
+  `);
+}
+
 export async function loadVendors(): Promise<VendorRow[]> {
   const rows = await db.execute<Omit<VendorRow, "balanceDue">>(sql`
     select

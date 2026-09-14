@@ -505,6 +505,13 @@
       "when": 1789476316000,
       "tag": "0071_cutting_can_be_partial",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1789476317000,
+      "tag": "0072_thaan_codes_are_wider_and_distinct_from_bale_codes",
+      "breakpoints": true
     }
   ]
 }

@@ -360,7 +360,7 @@ export async function generateQrCodes(baleId: string): Promise<ActionResult> {
 
   const updated = await db.execute<{ id: string }>(sql`
     update thaan
-    set code = 'T' || nextval('thaan_code_seq'),
+    set code = 'T' || lpad(nextval('thaan_code_seq')::text, 8, '0'),
         qr_generated_at = now(),
         qr_generated_by_id = ${actorId},
         updated_at = now()

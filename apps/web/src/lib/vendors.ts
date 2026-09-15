@@ -24,6 +24,10 @@ export type VendorRow = {
   totalPaid: number;
   /** `totalEarned - totalPaid`. What's still owed, if positive. */
   balanceDue: number;
+  /** Thaans sent to this vendor with no `received_at` yet — out with them right now. */
+  currentlyHolding: number;
+  /** `currentlyHolding`, split by stage — only stages with at least one. */
+  holdingByStage: { stage: string; count: number }[];
 };
 
 export type VendorSummary = {
@@ -56,7 +60,21 @@ export async function loadVendors(): Promise<VendorRow[]> {
         '[]'::json
       ) as "rates",
       coalesce((select sum(vt.amount) from vendor_transaction vt where vt.vendor_id = v.id), 0)::double precision as "totalEarned",
-      coalesce((select sum(vp.amount) from vendor_payment vp where vp.vendor_id = v.id), 0)::double precision as "totalPaid"
+      coalesce((select sum(vp.amount) from vendor_payment vp where vp.vendor_id = v.id), 0)::double precision as "totalPaid",
+      coalesce(
+        (select count(*) from handover h where h.vendor_id = v.id and h.received_at is null),
+        0
+      )::int as "currentlyHolding",
+      coalesce(
+        (select json_agg(json_build_object('stage', x.stage, 'count', x.n) order by x.stage)
+         from (
+           select stage, count(*)::int as n
+           from handover
+           where vendor_id = v.id and received_at is null
+           group by stage
+         ) x),
+        '[]'::json
+      ) as "holdingByStage"
     from vendor v
     order by v.name
   `);

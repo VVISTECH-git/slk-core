@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import QRCode from "qrcode";
 
 import { db } from "@/lib/db";
-import { stagesFor } from "@/lib/stages";
+import { STAGES, stagesFor } from "@/lib/stages";
 
 /**
  * Thaans — what a bale becomes once it's cut. See
@@ -95,6 +95,39 @@ function pipelineStatus(
   const stages = stagesFor(needsSecondPrint);
   if (completedStages >= stages.length) return "Finished";
   return `Ready for ${stages[completedStages]}`;
+}
+
+export type StageFunnelRow = { stage: string; completed: number };
+
+/**
+ * How many Thaans have finished each stage, in pipeline order — not still
+ * out for it, not merely started, actually handed back and confirmed. Every
+ * Thaan must clear stage N before stage N+1 can open (see `lib/stages.ts`),
+ * so "completed Ironing" already means "finished the whole pipeline" —
+ * there is no separate "Finished" count to compute.
+ *
+ * Counted straight from `handover`, not derived from `loadThaans`' own
+ * per-row `pipelineStatus`: that reads one Thaan's current stage, this
+ * reads how many ever cleared each one, which needs every row's history,
+ * not just its latest.
+ */
+export async function loadStageFunnel(): Promise<{ eligible: number; stages: StageFunnelRow[] }> {
+  const [{ eligible }] = await db.execute<{ eligible: number }>(sql`
+    select count(*)::int as "eligible" from thaan where code is not null and voided_at is null
+  `);
+
+  const rows = await db.execute<{ stage: string; completed: number }>(sql`
+    select h.stage, count(distinct h.thaan_id)::int as "completed"
+    from handover h
+    join thaan t on t.id = h.thaan_id
+    where h.received_at is not null and t.voided_at is null
+    group by h.stage
+  `);
+
+  const byStage = new Map(rows.map((r) => [r.stage, r.completed]));
+  const stages = STAGES.map((stage) => ({ stage, completed: byStage.get(stage) ?? 0 }));
+
+  return { eligible, stages };
 }
 
 /**

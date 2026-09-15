@@ -15,6 +15,15 @@ const HIDDEN = new Set<string>([]);
 
 const NAV = [
   {
+    // The dashboard — every bale's Thaans and where they currently sit,
+    // one screen. First in the sidebar and where "/" lands (see
+    // `app/page.tsx`), so the app opens on the overview rather than a
+    // single-purpose entry screen.
+    href: "/bale-progress",
+    label: "Bale Progress",
+    icon: "M3 10h4v6H3z M8 6h4v10H8z M13 3h4v13h-4z",
+  },
+  {
     // Kora to Shelf's own first step — receiving a bale, before any design
     // or colour is known. Deliberately its own entry, not under Product
     // Management: a bale is not a product yet, and joining the two nav
@@ -74,6 +83,14 @@ const NAV = [
     href: "/vendor-ledger",
     label: "Vendor Ledger",
     icon: "M4 4h12v12H4z M7 8h6 M7 11h6 M7 14h3",
+    minRole: "office",
+  },
+  {
+    // The same billing and payments Vendor Ledger lists one row at a time,
+    // rolled up into trends — kept right after it, same access tier.
+    href: "/finance",
+    label: "Financial Dashboard",
+    icon: "M4 16V10 M9 16V6 M14 16V12 M3 16h13",
     minRole: "office",
   },
   {

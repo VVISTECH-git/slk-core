@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
+import { stagesFor } from "@/lib/stages";
 
 /**
  * Kora to Shelf, step one: receiving a bale.
@@ -129,6 +130,83 @@ export async function loadBaleCuttingHistory(baleId: string): Promise<BaleCuttin
     where e.bale_id = ${baleId}
     order by e.recorded_at
   `);
+}
+
+export type BaleHeatmapRow = {
+  baleId: string;
+  baleCode: string;
+  cuttingComplete: boolean;
+  thaanCount: number;
+  /** "Not started", each of `STAGES`, or "Finished" — however many thaans currently sit there. */
+  buckets: Record<string, number>;
+};
+
+/**
+ * Where every bale's thaans currently sit, bucketed by stage rather than by
+ * the "Out for X" / "Ready for X" wording Thaans and Handovers use — this is
+ * "how much of this bale is where", not one thaan's own history. `bucket`
+ * mirrors `pipelineStatus` in `lib/thaans.ts`, but named for the stage
+ * itself so "Out for Karakkaya" and "Karakkaya done, not yet sent on" both
+ * land in one "Karakkaya" column.
+ */
+export async function loadBaleStageHeatmap(): Promise<BaleHeatmapRow[]> {
+  const bales = await db.execute<{
+    id: string;
+    code: string;
+    status: string;
+    needsSecondPrint: boolean;
+  }>(sql`
+    select id, code, status, needs_second_print as "needsSecondPrint"
+    from bale
+    order by bill_entry_date desc, code desc
+  `);
+
+  const thaanRows = await db.execute<{
+    baleId: string;
+    hasCode: boolean;
+    openStage: string | null;
+    completedCount: number;
+  }>(sql`
+    select
+      t.bale_id                                 as "baleId",
+      (t.code is not null)                      as "hasCode",
+      open_h.stage                              as "openStage",
+      coalesce(done.n, 0)::int                  as "completedCount"
+    from thaan t
+    left join handover open_h on open_h.thaan_id = t.id and open_h.received_at is null
+    left join (
+      select thaan_id, count(*)::int as n from handover where received_at is not null group by thaan_id
+    ) done on done.thaan_id = t.id
+    where t.voided_at is null
+  `);
+
+  const needsSecondPrintByBale = new Map(bales.map((b) => [b.id, b.needsSecondPrint]));
+  const bucketsByBale = new Map<string, Record<string, number>>();
+
+  for (const t of thaanRows) {
+    const stages = stagesFor(needsSecondPrintByBale.get(t.baleId) ?? true);
+
+    let bucket: string;
+    if (!t.hasCode || (t.openStage === null && t.completedCount === 0)) bucket = "Not started";
+    else if (t.openStage !== null) bucket = t.openStage;
+    else if (t.completedCount >= stages.length) bucket = "Finished";
+    else bucket = stages[t.completedCount] ?? "Finished";
+
+    const counts = bucketsByBale.get(t.baleId) ?? {};
+    counts[bucket] = (counts[bucket] ?? 0) + 1;
+    bucketsByBale.set(t.baleId, counts);
+  }
+
+  return bales.map((b) => {
+    const buckets = bucketsByBale.get(b.id) ?? {};
+    return {
+      baleId: b.id,
+      baleCode: b.code,
+      cuttingComplete: b.status === "cut",
+      thaanCount: Object.values(buckets).reduce((sum, n) => sum + n, 0),
+      buckets,
+    };
+  });
 }
 
 export type SupplierRow = {

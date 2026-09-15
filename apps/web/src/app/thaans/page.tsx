@@ -1,5 +1,5 @@
 import { requirePage } from "@/lib/session";
-import { loadThaans } from "@/lib/thaans";
+import { loadStageFunnel, loadThaans } from "@/lib/thaans";
 
 import { Thaans } from "./thaans";
 
@@ -15,5 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function ThaansPage() {
   await requirePage();
 
-  return <Thaans rows={await loadThaans()} />;
+  const [rows, funnel] = await Promise.all([loadThaans(), loadStageFunnel()]);
+
+  return <Thaans rows={rows} funnel={funnel} />;
 }

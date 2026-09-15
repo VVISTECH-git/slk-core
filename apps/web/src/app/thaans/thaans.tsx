@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 
 import { ConfirmDialog, Header, ToastBar, useToast } from "@/components/ui";
 import { Pager } from "@/components/grid";
-import type { ThaanRow } from "@/lib/thaans";
+import type { StageFunnelRow, ThaanRow } from "@/lib/thaans";
 
 import { restoreThaan, voidThaan, type ActionResult } from "./actions";
 
@@ -29,7 +29,13 @@ function pipelineStatusStyle(status: string): { background: string; color: strin
  * piece, a link to reprint its own QR code — rather than another menu to
  * open first.
  */
-export function Thaans({ rows }: { rows: ThaanRow[] }) {
+export function Thaans({
+  rows,
+  funnel,
+}: {
+  rows: ThaanRow[];
+  funnel: { eligible: number; stages: StageFunnelRow[] };
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [toast, showToast] = useToast();
@@ -92,6 +98,12 @@ export function Thaans({ rows }: { rows: ThaanRow[] }) {
 
       <div className="flex min-h-0 flex-1 flex-col px-8 py-6">
         <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col">
+          {funnel.eligible > 0 && (
+            <div className="mb-4 flex-none rounded-lg border border-rule bg-surface p-4">
+              <StageFunnel eligible={funnel.eligible} stages={funnel.stages} />
+            </div>
+          )}
+
           {rows.length > 0 && (
             <div className="mb-4 flex flex-none items-center gap-3">
               <input
@@ -235,6 +247,42 @@ export function Thaans({ rows }: { rows: ThaanRow[] }) {
       )}
 
       <ToastBar toast={toast} onDismiss={() => showToast(null)} />
+    </div>
+  );
+}
+
+/**
+ * How many Thaans have cleared each stage, in pipeline order — a funnel
+ * against every Thaan that's entered the pipeline (has a QR code, isn't
+ * voided), not just the page below it. Ironing is always the last stage a
+ * Thaan can pass through (see `lib/stages.ts`), so its bar is also "how many
+ * Thaans are fully finished" — there's no separate bar for that.
+ */
+function StageFunnel({ eligible, stages }: { eligible: number; stages: StageFunnelRow[] }) {
+  return (
+    <div className="flex flex-col gap-2.5">
+      <p className="text-[11.5px] font-medium text-muted">
+        Thaans completed per stage, of {eligible} in the pipeline
+      </p>
+      {stages.map((s, i) => (
+        <div key={s.stage} className="flex items-center gap-3">
+          <span className="w-28 flex-none truncate text-[12.5px] text-ink-2">
+            {i === stages.length - 1 ? "Ironing (finished)" : s.stage}
+          </span>
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-3">
+            <div
+              className="h-full rounded-full"
+              style={{
+                width: `${Math.max(s.completed > 0 ? 2 : 0, (s.completed / Math.max(1, eligible)) * 100)}%`,
+                background: i === stages.length - 1 ? "var(--ok)" : "var(--brick)",
+              }}
+            />
+          </div>
+          <span className="w-10 flex-none text-right font-mono text-[12px] tabular-nums text-muted">
+            {s.completed}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }

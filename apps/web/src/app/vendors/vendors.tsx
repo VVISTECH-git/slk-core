@@ -116,6 +116,7 @@ export function Vendors({ rows }: { rows: VendorRow[] }) {
                     <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Secondary Phone</th>
                     <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Village</th>
                     <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Stages</th>
+                    <th scope="col" className="px-3 py-2 text-right text-[11.5px] font-medium text-muted">Holding now</th>
                     <th scope="col" className="px-3 py-2 text-right text-[11.5px] font-medium text-muted">Balance due</th>
                   </tr>
                 </thead>
@@ -135,6 +136,16 @@ export function Vendors({ rows }: { rows: VendorRow[] }) {
                       <td className="px-3 text-ink-2">{r.village ?? "—"}</td>
                       <td className="px-3 text-ink-2">
                         {r.stages.length === 0 ? "—" : r.stages.join(", ")}
+                      </td>
+                      <td
+                        className={`px-3 text-right font-mono text-[12.5px] tabular-nums ${r.currentlyHolding > 0 ? "text-ink" : "text-faint"}`}
+                        title={
+                          r.holdingByStage.length === 0
+                            ? "Nothing out with them right now"
+                            : r.holdingByStage.map((s) => `${s.count} at ${s.stage}`).join(", ")
+                        }
+                      >
+                        {r.currentlyHolding > 0 ? r.currentlyHolding : "—"}
                       </td>
                       <td
                         className={`px-3 text-right font-medium ${r.balanceDue > 0 ? "text-brick" : "text-ink-2"}`}

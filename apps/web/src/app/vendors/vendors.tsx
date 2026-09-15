@@ -77,7 +77,8 @@ export function Vendors({ rows }: { rows: VendorRow[] }) {
                   <tr className="border-b border-rule bg-surface-2 text-left">
                     <th scope="col" className="w-20 px-4 py-2 text-[11.5px] font-medium text-muted">Code</th>
                     <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Vendor</th>
-                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Phone</th>
+                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Primary Phone</th>
+                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Secondary Phone</th>
                     <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Village</th>
                     <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Stages</th>
                     <th scope="col" className="px-3 py-2 text-right text-[11.5px] font-medium text-muted">Balance due</th>
@@ -94,7 +95,8 @@ export function Vendors({ rows }: { rows: VendorRow[] }) {
                       <td className="px-3 text-ink" title={r.notes ?? ""}>
                         {r.name}
                       </td>
-                      <td className="px-3 font-mono text-[12.5px] text-ink-2">{r.phone ?? "—"}</td>
+                      <td className="px-3 font-mono text-[12.5px] text-ink-2">{r.primaryPhone ?? "—"}</td>
+                      <td className="px-3 font-mono text-[12.5px] text-ink-2">{r.secondaryPhone ?? "—"}</td>
                       <td className="px-3 text-ink-2">{r.village ?? "—"}</td>
                       <td className="px-3 text-ink-2">
                         {r.stages.length === 0 ? "—" : r.stages.join(", ")}
@@ -155,14 +157,22 @@ function VendorFields({
           />
         </Field>
 
-        <Field label="Phone" hint="Who gets called to hand off or collect work.">
+        <Field label="Primary Phone" hint="Who gets called to hand off or collect work.">
           <input
             className={inputClass}
-            value={draft.phone}
-            onChange={(e) => set("phone", e.target.value)}
+            value={draft.primaryPhone}
+            onChange={(e) => set("primaryPhone", e.target.value)}
           />
         </Field>
       </div>
+
+      <Field label="Secondary Phone" hint="A backup number, for when the primary one doesn't answer.">
+        <input
+          className={inputClass}
+          value={draft.secondaryPhone}
+          onChange={(e) => set("secondaryPhone", e.target.value)}
+        />
+      </Field>
 
       <Field label="Village" hint="Where this vendor works out of.">
         <input
@@ -217,7 +227,8 @@ function AddDrawer({
 }) {
   const [draft, setDraft] = useState<VendorDraft>({
     name: "",
-    phone: "",
+    primaryPhone: "",
+    secondaryPhone: "",
     village: "",
     stages: [],
     notes: "",
@@ -272,7 +283,8 @@ function EditDrawer({
 }) {
   const [draft, setDraft] = useState<VendorDraft>({
     name: vendor.name,
-    phone: vendor.phone ?? "",
+    primaryPhone: vendor.primaryPhone ?? "",
+    secondaryPhone: vendor.secondaryPhone ?? "",
     village: vendor.village ?? "",
     stages: vendor.stages,
     notes: vendor.notes ?? "",

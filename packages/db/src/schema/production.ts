@@ -162,7 +162,10 @@ export const vendor = pgTable(
     code: text("code").notNull(),
 
     /** Who gets called to hand off or collect work — the field that matters most here. */
-    phone: text("phone"),
+    primaryPhone: text("primary_phone"),
+
+    /** A backup number, for when the primary one doesn't answer. */
+    secondaryPhone: text("secondary_phone"),
 
     /** Vendors are individual artisans working out of a specific place, not a company address. */
     village: text("village"),

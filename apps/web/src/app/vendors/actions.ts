@@ -15,7 +15,8 @@ export interface ActionResult {
 
 export interface VendorDraft {
   name: string;
-  phone: string;
+  primaryPhone: string;
+  secondaryPhone: string;
   village: string;
   stages: string[];
   notes: string;
@@ -49,10 +50,11 @@ export async function createVendor(draft: VendorDraft): Promise<ActionResult> {
   }
 
   await db.execute(sql`
-    insert into vendor (name, phone, village, stages, notes, code)
+    insert into vendor (name, primary_phone, secondary_phone, village, stages, notes, code)
     values (
       ${cleanName},
-      ${draft.phone.trim() || null},
+      ${draft.primaryPhone.trim() || null},
+      ${draft.secondaryPhone.trim() || null},
       ${draft.village.trim() || null},
       ${pgTextArrayLiteral(draft.stages)}::text[],
       ${draft.notes.trim() || null},
@@ -86,7 +88,8 @@ export async function updateVendor(vendorId: string, draft: VendorDraft): Promis
     update vendor
     set
       name = ${cleanName},
-      phone = ${draft.phone.trim() || null},
+      primary_phone = ${draft.primaryPhone.trim() || null},
+      secondary_phone = ${draft.secondaryPhone.trim() || null},
       village = ${draft.village.trim() || null},
       stages = ${pgTextArrayLiteral(draft.stages)}::text[],
       notes = ${draft.notes.trim() || null},

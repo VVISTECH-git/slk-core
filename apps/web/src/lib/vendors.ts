@@ -11,7 +11,8 @@ export type VendorRow = {
   id: string;
   code: string;
   name: string;
-  phone: string | null;
+  primaryPhone: string | null;
+  secondaryPhone: string | null;
   village: string | null;
   stages: string[];
   notes: string | null;
@@ -46,7 +47,9 @@ export async function loadVendorSummaries(): Promise<VendorSummary[]> {
 export async function loadVendors(): Promise<VendorRow[]> {
   const rows = await db.execute<Omit<VendorRow, "balanceDue">>(sql`
     select
-      v.id, v.code, v.name, v.phone, v.village, v.stages, v.notes,
+      v.id, v.code, v.name,
+      v.primary_phone as "primaryPhone", v.secondary_phone as "secondaryPhone",
+      v.village, v.stages, v.notes,
       coalesce(
         (select json_agg(json_build_object('stage', vr.stage, 'unitPrice', vr.unit_price::double precision) order by vr.stage)
          from vendor_rate vr where vr.vendor_id = v.id),

@@ -450,6 +450,26 @@ export const vendorTransaction = pgTable(
     notes: text("notes"),
     /** Who confirmed the receive batch that produced this. */
     recordedBy: uuid("recorded_by_id").references(() => actor.id, { onDelete: "restrict" }),
+
+    /**
+     * Finance's sign-off, before money moves — null means still sitting
+     * for review. Separate from `paidAt`: a transaction can be approved
+     * and still waiting its turn in a payment run.
+     */
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    approvedBy: uuid("approved_by_id").references(() => actor.id, { onDelete: "restrict" }),
+
+    /**
+     * Set together with `vendorPaymentId` once this transaction's amount
+     * is folded into a payment — see `payVendorTransactions`. Kept apart
+     * from the free-form "record a payment" flow (still just
+     * `vendor_payment` against the running balance, for advances and
+     * adjustments that aren't any particular transaction), so "what's
+     * unpaid" is answerable per transaction, not just per vendor.
+     */
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    vendorPaymentId: uuid("vendor_payment_id").references(() => vendorPayment.id, { onDelete: "set null" }),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

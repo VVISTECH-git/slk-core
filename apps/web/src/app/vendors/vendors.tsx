@@ -6,9 +6,9 @@ import { useRouter } from "next/navigation";
 
 import { Pager } from "@/components/grid";
 import { Button, Drawer, Field, Header, ToastBar, inputClass, useToast } from "@/components/ui";
-import type { VendorLedgerEntry } from "@/lib/vendors";
 import { STAGES } from "@/lib/stages";
-import type { VendorRow } from "@/lib/vendors";
+import type { VendorLedgerEntry, VendorRow } from "@/lib/vendors";
+import { vendorTransactionStatus, type VendorTransactionStatus } from "@/lib/vendor-status";
 
 import {
   createVendor,
@@ -489,17 +489,27 @@ function EditDrawer({
             // Rates and the payment form off screen entirely.
             <ul className="max-h-64 divide-y divide-rule overflow-y-auto rounded-lg border border-rule">
               {entries.map((e) => (
-                <li key={`${e.kind}-${e.id}`} className="flex items-center justify-between px-3 py-2 text-[13px]">
-                  <span>
+                <li key={`${e.kind}-${e.id}`} className="flex items-center justify-between gap-2 px-3 py-2 text-[13px]">
+                  <span className="min-w-0">
                     <span className="text-ink-2">{e.date}</span>{" "}
                     {e.kind === "transaction" ? (
-                      <span className="text-ink">{e.stage} · {e.pieceCount} pcs</span>
+                      <span className="text-ink">
+                        {e.stage} · {e.pieceCount} pcs
+                        {e.baleCodes !== null && e.baleCodes.length > 0 && (
+                          <span className="ml-1 font-mono text-[11.5px] text-muted">
+                            (Bale {e.baleCodes.join(", ")})
+                          </span>
+                        )}
+                      </span>
                     ) : (
                       <span className="text-ink">Payment{e.notes ? ` — ${e.notes}` : ""}</span>
                     )}
                   </span>
-                  <span className={e.kind === "transaction" ? "text-brick" : "text-ok"}>
-                    {e.kind === "transaction" ? "+" : "−"}₹{e.amount.toLocaleString("en-IN")}
+                  <span className="flex flex-none items-center gap-2">
+                    {e.kind === "transaction" && <LedgerStatusDot status={vendorTransactionStatus(e)} />}
+                    <span className={e.kind === "transaction" ? "text-brick" : "text-ok"}>
+                      {e.kind === "transaction" ? "+" : "−"}₹{e.amount.toLocaleString("en-IN")}
+                    </span>
                   </span>
                 </li>
               ))}
@@ -508,5 +518,20 @@ function EditDrawer({
         </section>
       </div>
     </Drawer>
+  );
+}
+
+/** A quiet dot rather than a full badge — this list is already dense, and the colour alone answers "does this still need finance's attention". The Vendor Ledger page has the full status and the approve/pay actions. */
+function LedgerStatusDot({ status }: { status: VendorTransactionStatus }) {
+  const color = status === "paid" ? "var(--ok)" : status === "approved" ? "var(--warn)" : "var(--muted)";
+  const title =
+    status === "paid" ? "Paid" : status === "approved" ? "Approved · unpaid" : "Not yet approved";
+  return (
+    <span
+      title={title}
+      aria-label={title}
+      className="inline-block h-2 w-2 flex-none rounded-full"
+      style={{ backgroundColor: color }}
+    />
   );
 }

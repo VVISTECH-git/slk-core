@@ -6,7 +6,12 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { actingId, guard } from "@/lib/session";
 import { STAGES } from "@/lib/stages";
-import { loadVendorLedger, type VendorLedgerEntry } from "@/lib/vendors";
+import {
+  loadVendorLedger,
+  loadVendorTransactionThaans,
+  type VendorLedgerEntry,
+  type VendorTransactionThaan,
+} from "@/lib/vendors";
 
 export interface ActionResult {
   ok: boolean;
@@ -187,4 +192,112 @@ export async function getVendorLedger(vendorId: string): Promise<VendorLedgerEnt
   if (denied !== null) return [];
 
   return loadVendorLedger(vendorId);
+}
+
+export async function getVendorTransactionThaans(transactionId: string): Promise<VendorTransactionThaan[]> {
+  const denied = await guard("office");
+  if (denied !== null) return [];
+
+  return loadVendorTransactionThaans(transactionId);
+}
+
+/** Finance's sign-off, before any of them can be paid. */
+export async function approveVendorTransactions(transactionIds: string[]): Promise<ActionResult> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
+  if (transactionIds.length === 0) {
+    return { ok: false, message: "Nothing selected." };
+  }
+
+  const actorId = await actingId();
+
+  const rows = await db.execute<{ id: string }>(sql`
+    update vendor_transaction
+    set approved_at = now(), approved_by_id = ${actorId}, updated_at = now()
+    where id in (${sql.join(transactionIds.map((id) => sql`${id}`), sql`, `)})
+      and approved_at is null
+    returning id
+  `);
+
+  revalidatePath("/vendor-ledger");
+  revalidatePath("/vendors");
+
+  if (rows.length === 0) {
+    return { ok: false, message: "Already approved — nothing changed." };
+  }
+
+  return { ok: true, message: `Approved ${rows.length} transaction${rows.length === 1 ? "" : "s"}.` };
+}
+
+export interface PayTransactionsDraft {
+  paidOn: string;
+  method: string;
+  notes: string;
+}
+
+/**
+ * Settles a set of already-approved, unpaid transactions in one go — one
+ * `vendor_payment` for their combined total, linked back to each so "is
+ * this paid" is answerable per transaction rather than only against the
+ * vendor's overall balance. All of them have to belong to the same vendor:
+ * a payment is one cheque or transfer, not a cross-vendor batch.
+ */
+export async function payVendorTransactions(
+  vendorId: string,
+  transactionIds: string[],
+  draft: PayTransactionsDraft,
+): Promise<ActionResult> {
+  const denied = await guard("office");
+  if (denied !== null) return denied;
+
+  if (transactionIds.length === 0) {
+    return { ok: false, message: "Nothing selected." };
+  }
+  if (draft.paidOn.trim() === "") {
+    return { ok: false, message: "Date is required." };
+  }
+
+  const actorId = await actingId();
+
+  const result = await db.transaction(async (tx) => {
+    const eligible = await tx.execute<{ id: string; amount: string }>(sql`
+      select id, amount from vendor_transaction
+      where id in (${sql.join(transactionIds.map((id) => sql`${id}`), sql`, `)})
+        and vendor_id = ${vendorId}
+        and approved_at is not null
+        and paid_at is null
+      for update
+    `);
+
+    if (eligible.length === 0) return null;
+
+    const total = eligible.reduce((sum, r) => sum + Number(r.amount), 0);
+
+    const [payment] = await tx.execute<{ id: string }>(sql`
+      insert into vendor_payment (vendor_id, amount, paid_on, method, notes, recorded_by_id)
+      values (${vendorId}, ${total}, ${draft.paidOn}, ${draft.method.trim() || null}, ${draft.notes.trim() || null}, ${actorId})
+      returning id
+    `);
+
+    await tx.execute(sql`
+      update vendor_transaction
+      set paid_at = now(), vendor_payment_id = ${payment.id}, updated_at = now()
+      where id in (${sql.join(eligible.map((r) => sql`${r.id}`), sql`, `)})
+    `);
+
+    return { count: eligible.length, total };
+  });
+
+  revalidatePath("/vendor-ledger");
+  revalidatePath("/vendors");
+
+  if (result === null) {
+    return { ok: false, message: "None of those are approved and unpaid anymore." };
+  }
+
+  return {
+    ok: true,
+    message: `Paid ₹${result.total.toLocaleString("en-IN")} across ${result.count} transaction${result.count === 1 ? "" : "s"}.`,
+  };
 }

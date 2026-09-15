@@ -589,6 +589,13 @@
       "when": 1789476328000,
       "tag": "0083_actor_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1789476329000,
+      "tag": "0084_vendor_transaction_approval_and_payment",
+      "breakpoints": true
     }
   ]
 }

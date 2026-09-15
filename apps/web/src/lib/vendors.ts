@@ -74,7 +74,30 @@ export type VendorLedgerEntry = {
   pieceCount: number | null;
   amount: number;
   notes: string | null;
+  /**
+   * Which bale(s) the Thaans behind a transaction actually came from —
+   * more than one when a receive batch happened to group Thaans from
+   * different bales under the same vendor and stage. Null for a payment.
+   */
+  baleCodes: string[] | null;
+  /** Finance's sign-off; null while still awaiting review. Null for a payment. */
+  approvedAt: string | null;
+  /** When this transaction's amount was folded into a payment. Null for a payment row itself. */
+  paidAt: string | null;
 };
+
+export type { VendorTransactionStatus } from "./vendor-status";
+export { vendorTransactionStatus } from "./vendor-status";
+
+const BALE_CODES_SUBQUERY = sql`
+  (
+    select array_agg(distinct b.code order by b.code)
+    from handover h
+    join thaan t on t.id = h.thaan_id
+    join bale b on b.id = t.bale_id
+    where h.vendor_transaction_id = vendor_transaction.id
+  )
+`;
 
 /** One vendor's recent billing history — transactions and payments, newest first. */
 export async function loadVendorLedger(vendorId: string): Promise<VendorLedgerEntry[]> {
@@ -88,6 +111,9 @@ export async function loadVendorLedger(vendorId: string): Promise<VendorLedgerEn
         piece_count as "pieceCount",
         amount::double precision as "amount",
         notes,
+        ${BALE_CODES_SUBQUERY} as "baleCodes",
+        to_char(approved_at, 'DD Mon YYYY, HH12:MI AM') as "approvedAt",
+        to_char(paid_at, 'DD Mon YYYY, HH12:MI AM') as "paidAt",
         created_at as "sortAt"
       from vendor_transaction
       where vendor_id = ${vendorId}
@@ -102,6 +128,9 @@ export async function loadVendorLedger(vendorId: string): Promise<VendorLedgerEn
         null as "pieceCount",
         amount::double precision as "amount",
         notes,
+        null as "baleCodes",
+        null as "approvedAt",
+        null as "paidAt",
         created_at as "sortAt"
       from vendor_payment
       where vendor_id = ${vendorId}
@@ -116,6 +145,23 @@ export type LedgerEntryRow = VendorLedgerEntry & {
   vendorId: string;
   vendorName: string;
 };
+
+/** One transaction's Thaans — the drill-down behind its piece count. */
+export type VendorTransactionThaan = {
+  baleCode: string;
+  thaanCode: string | null;
+};
+
+export async function loadVendorTransactionThaans(transactionId: string): Promise<VendorTransactionThaan[]> {
+  return db.execute<VendorTransactionThaan>(sql`
+    select b.code as "baleCode", t.code as "thaanCode"
+    from handover h
+    join thaan t on t.id = h.thaan_id
+    join bale b on b.id = t.bale_id
+    where h.vendor_transaction_id = ${transactionId}
+    order by b.code, t.code
+  `);
+}
 
 export type FinancialOverview = {
   /** Billed and paid, one row per calendar month from the first billing or
@@ -196,6 +242,15 @@ export async function loadAllVendorLedgers(): Promise<LedgerEntryRow[]> {
         vt.piece_count as "pieceCount",
         vt.amount::double precision as "amount",
         vt.notes,
+        (
+          select array_agg(distinct b.code order by b.code)
+          from handover h
+          join thaan t on t.id = h.thaan_id
+          join bale b on b.id = t.bale_id
+          where h.vendor_transaction_id = vt.id
+        ) as "baleCodes",
+        to_char(vt.approved_at, 'DD Mon YYYY, HH12:MI AM') as "approvedAt",
+        to_char(vt.paid_at, 'DD Mon YYYY, HH12:MI AM') as "paidAt",
         vt.vendor_id as "vendorId",
         v.name as "vendorName",
         vt.created_at as "sortAt"
@@ -212,6 +267,9 @@ export async function loadAllVendorLedgers(): Promise<LedgerEntryRow[]> {
         null as "pieceCount",
         vp.amount::double precision as "amount",
         vp.notes,
+        null as "baleCodes",
+        null as "approvedAt",
+        null as "paidAt",
         vp.vendor_id as "vendorId",
         v.name as "vendorName",
         vp.created_at as "sortAt"

@@ -547,6 +547,13 @@
       "when": 1789476322000,
       "tag": "0077_vendor_supplier_item_codes",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1789476323000,
+      "tag": "0078_cloth_item_cloth_types",
+      "breakpoints": true
     }
   ]
 }

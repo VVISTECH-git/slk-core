@@ -139,6 +139,10 @@ export type ClothItemRow = {
   id: string;
   code: string;
   name: string;
+  clothTypes: string[];
+  hasBlouse: boolean | null;
+  border: string | null;
+  pallu: string | null;
   status: "active" | "inactive";
   baleCount: number;
 };
@@ -149,6 +153,10 @@ export async function loadClothItems(): Promise<ClothItemRow[]> {
       i.id,
       i.code,
       i.name,
+      i.cloth_types                        as "clothTypes",
+      i.has_blouse                         as "hasBlouse",
+      i.border,
+      i.pallu,
       i.status,
       count(b.id)::int                     as "baleCount"
     from cloth_item i

@@ -1,4 +1,4 @@
-import { check, date, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, date, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 import { actor } from "./access";
@@ -103,6 +103,27 @@ export const clothItem = pgTable(
     /** "I401", "I402"... — one running number for every item, from `cloth_item_code_seq`. Assigned once, at creation; never typed. */
     code: text("code").notNull(),
 
+    /**
+     * What end product(s) this cloth is suited to — "Sarees", "Fabric" sold
+     * as-is, and so on. A set, not a single choice: plain cotton fabric
+     * might become either Sarees or Chunnies. Same shape as `vendor.stages`.
+     */
+    clothTypes: text("cloth_types")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+
+    /**
+     * Saree-specific facts about the raw cloth itself — true the day the
+     * bale arrives, before any cutting or finishing, unlike the
+     * design-level choices Product Management owns (Audience, Print
+     * Technique, colour...). Null for anything that isn't a saree cloth,
+     * and null on a saree cloth until someone sets it.
+     */
+    hasBlouse: boolean("has_blouse"),
+    border: text("border"),
+    pallu: text("pallu"),
+
     /** `active` or `inactive` — same reasoning as `supplier.status`. */
     status: text("status").notNull().default("active"),
 
@@ -117,6 +138,8 @@ export const clothItem = pgTable(
     uniqueIndex("cloth_item_name_key").on(t.name),
     uniqueIndex("cloth_item_code_key").on(t.code),
     check("cloth_item_status_known", sql`${t.status} in ('active', 'inactive')`),
+    check("cloth_item_border_known", sql`${t.border} is null or ${t.border} in ('Zari', 'Plain', 'Contrast', 'Tasseled')`),
+    check("cloth_item_pallu_known", sql`${t.pallu} is null or ${t.pallu} in ('Same as body', 'Contrast')`),
   ],
 );
 

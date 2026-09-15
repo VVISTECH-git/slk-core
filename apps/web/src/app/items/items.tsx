@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Pager } from "@/components/grid";
 import { Button, Drawer, Field, Header, ToastBar, inputClass, useToast } from "@/components/ui";
-import type { ClothItemRow } from "@/lib/bales";
+import type { ClothItemRow, FibreTypeOption } from "@/lib/bales";
 
 import { CLOTH_TYPES } from "./constants";
 import { createClothItem, updateClothItem, type ActionResult, type ClothItemDraft } from "./actions";
@@ -19,7 +19,7 @@ const PALLUS = ["Same as body", "Contrast"] as const;
  * screen, same reasoning as Suppliers: this belongs to Kora to Shelf, not
  * the catalogue's own vocabulary.
  */
-export function ClothItems({ rows }: { rows: ClothItemRow[] }) {
+export function ClothItems({ rows, fibreTypes }: { rows: ClothItemRow[]; fibreTypes: FibreTypeOption[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [toast, showToast] = useToast();
@@ -76,6 +76,9 @@ export function ClothItems({ rows }: { rows: ClothItemRow[] }) {
                     <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
                       Cloth Type
                     </th>
+                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
+                      Material
+                    </th>
                     <th scope="col" className="w-28 px-3 py-2 text-right text-[11.5px] font-medium text-muted">
                       Bales
                     </th>
@@ -98,6 +101,7 @@ export function ClothItems({ rows }: { rows: ClothItemRow[] }) {
                       <td className="px-3 text-ink-2">
                         {r.clothTypes.length === 0 ? "—" : r.clothTypes.join(", ")}
                       </td>
+                      <td className="px-3 text-ink-2">{r.fibreTypeLabel ?? "—"}</td>
                       <td className="px-3 text-right font-mono text-[12.5px] text-ink-2 tabular-nums">
                         {r.baleCount}
                       </td>
@@ -125,11 +129,17 @@ export function ClothItems({ rows }: { rows: ClothItemRow[] }) {
       </div>
 
       {adding && (
-        <AddDrawer pending={pending} onClose={() => setAdding(false)} onRun={run} />
+        <AddDrawer pending={pending} onClose={() => setAdding(false)} onRun={run} fibreTypes={fibreTypes} />
       )}
 
       {editing !== null && (
-        <EditDrawer item={editing} pending={pending} onClose={() => setEditing(null)} onRun={run} />
+        <EditDrawer
+          item={editing}
+          pending={pending}
+          onClose={() => setEditing(null)}
+          onRun={run}
+          fibreTypes={fibreTypes}
+        />
       )}
 
       <ToastBar toast={toast} onDismiss={() => showToast(null)} />
@@ -146,9 +156,11 @@ export function ClothItems({ rows }: { rows: ClothItemRow[] }) {
 function ClothItemFields({
   draft,
   set,
+  fibreTypes,
 }: {
   draft: ClothItemDraft;
   set: <K extends keyof ClothItemDraft>(key: K, value: ClothItemDraft[K]) => void;
+  fibreTypes: FibreTypeOption[];
 }) {
   const isSaree = draft.clothTypes.includes("Sarees");
 
@@ -193,6 +205,19 @@ function ClothItemFields({
             );
           })}
         </div>
+      </Field>
+
+      <Field label="Material" hint="What the cloth itself is made of — the same Fibre Type list Product Management uses.">
+        <select
+          className={inputClass}
+          value={draft.fibreTypeId ?? ""}
+          onChange={(e) => set("fibreTypeId", e.target.value === "" ? null : e.target.value)}
+        >
+          <option value="">Not set</option>
+          {fibreTypes.map((f) => (
+            <option key={f.id} value={f.id}>{f.label}</option>
+          ))}
+        </select>
       </Field>
 
       {isSaree && (
@@ -243,16 +268,25 @@ function ClothItemFields({
   );
 }
 
-const EMPTY_DRAFT: ClothItemDraft = { name: "", clothTypes: [], hasBlouse: null, border: null, pallu: null };
+const EMPTY_DRAFT: ClothItemDraft = {
+  name: "",
+  clothTypes: [],
+  hasBlouse: null,
+  border: null,
+  pallu: null,
+  fibreTypeId: null,
+};
 
 function AddDrawer({
   pending,
   onClose,
   onRun,
+  fibreTypes,
 }: {
   pending: boolean;
   onClose: () => void;
   onRun: (action: () => Promise<ActionResult>, onOk?: () => void) => void;
+  fibreTypes: FibreTypeOption[];
 }) {
   const [draft, setDraft] = useState<ClothItemDraft>(EMPTY_DRAFT);
   const set = <K extends keyof ClothItemDraft>(key: K, value: ClothItemDraft[K]) =>
@@ -277,7 +311,7 @@ function AddDrawer({
       }
     >
       <div className="flex flex-col gap-5">
-        <ClothItemFields draft={draft} set={set} />
+        <ClothItemFields draft={draft} set={set} fibreTypes={fibreTypes} />
       </div>
     </Drawer>
   );
@@ -288,11 +322,13 @@ function EditDrawer({
   pending,
   onClose,
   onRun,
+  fibreTypes,
 }: {
   item: ClothItemRow;
   pending: boolean;
   onClose: () => void;
   onRun: (action: () => Promise<ActionResult>, onOk?: () => void) => void;
+  fibreTypes: FibreTypeOption[];
 }) {
   const [draft, setDraft] = useState<ClothItemDraft>({
     name: item.name,
@@ -300,6 +336,7 @@ function EditDrawer({
     hasBlouse: item.hasBlouse,
     border: item.border,
     pallu: item.pallu,
+    fibreTypeId: item.fibreTypeId,
   });
   const set = <K extends keyof ClothItemDraft>(key: K, value: ClothItemDraft[K]) =>
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -324,7 +361,7 @@ function EditDrawer({
       }
     >
       <div className="flex flex-col gap-5">
-        <ClothItemFields draft={draft} set={set} />
+        <ClothItemFields draft={draft} set={set} fibreTypes={fibreTypes} />
 
         <label className="flex items-center gap-2 text-[13px] text-ink-2">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />

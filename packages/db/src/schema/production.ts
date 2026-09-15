@@ -2,6 +2,7 @@ import { boolean, check, date, integer, numeric, pgTable, text, timestamp, uniqu
 import { sql } from "drizzle-orm";
 
 import { actor } from "./access";
+import { lookupValue } from "./lookup";
 
 /**
  * Kora to Shelf — tracking a piece from raw cloth through to a finished
@@ -123,6 +124,17 @@ export const clothItem = pgTable(
     hasBlouse: boolean("has_blouse"),
     border: text("border"),
     pallu: text("pallu"),
+
+    /**
+     * What the cloth itself is made of — Cotton, Silk. Also a raw-cloth
+     * fact, but not saree-specific, so it isn't gated behind Cloth Type the
+     * way blouse/border/pallu are. Points at Product Management's own
+     * "Fibre Type" list (`lookup_list.code = 'fibre_type'`) rather than a
+     * second vocabulary that could say something different for the same
+     * fibre — the material doesn't stop being the same fact just because
+     * this is Kora to Shelf's own table.
+     */
+    fibreTypeId: uuid("fibre_type_id").references(() => lookupValue.id, { onDelete: "restrict" }),
 
     /** `active` or `inactive` — same reasoning as `supplier.status`. */
     status: text("status").notNull().default("active"),

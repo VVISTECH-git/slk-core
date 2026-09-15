@@ -18,6 +18,8 @@ export interface ClothItemDraft {
   hasBlouse: boolean | null;
   border: string | null;
   pallu: string | null;
+  /** A `lookup_value.id` from the "Fibre Type" list — not saree-specific, never cleared by Cloth Type. */
+  fibreTypeId: string | null;
 }
 
 /**
@@ -52,6 +54,17 @@ function saneSareeFields(draft: Pick<ClothItemDraft, "clothTypes" | "hasBlouse" 
   };
 }
 
+/** `fibreTypeId` names a real, active Fibre Type value — not just any uuid. */
+async function checkFibreType(fibreTypeId: string | null): Promise<string | null> {
+  if (fibreTypeId === null) return null;
+  const [row] = await db.execute<{ id: string }>(sql`
+    select lv.id from lookup_value lv
+    join lookup_list ll on ll.id = lv.list_id
+    where lv.id = ${fibreTypeId} and ll.code = 'fibre_type' and lv.status = 'active'
+  `);
+  return row === undefined ? "That material is no longer on the list." : null;
+}
+
 export async function createClothItem(draft: ClothItemDraft): Promise<ActionResult> {
   const denied = await guard("floor");
   if (denied !== null) return denied;
@@ -66,6 +79,8 @@ export async function createClothItem(draft: ClothItemDraft): Promise<ActionResu
   if (draft.pallu !== null && !["Same as body", "Contrast"].includes(draft.pallu)) {
     return { ok: false, message: "Unknown pallu." };
   }
+  const fibreError = await checkFibreType(draft.fibreTypeId);
+  if (fibreError !== null) return { ok: false, message: fibreError };
 
   const [clash] = await db.execute<{ name: string }>(sql`
     select name from cloth_item where lower(name) = lower(${cleanName})
@@ -77,14 +92,15 @@ export async function createClothItem(draft: ClothItemDraft): Promise<ActionResu
   const saree = saneSareeFields(draft);
 
   await db.execute(sql`
-    insert into cloth_item (name, code, cloth_types, has_blouse, border, pallu)
+    insert into cloth_item (name, code, cloth_types, has_blouse, border, pallu, fibre_type_id)
     values (
       ${cleanName},
       'I' || nextval('cloth_item_code_seq'),
       ${pgTextArrayLiteral(draft.clothTypes)}::text[],
       ${saree.hasBlouse},
       ${saree.border},
-      ${saree.pallu}
+      ${saree.pallu},
+      ${draft.fibreTypeId}
     )
   `);
 
@@ -117,6 +133,8 @@ export async function updateClothItem(
   if (draft.pallu !== null && !["Same as body", "Contrast"].includes(draft.pallu)) {
     return { ok: false, message: "Unknown pallu." };
   }
+  const fibreError = await checkFibreType(draft.fibreTypeId);
+  if (fibreError !== null) return { ok: false, message: fibreError };
 
   const [clash] = await db.execute<{ name: string }>(sql`
     select name from cloth_item where lower(name) = lower(${cleanName}) and id <> ${itemId}
@@ -135,6 +153,7 @@ export async function updateClothItem(
         has_blouse = ${saree.hasBlouse},
         border = ${saree.border},
         pallu = ${saree.pallu},
+        fibre_type_id = ${draft.fibreTypeId},
         updated_at = now()
     where id = ${itemId}
     returning name

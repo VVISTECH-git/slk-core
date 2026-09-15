@@ -143,6 +143,8 @@ export type ClothItemRow = {
   hasBlouse: boolean | null;
   border: string | null;
   pallu: string | null;
+  fibreTypeId: string | null;
+  fibreTypeLabel: string | null;
   status: "active" | "inactive";
   baleCount: number;
 };
@@ -157,11 +159,27 @@ export async function loadClothItems(): Promise<ClothItemRow[]> {
       i.has_blouse                         as "hasBlouse",
       i.border,
       i.pallu,
+      i.fibre_type_id                      as "fibreTypeId",
+      fibre.label                          as "fibreTypeLabel",
       i.status,
       count(b.id)::int                     as "baleCount"
     from cloth_item i
     left join bale b on b.item_id = i.id
-    group by i.id
+    left join lookup_value fibre on fibre.id = i.fibre_type_id
+    group by i.id, fibre.label
     order by (i.status = 'active') desc, i.name
+  `);
+}
+
+export type FibreTypeOption = { id: string; label: string };
+
+/** Product Management's own "Fibre Type" list — reused rather than duplicated. */
+export async function loadFibreTypes(): Promise<FibreTypeOption[]> {
+  return db.execute<FibreTypeOption>(sql`
+    select lv.id, lv.label
+    from lookup_value lv
+    join lookup_list ll on ll.id = lv.list_id
+    where ll.code = 'fibre_type' and lv.status = 'active' and ll.is_enabled = true
+    order by lv.label
   `);
 }

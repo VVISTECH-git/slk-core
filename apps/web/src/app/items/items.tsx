@@ -1,5 +1,6 @@
 "use client";
 
+import { usePreferences } from "@/components/preferences-provider";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
@@ -10,7 +11,6 @@ import type { ClothItemRow, FibreTypeOption } from "@/lib/bales";
 import { CLOTH_TYPES } from "./constants";
 import { createClothItem, updateClothItem, type ActionResult, type ClothItemDraft } from "./actions";
 
-const PER_PAGE = 50;
 const BORDERS = ["Zari", "Plain", "Contrast", "Tasseled"] as const;
 const PALLUS = ["Same as body", "Contrast"] as const;
 
@@ -26,6 +26,9 @@ export function ClothItems({ rows, fibreTypes }: { rows: ClothItemRow[]; fibreTy
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<ClothItemRow | null>(null);
   const [page, setPage] = useState(1);
+
+  const { preferences } = usePreferences();
+  const PER_PAGE = preferences.pageSize;
 
   const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
   const currentPage = Math.min(page, pages);

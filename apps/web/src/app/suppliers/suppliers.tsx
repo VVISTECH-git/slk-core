@@ -1,5 +1,6 @@
 "use client";
 
+import { usePreferences } from "@/components/preferences-provider";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
@@ -8,8 +9,6 @@ import { Button, Drawer, Field, Header, ToastBar, inputClass, useToast } from "@
 import type { SupplierRow } from "@/lib/bales";
 
 import { createSupplier, updateSupplier, type ActionResult, type SupplierDraft } from "./actions";
-
-const PER_PAGE = 50;
 
 /**
  * Who kora cloth is bought from. Its own screen, same reasoning as Bale
@@ -24,6 +23,9 @@ export function Suppliers({ rows }: { rows: SupplierRow[] }) {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<SupplierRow | null>(null);
   const [page, setPage] = useState(1);
+
+  const { preferences } = usePreferences();
+  const PER_PAGE = preferences.pageSize;
 
   const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
   const currentPage = Math.min(page, pages);

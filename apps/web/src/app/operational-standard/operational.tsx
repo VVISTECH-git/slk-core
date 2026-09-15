@@ -1,5 +1,6 @@
 "use client";
 
+import { usePreferences } from "@/components/preferences-provider";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
@@ -40,8 +41,6 @@ import {
 
 const LIST_STATUSES = ["draft", "active", "retired"];
 const VALUE_STATUSES = ["draft", "proposed", "active", "retired"];
-const PER_PAGE = 50;
-
 /**
  * What a pending delete is waiting to be told.
  *
@@ -241,6 +240,9 @@ function Classifications({
   // chosen count and the bulk actions all need every match, not just the
   // page in view. Only the render below is sliced.
   const [page, setPage] = useState(1);
+  const { preferences } = usePreferences();
+  const PER_PAGE = preferences.pageSize;
+
   const pages = Math.max(1, Math.ceil(shown.length / PER_PAGE));
   const currentPage = Math.min(page, pages);
   const pageFrom = (currentPage - 1) * PER_PAGE;
@@ -522,6 +524,9 @@ function Categories({
   // Same split as Classifications: `shown` stays the full list for
   // selection and bulk actions, the render below gets one page of it.
   const [page, setPage] = useState(1);
+  const { preferences } = usePreferences();
+  const PER_PAGE = preferences.pageSize;
+
   const pages = Math.max(1, Math.ceil(shown.length / PER_PAGE));
   const currentPage = Math.min(page, pages);
   const pageFrom = (currentPage - 1) * PER_PAGE;

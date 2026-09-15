@@ -1,5 +1,6 @@
 "use client";
 
+import { usePreferences } from "@/components/preferences-provider";
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -9,8 +10,6 @@ import { Pager } from "@/components/grid";
 import type { ThaanRow } from "@/lib/thaans";
 
 import { restoreThaan, voidThaan, type ActionResult } from "./actions";
-
-const PER_PAGE = 50;
 
 /** Matched by prefix, not exact value — "Out for X"/"Ready for X" name a different X per row. */
 function pipelineStatusStyle(status: string): { background: string; color: string } {
@@ -56,6 +55,9 @@ export function Thaans({ rows }: { rows: ThaanRow[] }) {
             r.supplierName.toLowerCase().includes(q) ||
             r.itemName.toLowerCase().includes(q),
         );
+
+  const { preferences } = usePreferences();
+  const PER_PAGE = preferences.pageSize;
 
   const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const current = Math.min(page, pages);

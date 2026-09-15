@@ -1,5 +1,6 @@
 "use client";
 
+import { usePreferences } from "@/components/preferences-provider";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -8,8 +9,6 @@ import { publishBatchToChannel } from "@/app/records/publish-actions";
 import type { ActionResult } from "@/app/records/actions";
 import { Pager } from "@/components/grid";
 import { Header } from "@/components/ui";
-
-const PER_PAGE = 50;
 
 /**
  * Every channel, every consignment it could sell, and whether each one is
@@ -93,6 +92,9 @@ function ChannelSection({
   // which page the table happens to be showing — paging is a display
   // concern, not a scope for the bulk action.
   const [page, setPage] = useState(1);
+  const { preferences } = usePreferences();
+  const PER_PAGE = preferences.pageSize;
+
   const pages = Math.max(1, Math.ceil(listable.length / PER_PAGE));
   const currentPage = Math.min(page, pages);
   const pageFrom = (currentPage - 1) * PER_PAGE;

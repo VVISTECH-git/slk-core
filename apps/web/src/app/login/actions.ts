@@ -7,6 +7,7 @@ import {
   recordFailure,
   verifySecret,
 } from "@/lib/auth";
+import { parsePreferences } from "@/lib/preferences";
 import { startSession } from "@/lib/session";
 
 /**
@@ -27,6 +28,8 @@ import { startSession } from "@/lib/session";
 export interface SignInResult {
   ok: boolean;
   message?: string;
+  /** Where this person actually wants to land — their own preference, read once at sign-in. */
+  landOn?: string;
 }
 
 /** "3 minutes", for somebody deciding whether to wait or go and ask. */
@@ -84,5 +87,5 @@ export async function signIn(
   // where the point of the list is spotting the device you want to revoke.
   await startSession(who.id, "Web portal");
 
-  return { ok: true };
+  return { ok: true, landOn: parsePreferences(who.preferences).defaultPage };
 }

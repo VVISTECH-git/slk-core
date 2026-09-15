@@ -1,5 +1,6 @@
 "use client";
 
+import { usePreferences } from "@/components/preferences-provider";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
@@ -27,8 +28,6 @@ import {
   saveLocation,
   type ActionResult,
 } from "./actions";
-
-const PER_PAGE = 50;
 
 /**
  * Locations have a screen of their own rather than a place among the lookup
@@ -147,6 +146,9 @@ function Group({
   onRun: (action: () => Promise<ActionResult>) => void;
 }) {
   const [page, setPage] = useState(1);
+  const { preferences } = usePreferences();
+  const PER_PAGE = preferences.pageSize;
+
   const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
   const currentPage = Math.min(page, pages);
   const pageFrom = (currentPage - 1) * PER_PAGE;

@@ -2,6 +2,7 @@ import {
   boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -62,6 +63,16 @@ export const actor = pgTable(
     secretHash: text("secret_hash"),
 
     isActive: boolean("is_active").notNull().default(true),
+
+    /**
+     * How this person likes the app to behave — page size, theme, which
+     * screen they land on after signing in. A single flexible bucket
+     * (matching `lookup_value.meta`'s own reasoning) rather than one column
+     * per preference, so a new one is a code change, not a migration.
+     * Keyed loosely by `apps/web/src/lib/preferences.ts`, which is the only
+     * place that has to agree on what's inside.
+     */
+    preferences: jsonb("preferences").notNull().default({}),
 
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

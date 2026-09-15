@@ -1,13 +1,12 @@
 "use client";
 
+import { usePreferences } from "@/components/preferences-provider";
 import { useState } from "react";
 import Link from "next/link";
 
 import { Pager } from "@/components/grid";
 import { Header } from "@/components/ui";
 import type { LedgerEntryRow } from "@/lib/vendors";
-
-const PER_PAGE = 50;
 
 /**
  * Every vendor's billing together, newest first — the same rows each
@@ -33,6 +32,9 @@ export function VendorLedger({ rows }: { rows: LedgerEntryRow[] }) {
             (r.stage ?? "").toLowerCase().includes(q) ||
             (r.notes ?? "").toLowerCase().includes(q),
         );
+
+  const { preferences } = usePreferences();
+  const PER_PAGE = preferences.pageSize;
 
   const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const currentPage = Math.min(page, pages);

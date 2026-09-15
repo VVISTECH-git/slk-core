@@ -1,5 +1,6 @@
 "use client";
 
+import { usePreferences } from "@/components/preferences-provider";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
@@ -57,8 +58,6 @@ const ROLES = [
   },
 ] as const;
 
-const PER_PAGE = 50;
-
 export function Staff({
   rows,
   jobRoles,
@@ -75,6 +74,9 @@ export function Staff({
   const [adding, setAdding] = useState(false);
   const [pinFor, setPinFor] = useState<StaffRow | null>(null);
   const [page, setPage] = useState(1);
+
+  const { preferences } = usePreferences();
+  const PER_PAGE = preferences.pageSize;
 
   const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
   const currentPage = Math.min(page, pages);

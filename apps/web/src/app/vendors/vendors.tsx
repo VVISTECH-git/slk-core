@@ -1,5 +1,6 @@
 "use client";
 
+import { usePreferences } from "@/components/preferences-provider";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
@@ -20,8 +21,6 @@ import {
   type VendorDraft,
 } from "./actions";
 
-const PER_PAGE = 50;
-
 /**
  * Who does a stage of processing — cutting, salava, karakkaya, printing,
  * ironing — what they charge for it, and what's still owed. See
@@ -38,6 +37,9 @@ export function Vendors({ rows }: { rows: VendorRow[] }) {
   const [stageFilter, setStageFilter] = useState("");
 
   const filtered = stageFilter === "" ? rows : rows.filter((r) => r.stages.includes(stageFilter));
+
+  const { preferences } = usePreferences();
+  const PER_PAGE = preferences.pageSize;
 
   const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const currentPage = Math.min(page, pages);

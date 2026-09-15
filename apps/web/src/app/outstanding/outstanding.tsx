@@ -1,12 +1,11 @@
 "use client";
 
+import { usePreferences } from "@/components/preferences-provider";
 import { useState } from "react";
 
 import { Pager } from "@/components/grid";
 import { Header } from "@/components/ui";
 import type { OutstandingGroup } from "@/lib/handovers";
-
-const PER_PAGE = 50;
 
 /**
  * Everything out for a stage right now, grouped by stage and vendor — the
@@ -24,6 +23,9 @@ export function Outstanding({ rows }: { rows: OutstandingGroup[] }) {
     q === ""
       ? rows
       : rows.filter((r) => r.stage.toLowerCase().includes(q) || r.vendorName.toLowerCase().includes(q));
+
+  const { preferences } = usePreferences();
+  const PER_PAGE = preferences.pageSize;
 
   const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const currentPage = Math.min(page, pages);

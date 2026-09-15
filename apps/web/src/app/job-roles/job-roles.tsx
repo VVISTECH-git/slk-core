@@ -1,5 +1,6 @@
 "use client";
 
+import { usePreferences } from "@/components/preferences-provider";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
@@ -8,8 +9,6 @@ import { Button, Drawer, Field, Header, ToastBar, inputClass, useToast } from "@
 import type { JobRoleRow } from "@/lib/job-roles";
 
 import { createJobRole, type ActionResult } from "./actions";
-
-const PER_PAGE = 50;
 
 /**
  * Job functions — "Bale Custodian" is the first. Assigning people to
@@ -23,6 +22,9 @@ export function JobRoles({ rows }: { rows: JobRoleRow[] }) {
   const [toast, showToast] = useToast();
   const [adding, setAdding] = useState(false);
   const [page, setPage] = useState(1);
+
+  const { preferences } = usePreferences();
+  const PER_PAGE = preferences.pageSize;
 
   const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
   const currentPage = Math.min(page, pages);

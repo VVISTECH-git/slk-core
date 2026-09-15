@@ -131,6 +131,7 @@ export async function actorForToken(token: string): Promise<Actor | null> {
       role: actor.role,
       secretHash: actor.secretHash,
       isActive: actor.isActive,
+      preferences: actor.preferences,
       createdAt: actor.createdAt,
       updatedAt: actor.updatedAt,
       tokenId: actorToken.id,

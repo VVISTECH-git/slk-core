@@ -1,13 +1,12 @@
 "use client";
 
+import { usePreferences } from "@/components/preferences-provider";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Pager } from "@/components/grid";
 import { Header } from "@/components/ui";
 import type { DbUsage } from "@/lib/db-usage";
-
-const PER_PAGE = 50;
 
 /**
  * Neon's Free plan storage cap — 0.5 GB, as quoted on their pricing page.
@@ -29,6 +28,9 @@ export function DbUsageView({ usage }: { usage: DbUsage }) {
   const [page, setPage] = useState(1);
 
   const largest = usage.tables[0];
+
+  const { preferences } = usePreferences();
+  const PER_PAGE = preferences.pageSize;
 
   const pages = Math.max(1, Math.ceil(usage.tables.length / PER_PAGE));
   const currentPage = Math.min(page, pages);

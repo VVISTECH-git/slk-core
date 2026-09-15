@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Inter, IBM_Plex_Mono } from "next/font/google";
 
 import { Sidebar } from "@/components/sidebar";
+import { PreferencesProvider } from "@/components/preferences-provider";
+import { parsePreferences } from "@/lib/preferences";
 import { currentActor } from "@/lib/session";
 
 import "./globals.css";
@@ -43,12 +45,14 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         {who === null ? (
           children
         ) : (
-          <div className="flex min-h-screen">
-            <Sidebar
-              actor={{ name: who.name, code: who.code, role: who.role }}
-            />
-            <main className="min-w-0 flex-1">{children}</main>
-          </div>
+          <PreferencesProvider initial={parsePreferences(who.preferences)}>
+            <div className="flex min-h-screen">
+              <Sidebar
+                actor={{ name: who.name, code: who.code, role: who.role }}
+              />
+              <main className="min-w-0 flex-1">{children}</main>
+            </div>
+          </PreferencesProvider>
         )}
       </body>
     </html>

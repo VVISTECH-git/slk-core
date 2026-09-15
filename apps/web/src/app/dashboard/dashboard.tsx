@@ -205,7 +205,12 @@ export function Dashboard({ rows }: { rows: BaleHeatmapRow[] }) {
                         <th scope="col" className="px-4 py-2 text-[11px] font-medium text-muted">Bale</th>
                         <th scope="col" className="px-3 py-2 text-[11px] font-medium text-muted">Cutting</th>
                         {COLUMNS.map((c) => (
-                          <th key={c} scope="col" className="px-2 py-2 text-center text-[10.5px] font-medium whitespace-nowrap text-muted">
+                          // A fixed width, not "however wide this label is" — every stage
+                          // column the same size is what makes the boxes below actually
+                          // read as a grid; letting each auto-size to its own header text
+                          // ("Print" at 44px next to "Label Stitching" at 90px) staggered
+                          // the same-size boxes into an uneven zig-zag instead.
+                          <th key={c} scope="col" className="w-[72px] px-1 py-2 text-center text-[10.5px] font-medium text-muted">
                             {c}
                           </th>
                         ))}
@@ -284,14 +289,14 @@ function LegendDot({ tone, label }: { tone: keyof typeof TILE_TONE; label: strin
  */
 function Cell({ count, max }: { count: number; max: number }) {
   if (count === 0) {
-    return <td className="px-1 py-2 text-center"><span className="block h-7 w-9 rounded-md border border-rule" /></td>;
+    return <td className="w-[72px] px-1 py-2 text-center"><span className="block h-7 w-9 rounded-md border border-rule" /></td>;
   }
 
   const lightness = 92 - (count / max) * 64;
   const textLight = count / max > 0.55;
 
   return (
-    <td className="px-1 py-2 text-center">
+    <td className="w-[72px] px-1 py-2 text-center">
       <span
         className="inline-flex h-7 w-9 items-center justify-center rounded-md text-[11px] font-medium tabular-nums"
         style={{

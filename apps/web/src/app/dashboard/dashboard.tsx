@@ -43,7 +43,7 @@ function themeColors() {
  * before the per-bale heatmap underneath for the "which bale, exactly"
  * follow-up question.
  */
-export function BaleProgress({ rows }: { rows: BaleHeatmapRow[] }) {
+export function Dashboard({ rows }: { rows: BaleHeatmapRow[] }) {
   const [page, setPage] = useState(1);
   const barRef = useRef<HTMLCanvasElement>(null);
   const donutRef = useRef<HTMLCanvasElement>(null);
@@ -124,7 +124,7 @@ export function BaleProgress({ rows }: { rows: BaleHeatmapRow[] }) {
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <Header
-        title="Bale Progress"
+        title="Dashboard"
         lede={`Every bale's Thaans, where they currently sit, and whether cutting is done. ${withThaans.length} of ${rows.length} bale${rows.length === 1 ? "" : "s"} have Thaans cut.`}
       />
 
@@ -161,8 +161,9 @@ export function BaleProgress({ rows }: { rows: BaleHeatmapRow[] }) {
           )}
 
           <div>
+            <h2 className="mb-1 text-[13px] font-medium text-ink-2">Bale progress heatmap</h2>
             <div className="mb-3 flex items-center gap-2 text-[11.5px] text-muted">
-              <span className="text-[13px] font-medium text-ink-2">By bale</span>
+              <span>Which stage each bale&rsquo;s Thaans currently sit at</span>
               <span>·</span>
               <span>Fewer Thaans</span>
               <span

@@ -3,9 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ArcElement,
+  BarController,
   BarElement,
   CategoryScale,
   Chart,
+  DoughnutController,
   Legend as ChartLegend,
   LinearScale,
   Tooltip,
@@ -16,7 +18,23 @@ import { Pager } from "@/components/grid";
 import { STAGES } from "@/lib/stages";
 import type { BaleHeatmapRow } from "@/lib/bales";
 
-Chart.register(BarElement, ArcElement, CategoryScale, LinearScale, ChartLegend, Tooltip);
+/**
+ * The element (what gets drawn) is a different registration from the
+ * controller (what type of chart draws it) — Chart.js v4 needs both, and
+ * registering only BarElement/ArcElement (the shapes) without
+ * BarController/DoughnutController (the chart types that use them) fails
+ * silently on the type string alone, not on an obviously missing piece.
+ */
+Chart.register(
+  BarController,
+  BarElement,
+  DoughnutController,
+  ArcElement,
+  CategoryScale,
+  LinearScale,
+  ChartLegend,
+  Tooltip,
+);
 
 const PER_PAGE = 50;
 const COLUMNS = ["Not started", ...STAGES, "Finished"];

@@ -104,6 +104,7 @@ export async function loadBales(): Promise<BaleRow[]> {
 
 export type SupplierRow = {
   id: string;
+  code: string;
   name: string;
   codePrefix: string;
   phone: string | null;
@@ -118,6 +119,7 @@ export async function loadSuppliers(): Promise<SupplierRow[]> {
   return db.execute<SupplierRow>(sql`
     select
       s.id,
+      s.code,
       s.name,
       s.code_prefix                        as "codePrefix",
       s.phone,
@@ -135,6 +137,7 @@ export async function loadSuppliers(): Promise<SupplierRow[]> {
 
 export type ClothItemRow = {
   id: string;
+  code: string;
   name: string;
   status: "active" | "inactive";
   baleCount: number;
@@ -144,6 +147,7 @@ export async function loadClothItems(): Promise<ClothItemRow[]> {
   return db.execute<ClothItemRow>(sql`
     select
       i.id,
+      i.code,
       i.name,
       i.status,
       count(b.id)::int                     as "baleCount"

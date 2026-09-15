@@ -75,7 +75,8 @@ export function Vendors({ rows }: { rows: VendorRow[] }) {
               <table className="w-full border-collapse text-[13px]">
                 <thead>
                   <tr className="border-b border-rule bg-surface-2 text-left">
-                    <th scope="col" className="px-4 py-2 text-[11.5px] font-medium text-muted">Vendor</th>
+                    <th scope="col" className="w-20 px-4 py-2 text-[11.5px] font-medium text-muted">Code</th>
+                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Vendor</th>
                     <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Phone</th>
                     <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Village</th>
                     <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Stages</th>
@@ -89,7 +90,8 @@ export function Vendors({ rows }: { rows: VendorRow[] }) {
                       onClick={() => setEditing(r)}
                       className="h-11 cursor-pointer border-b border-rule last:border-b-0 hover:bg-surface-2"
                     >
-                      <td className="px-4 text-ink" title={r.notes ?? ""}>
+                      <td className="px-4 font-mono text-[12.5px] text-ink-2">{r.code}</td>
+                      <td className="px-3 text-ink" title={r.notes ?? ""}>
                         {r.name}
                       </td>
                       <td className="px-3 font-mono text-[12.5px] text-ink-2">{r.phone ?? "—"}</td>

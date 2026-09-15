@@ -56,14 +56,15 @@ export async function createSupplier(draft: SupplierDraft): Promise<ActionResult
   }
 
   await db.execute(sql`
-    insert into supplier (name, code_prefix, phone, gstin, address, contact_person)
+    insert into supplier (name, code_prefix, phone, gstin, address, contact_person, code)
     values (
       ${cleanName},
       ${cleanPrefix},
       ${draft.phone.trim() || null},
       ${draft.gstin.trim() || null},
       ${draft.address.trim() || null},
-      ${draft.contactPerson.trim() || null}
+      ${draft.contactPerson.trim() || null},
+      'S' || nextval('supplier_code_seq')
     )
   `);
   // status always starts "active" (the column's own default) — a new

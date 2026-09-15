@@ -34,7 +34,7 @@ export async function createClothItem(name: string): Promise<ActionResult> {
   }
 
   await db.execute(sql`
-    insert into cloth_item (name) values (${cleanName})
+    insert into cloth_item (name, code) values (${cleanName}, 'I' || nextval('cloth_item_code_seq'))
   `);
 
   revalidate();

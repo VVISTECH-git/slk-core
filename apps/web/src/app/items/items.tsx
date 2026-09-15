@@ -64,7 +64,10 @@ export function ClothItems({ rows }: { rows: ClothItemRow[] }) {
               <table className="w-full border-collapse text-[13px]">
                 <thead>
                   <tr className="border-b border-rule bg-surface-2 text-left">
-                    <th scope="col" className="px-4 py-2 text-[11.5px] font-medium text-muted">
+                    <th scope="col" className="w-20 px-4 py-2 text-[11.5px] font-medium text-muted">
+                      Code
+                    </th>
+                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
                       Item
                     </th>
                     <th scope="col" className="w-28 px-3 py-2 text-right text-[11.5px] font-medium text-muted">
@@ -84,7 +87,8 @@ export function ClothItems({ rows }: { rows: ClothItemRow[] }) {
                         r.status === "inactive" ? "opacity-60" : ""
                       }`}
                     >
-                      <td className="px-4 text-ink">{r.name}</td>
+                      <td className="px-4 font-mono text-[12.5px] text-ink-2">{r.code}</td>
+                      <td className="px-3 text-ink">{r.name}</td>
                       <td className="px-3 text-right font-mono text-[12.5px] text-ink-2 tabular-nums">
                         {r.baleCount}
                       </td>

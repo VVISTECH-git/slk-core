@@ -65,11 +65,14 @@ export function Suppliers({ rows }: { rows: SupplierRow[] }) {
               <table className="w-full border-collapse text-[13px]">
                 <thead>
                   <tr className="border-b border-rule bg-surface-2 text-left">
-                    <th scope="col" className="px-4 py-2 text-[11.5px] font-medium text-muted">
+                    <th scope="col" className="w-20 px-4 py-2 text-[11.5px] font-medium text-muted">
+                      Code
+                    </th>
+                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
                       Supplier
                     </th>
-                    <th scope="col" className="w-20 px-3 py-2 text-[11.5px] font-medium text-muted">
-                      Code
+                    <th scope="col" className="w-16 px-3 py-2 text-[11.5px] font-medium text-muted">
+                      Prefix
                     </th>
                     <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
                       Phone
@@ -97,7 +100,8 @@ export function Suppliers({ rows }: { rows: SupplierRow[] }) {
                         r.status === "inactive" ? "opacity-60" : ""
                       }`}
                     >
-                      <td className="px-4 text-ink" title={r.address ?? ""}>
+                      <td className="px-4 font-mono text-[12.5px] text-ink-2">{r.code}</td>
+                      <td className="px-3 text-ink" title={r.address ?? ""}>
                         {r.name}
                       </td>
                       <td className="px-3 font-mono text-[12.5px] text-ink-2">{r.codePrefix}</td>

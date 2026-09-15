@@ -49,13 +49,14 @@ export async function createVendor(draft: VendorDraft): Promise<ActionResult> {
   }
 
   await db.execute(sql`
-    insert into vendor (name, phone, village, stages, notes)
+    insert into vendor (name, phone, village, stages, notes, code)
     values (
       ${cleanName},
       ${draft.phone.trim() || null},
       ${draft.village.trim() || null},
       ${pgTextArrayLiteral(draft.stages)}::text[],
-      ${draft.notes.trim() || null}
+      ${draft.notes.trim() || null},
+      'V' || nextval('vendor_code_seq')
     )
   `);
 

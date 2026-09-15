@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
  */
 export type VendorRow = {
   id: string;
+  code: string;
   name: string;
   phone: string | null;
   village: string | null;
@@ -26,6 +27,7 @@ export type VendorRow = {
 
 export type VendorSummary = {
   id: string;
+  code: string;
   name: string;
   stages: string[];
 };
@@ -37,14 +39,14 @@ export type VendorSummary = {
  */
 export async function loadVendorSummaries(): Promise<VendorSummary[]> {
   return db.execute<VendorSummary>(sql`
-    select id, name, stages from vendor order by name
+    select id, code, name, stages from vendor order by name
   `);
 }
 
 export async function loadVendors(): Promise<VendorRow[]> {
   const rows = await db.execute<Omit<VendorRow, "balanceDue">>(sql`
     select
-      v.id, v.name, v.phone, v.village, v.stages, v.notes,
+      v.id, v.code, v.name, v.phone, v.village, v.stages, v.notes,
       coalesce(
         (select json_agg(json_build_object('stage', vr.stage, 'unitPrice', vr.unit_price::double precision) order by vr.stage)
          from vendor_rate vr where vr.vendor_id = v.id),
@@ -111,6 +113,73 @@ export type LedgerEntryRow = VendorLedgerEntry & {
   vendorId: string;
   vendorName: string;
 };
+
+export type FinancialOverview = {
+  /** Billed and paid, one row per calendar month from the first billing or
+   * payment onward — zero-filled, so a quiet month is a gap in the chart
+   * rather than a missing bar. */
+  byMonth: { month: string; billed: number; paid: number }[];
+  /** Billed total and transaction count per stage, across every vendor. */
+  byStage: { stage: string; billed: number; transactions: number }[];
+  /** Same figures as `loadVendors`, reshaped for a balance-due ranking. */
+  byVendor: { vendorId: string; vendorName: string; billed: number; paid: number; balanceDue: number }[];
+};
+
+/**
+ * The same billing and payment rows Vendor Ledger lists one at a time,
+ * rolled up into trends — by month, by stage, by vendor — for a dashboard
+ * rather than an audit trail.
+ */
+export async function loadFinancialOverview(): Promise<FinancialOverview> {
+  const byMonth = await db.execute<{ month: string; billed: number; paid: number }>(sql`
+    with bounds as (
+      select coalesce(
+        least(
+          (select min(transaction_date) from vendor_transaction),
+          (select min(paid_on) from vendor_payment)
+        ),
+        date_trunc('month', now())
+      ) as start
+    )
+    select
+      to_char(months.month, 'YYYY-MM') as "month",
+      coalesce(b.billed, 0)::double precision as "billed",
+      coalesce(p.paid, 0)::double precision as "paid"
+    from bounds,
+      generate_series(date_trunc('month', bounds.start), date_trunc('month', now()), interval '1 month') as months(month)
+    left join (
+      select date_trunc('month', transaction_date) as month, sum(amount) as billed
+      from vendor_transaction
+      group by 1
+    ) b on b.month = months.month
+    left join (
+      select date_trunc('month', paid_on) as month, sum(amount) as paid
+      from vendor_payment
+      group by 1
+    ) p on p.month = months.month
+    order by months.month
+  `);
+
+  const byStage = await db.execute<{ stage: string; billed: number; transactions: number }>(sql`
+    select stage, sum(amount)::double precision as "billed", count(*)::int as "transactions"
+    from vendor_transaction
+    group by stage
+    order by billed desc
+  `);
+
+  const vendors = await loadVendors();
+  const byVendor = vendors
+    .map((v) => ({
+      vendorId: v.id,
+      vendorName: v.name,
+      billed: v.totalEarned,
+      paid: v.totalPaid,
+      balanceDue: v.balanceDue,
+    }))
+    .sort((a, b) => b.balanceDue - a.balanceDue);
+
+  return { byMonth, byStage, byVendor };
+}
 
 /** Every vendor's billing history together — what's owed and what's been paid, across the whole business. */
 export async function loadAllVendorLedgers(): Promise<LedgerEntryRow[]> {

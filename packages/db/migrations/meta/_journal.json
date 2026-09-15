@@ -540,6 +540,13 @@
       "when": 1789476321000,
       "tag": "0076_no_separate_master_concept",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1789476322000,
+      "tag": "0077_vendor_supplier_item_codes",
+      "breakpoints": true
     }
   ]
 }

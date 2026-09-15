@@ -36,6 +36,9 @@ export const supplier = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
 
+    /** "S701", "S702"... — one running number for every supplier, from `supplier_code_seq`. Assigned once, at creation; never typed. */
+    code: text("code").notNull(),
+
     /**
      * A short code, chosen by hand when the supplier is added. Not derived
      * from the name, and not migrated from the old spreadsheet's letters —
@@ -46,7 +49,7 @@ export const supplier = pgTable(
      *
      * No longer feeds into a bale's own code — that's `bale_code_seq` now,
      * one running number for every supplier — so this is purely a short
-     * reference for the supplier itself.
+     * reference for the supplier itself, distinct from `code` above.
      */
     codePrefix: text("code_prefix").notNull(),
 
@@ -78,6 +81,7 @@ export const supplier = pgTable(
   },
   (t) => [
     uniqueIndex("supplier_name_key").on(t.name),
+    uniqueIndex("supplier_code_key").on(t.code),
     uniqueIndex("supplier_code_prefix_key").on(t.codePrefix),
     check("supplier_status_known", sql`${t.status} in ('active', 'inactive')`),
   ],
@@ -96,6 +100,9 @@ export const clothItem = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
 
+    /** "I401", "I402"... — one running number for every item, from `cloth_item_code_seq`. Assigned once, at creation; never typed. */
+    code: text("code").notNull(),
+
     /** `active` or `inactive` — same reasoning as `supplier.status`. */
     status: text("status").notNull().default("active"),
 
@@ -108,6 +115,7 @@ export const clothItem = pgTable(
   },
   (t) => [
     uniqueIndex("cloth_item_name_key").on(t.name),
+    uniqueIndex("cloth_item_code_key").on(t.code),
     check("cloth_item_status_known", sql`${t.status} in ('active', 'inactive')`),
   ],
 );
@@ -126,6 +134,9 @@ export const vendor = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
+
+    /** "V801", "V802"... — one running number for every vendor, from `vendor_code_seq`. Assigned once, at creation; never typed. */
+    code: text("code").notNull(),
 
     /** Who gets called to hand off or collect work — the field that matters most here. */
     phone: text("phone"),
@@ -156,7 +167,7 @@ export const vendor = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [uniqueIndex("vendor_name_key").on(t.name)],
+  (t) => [uniqueIndex("vendor_name_key").on(t.name), uniqueIndex("vendor_code_key").on(t.code)],
 );
 
 /**

@@ -46,7 +46,7 @@ import {
 const STATUS_LABEL: Record<BaleRow["status"], string> = {
   awaiting_cutting: "Awaiting Thaan cutting",
   cutting_in_progress: "Cutting in progress",
-  cut: "Cut",
+  cut: "Thaan cutting complete",
   returned: "Returned",
 };
 
@@ -76,7 +76,7 @@ const COLUMNS = [
   { key: "perThaanMetres", label: "Per Thaan Mtr", width: 120 },
   { key: "billEntryDate", label: "Bill Entry Date", width: 130 },
   { key: "invoiceAmount", label: "Bill Amount", width: 120 },
-  { key: "status", label: "Status", width: 140 },
+  { key: "status", label: "Status", width: 190 },
   { key: "thaans", label: "Thaans", width: 150 },
   { key: "notes", label: "Remarks", width: 180 },
 ] as const;

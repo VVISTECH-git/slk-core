@@ -115,6 +115,16 @@ function SendPanel({
     stageRef.current = stage;
   }, [stage]);
 
+  /** Setting the stage — by hand or from the first scan — drops a vendor who doesn't do it. */
+  function pickStage(newStage: string) {
+    setStage(newStage);
+    setVendorId((prev) => {
+      if (prev === IN_HOUSE) return prev;
+      const still = vendors.find((v) => v.id === prev);
+      return still !== undefined && still.stages.includes(newStage) ? prev : IN_HOUSE;
+    });
+  }
+
   async function scan(code: string) {
     if (items.some((t) => t.code === code)) return; // Already in this batch.
 
@@ -129,7 +139,7 @@ function SendPanel({
     setScanError(null);
     if (stageRef.current === "") {
       stageRef.current = result.stage;
-      setStage(result.stage);
+      pickStage(result.stage);
     }
     setItems((prev) => [...prev, result.thaan]);
   }
@@ -172,7 +182,7 @@ function SendPanel({
             className={inputClass}
             value={stage}
             onChange={(e) => {
-              setStage(e.target.value);
+              pickStage(e.target.value);
               setItems([]);
             }}
           >
@@ -199,7 +209,11 @@ function SendPanel({
             }}
           >
             <option value={IN_HOUSE}>In-house (no vendor)</option>
-            {vendors.map((v) => (
+            {/* Once a stage is known — chosen, or locked by the first scan — only
+                vendors who actually do that stage are worth offering: every Thaan
+                goes through every stage in order, so a vendor who doesn't do this
+                one isn't a real option for this batch. */}
+            {(stage === "" ? vendors : vendors.filter((v) => v.stages.includes(stage))).map((v) => (
               <option key={v.id} value={v.id}>
                 {v.name}
               </option>
@@ -342,7 +356,7 @@ function ReceivePanel({
       {confirming && (
         <ConfirmDialog
           title={`Receive ${items.length} Thaan${items.length === 1 ? "" : "s"}?`}
-          description={`${describeTally(items, (t) => `${t.vendorName} — ${t.stage}`)}. Any piece back from a vendor is billed at their rate for that stage.`}
+          description={`${describeTally(items, (t) => `${t.vendorName} — ${t.stage}`)}.`}
           confirmLabel="Receive"
           pending={pending}
           onConfirm={confirmReceive}

@@ -208,11 +208,8 @@ export async function receiveBatch(thaanIds: string[]): Promise<ActionResult> {
     return { ok: false, message: "None of those are currently out for a stage." };
   }
 
-  let message = `Received ${result.received} Thaan${result.received === 1 ? "" : "s"}.`;
-  if (result.billed.length > 0) message += ` Billed — ${result.billed.join("; ")}.`;
-  if (result.unbilled.length > 0) {
-    message += ` No rate set for ${result.unbilled.join(", ")} — received, not billed. Set a rate on Vendors first.`;
-  }
-
-  return { ok: true, message };
+  // Billing still happens above regardless — this message just doesn't
+  // repeat it. Scanning is floor work; what got billed and to whom is an
+  // office question, already answered on Vendors and Vendor Ledger.
+  return { ok: true, message: `Received ${result.received} Thaan${result.received === 1 ? "" : "s"}.` };
 }

@@ -19,7 +19,7 @@ const NAV = [
     // one screen. First in the sidebar and where "/" lands (see
     // `app/page.tsx`), so the app opens on the overview rather than a
     // single-purpose entry screen.
-    href: "/dashboard",
+    href: "/",
     label: "Dashboard",
     icon: "M3 10h4v6H3z M8 6h4v10H8z M13 3h4v13h-4z",
   },

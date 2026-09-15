@@ -18,6 +18,46 @@ import {
 
 const IN_HOUSE = "in-house";
 
+/** One scan failure — a code and the message `lookupForSend`/`lookupForReceive` gave for it. */
+type ScanProblem = { code: string; message: string };
+
+/** This problem alone, worded once — every message already names the Thaan it's about. */
+function describeProblem(p: ScanProblem): string {
+  return p.message.includes(p.code) ? p.message : `${p.code} — ${p.message}`;
+}
+
+/** "is out for Salava" → "are out for Salava" — the handful of verb shapes the real messages use. */
+function pluralizeReason(reason: string): string {
+  if (reason === 'No Thaan with code "".') return "aren't on file.";
+  if (reason.startsWith("is ")) return `are ${reason.slice(3)}`;
+  if (reason.startsWith("isn't ")) return `aren't ${reason.slice(6)}`;
+  if (reason.startsWith("has ")) return `have ${reason.slice(4)}`;
+  return reason;
+}
+
+/**
+ * Groups by identical reason first — reading twenty repeats of the same
+ * sentence ("T00002001 is already out for Salava.", "T00002002 is
+ * already out for Salava.", ...) to learn one fact is worse than reading
+ * it once. Same logic as slk-mobile's `summarizeProblems`.
+ */
+function summarizeProblems(problems: ScanProblem[]): string[] {
+  const groups = new Map<string, ScanProblem[]>();
+  for (const p of problems) {
+    const reason = p.message.includes(p.code) ? p.message.replaceAll(p.code, "").trim() : p.message;
+    const list = groups.get(reason) ?? [];
+    list.push(p);
+    groups.set(reason, list);
+  }
+  return [...groups.values()].map((group) => {
+    if (group.length === 1) return describeProblem(group[0]!);
+    const reason = group[0]!.message.includes(group[0]!.code)
+      ? group[0]!.message.replaceAll(group[0]!.code, "").trim()
+      : group[0]!.message;
+    return `${group.length} Thaans ${pluralizeReason(reason)}`.trim();
+  });
+}
+
 /**
  * Kora to Shelf, step three: a Thaan's trip through the stage pipeline.
  * Everything here happens by scanning a Thaan's own QR code — that is the
@@ -125,30 +165,37 @@ function SendPanel({
     });
   }
 
-  async function scan(code: string) {
-    if (items.some((t) => t.code === code)) return; // Already in this batch.
+  async function scan(code: string): Promise<ScanProblem | null> {
+    if (items.some((t) => t.code === code)) return null; // Already in this batch.
 
     // Nothing chosen yet: read this Thaan's own next stage back and lock
     // the whole batch to it, rather than making the reader look it up and
     // pick it from the dropdown before scanning anything.
     const result = await lookupForSend(code, stageRef.current === "" ? null : stageRef.current);
     if (!result.ok) {
-      setScanError(result.message);
-      return;
+      return { code, message: result.message };
     }
-    setScanError(null);
     if (stageRef.current === "") {
       stageRef.current = result.stage;
       pickStage(result.stage);
     }
     setItems((prev) => [...prev, result.thaan]);
+    return null;
   }
 
-  /** One scan is one code; typing (or pasting) several at once, comma- or space-separated, works too. */
+  /**
+   * One scan is one code; typing (or pasting) several at once, comma- or
+   * space-separated, works too. Every code's own problem is collected and
+   * shown together, grouped by reason — not just the last one, which is
+   * what setting `scanError` inside the loop would do.
+   */
   async function scanMany(raw: string) {
+    const problems: ScanProblem[] = [];
     for (const code of raw.split(/[,\s]+/).map((c) => c.trim()).filter((c) => c !== "")) {
-      await scan(code);
+      const problem = await scan(code);
+      if (problem !== null) problems.push(problem);
     }
+    setScanError(problems.length === 0 ? null : summarizeProblems(problems).join("\n"));
   }
 
   function removeItem(id: string) {
@@ -203,10 +250,7 @@ function SendPanel({
           <select
             className={inputClass}
             value={vendorId}
-            onChange={(e) => {
-              setVendorId(e.target.value);
-              setItems([]);
-            }}
+            onChange={(e) => setVendorId(e.target.value)}
           >
             <option value={IN_HOUSE}>In-house (no vendor)</option>
             {/* Once a stage is known — chosen, or locked by the first scan — only
@@ -236,18 +280,25 @@ function SendPanel({
 
       <div className="mt-4 flex items-center justify-between">
         <Tally items={items} keyFn={(t) => t.baleType} />
-        <Button
-          tone="primary"
-          disabled={items.length === 0 || stage === "" || pending}
-          onClick={() => setConfirming(true)}
-        >
-          Send {items.length > 0 ? items.length : ""}
-        </Button>
+        <div className="flex items-center gap-2">
+          {items.length > 0 && (
+            <Button tone="quiet" onClick={() => setItems([])}>
+              Clear
+            </Button>
+          )}
+          <Button
+            tone="primary"
+            disabled={items.length === 0 || stage === "" || pending}
+            onClick={() => setConfirming(true)}
+          >
+            Send {items.length > 0 ? items.length : ""}
+          </Button>
+        </div>
       </div>
 
       {cameraOpen && (
         <CameraScanner
-          onDetect={(code) => void scan(code)}
+          onDetect={(code) => { void scan(code).then((p) => setScanError(p === null ? null : describeProblem(p))); }}
           onClose={() => setCameraOpen(false)}
         />
       )}
@@ -281,23 +332,29 @@ function ReceivePanel({
   const [scanError, setScanError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
 
-  async function scan(code: string) {
-    if (items.some((t) => t.code === code)) return;
+  async function scan(code: string): Promise<ScanProblem | null> {
+    if (items.some((t) => t.code === code)) return null;
 
     const result = await lookupForReceive(code);
     if (!result.ok) {
-      setScanError(result.message);
-      return;
+      return { code, message: result.message };
     }
-    setScanError(null);
     setItems((prev) => [...prev, result.thaan]);
+    return null;
   }
 
-  /** One scan is one code; typing (or pasting) several at once, comma- or space-separated, works too. */
+  /**
+   * One scan is one code; typing (or pasting) several at once, comma- or
+   * space-separated, works too. Every code's own problem is collected and
+   * shown together, grouped by reason.
+   */
   async function scanMany(raw: string) {
+    const problems: ScanProblem[] = [];
     for (const code of raw.split(/[,\s]+/).map((c) => c.trim()).filter((c) => c !== "")) {
-      await scan(code);
+      const problem = await scan(code);
+      if (problem !== null) problems.push(problem);
     }
+    setScanError(problems.length === 0 ? null : summarizeProblems(problems).join("\n"));
   }
 
   function removeItem(id: string) {
@@ -348,7 +405,7 @@ function ReceivePanel({
 
       {cameraOpen && (
         <CameraScanner
-          onDetect={(code) => void scan(code)}
+          onDetect={(code) => { void scan(code).then((p) => setScanError(p === null ? null : describeProblem(p))); }}
           onClose={() => setCameraOpen(false)}
         />
       )}
@@ -405,7 +462,7 @@ function ScanControls({
         </Button>
         <Button onClick={onCamera}>Camera</Button>
       </div>
-      {error !== null && <p className="mt-1.5 text-[12.5px] text-brick">{error}</p>}
+      {error !== null && <p className="mt-1.5 max-h-40 overflow-y-auto text-[12.5px] whitespace-pre-line text-brick">{error}</p>}
       <p className="mt-1.5 text-[11.5px] text-muted">
         A Bluetooth handheld scanner works here too — pair it, tap into this field, and scan.
       </p>

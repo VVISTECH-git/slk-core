@@ -52,8 +52,20 @@ export async function lookupForReceive(
  * `packages/db/src/schema/production.ts`. `array[...][n]` is 1-based and
  * returns null past the end, which is exactly "no next stage" for a Thaan
  * that has finished every one.
+ *
+ * Second Print isn't universal — `bale.needs_second_print` — so which of
+ * the two arrays applies depends on the specific Thaan being checked, read
+ * fresh per row rather than trusted from the client. Mirrors `stagesFor` in
+ * `apps/web/src/lib/stages.ts`.
  */
-const STAGE_ARRAY_SQL = sql`array['Label Stitching','Salava','Karakkaya','Print','Second Print','Nellateeta','Udukulu','Ironing']::text[]`;
+function stageArraySql(thaanId: string) {
+  return sql`
+    (case when (select b.needs_second_print from thaan t join bale b on b.id = t.bale_id where t.id = ${thaanId})
+      then array['Label Stitching','Salava','Karakkaya','Print','Second Print','Nellateeta','Udukulu','Ironing']::text[]
+      else array['Label Stitching','Salava','Karakkaya','Print','Nellateeta','Udukulu','Ironing']::text[]
+     end)
+  `;
+}
 
 /**
  * Sends a scanned batch off for one stage, to one vendor (or in-house).
@@ -94,7 +106,7 @@ export async function sendBatch(
           select 1 from handover where thaan_id = ${thaanId} and received_at is null
         )
         and coalesce(
-          (${STAGE_ARRAY_SQL})[
+          (${stageArraySql(thaanId)})[
             (select count(*) from handover where thaan_id = ${thaanId} and received_at is not null) + 1
           ],
           ''

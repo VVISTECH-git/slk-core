@@ -30,6 +30,13 @@ function amount(value: unknown, field: string): string {
   throw new ApiError(`${field} must be a number or a string.`, 400);
 }
 
+/** Defaults to `true` — matching the column's own default — for a client that doesn't send it yet. */
+function bool(value: unknown, field: string, defaultValue: boolean): boolean {
+  if (value === undefined || value === null) return defaultValue;
+  if (typeof value !== "boolean") throw new ApiError(`${field} must be true or false.`, 400);
+  return value;
+}
+
 export function toBaleDraft(body: Record<string, unknown>): BaleDraft {
   return {
     supplierId: text(body.supplierId, "supplierId"),
@@ -45,5 +52,6 @@ export function toBaleDraft(body: Record<string, unknown>): BaleDraft {
     gradeCode: text(body.gradeCode, "gradeCode"),
     baleCount: amount(body.baleCount, "baleCount"),
     notes: text(body.notes, "notes"),
+    needsSecondPrint: bool(body.needsSecondPrint, "needsSecondPrint", true),
   };
 }

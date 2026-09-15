@@ -1,5 +1,6 @@
 "use client";
 
+import { usePreferences } from "@/components/preferences-provider";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
@@ -27,12 +28,13 @@ import {
   inputClass,
   useToast,
 } from "@/components/ui";
-import type { BaleRow, ClothItemRow, SupplierRow } from "@/lib/bales";
+import type { BaleCuttingEventRow, BaleRow, ClothItemRow, SupplierRow } from "@/lib/bales";
 
 import { BALE_TYPES, UOMS } from "./constants";
 import {
   createBale,
   generateQrCodes,
+  getBaleCuttingHistory,
   markBaleReturned,
   markCuttingComplete,
   recordThaans,
@@ -45,7 +47,7 @@ import {
 
 const STATUS_LABEL: Record<BaleRow["status"], string> = {
   awaiting_cutting: "Awaiting Thaan cutting",
-  cutting_in_progress: "Cutting in progress",
+  cutting_in_progress: "Thaan cutting in progress",
   cut: "Thaan cutting complete",
   returned: "Returned",
 };
@@ -76,14 +78,13 @@ const COLUMNS = [
   { key: "perThaanMetres", label: "Per Thaan Mtr", width: 120 },
   { key: "billEntryDate", label: "Bill Entry Date", width: 130 },
   { key: "invoiceAmount", label: "Bill Amount", width: 120 },
-  { key: "status", label: "Status", width: 190 },
+  { key: "status", label: "Status", width: 210 },
   { key: "thaans", label: "Thaans", width: 150 },
   { key: "notes", label: "Remarks", width: 180 },
 ] as const;
 
 type ColumnKey = (typeof COLUMNS)[number]["key"];
 const COLUMN_KEYS: readonly string[] = COLUMNS.map((c) => c.key);
-const PER_PAGE = 50;
 const NUMERIC = new Set<ColumnKey>([
   "quantity",
   "baleCount",
@@ -171,6 +172,7 @@ function draftFrom(row: BaleRow): BaleDraft {
     gradeCode: row.gradeCode ?? "",
     baleCount: String(row.baleCount),
     notes: row.notes ?? "",
+    needsSecondPrint: row.needsSecondPrint,
   };
 }
 
@@ -264,6 +266,9 @@ export function Bales({
   }, [rows, filters, sort]);
 
   const active = activeFilters(filters);
+
+  const { preferences } = usePreferences();
+  const PER_PAGE = preferences.pageSize;
 
   const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const currentPage = Math.min(page, pages);
@@ -677,16 +682,13 @@ export function Bales({
  * The fields shared by adding a bale, duplicating one, and editing one —
  * everything but the supplier, which only Add can set.
  */
-function BaleFields({
+function BaleFields<D extends Omit<BaleDraft, "supplierId">>({
   draft,
   set,
   clothItems,
 }: {
-  draft: Omit<BaleDraft, "supplierId">;
-  set: <K extends keyof Omit<BaleDraft, "supplierId">>(
-    key: K,
-    value: Omit<BaleDraft, "supplierId">[K],
-  ) => void;
+  draft: D;
+  set: <K extends keyof D>(key: K, value: D[K]) => void;
   clothItems: ClothItemRow[];
 }) {
   return (
@@ -800,6 +802,15 @@ function BaleFields({
         </Field>
       </div>
 
+      <label className="flex items-center gap-2 text-[13px] text-ink-2">
+        <input
+          type="checkbox"
+          checked={draft.needsSecondPrint}
+          onChange={(e) => set("needsSecondPrint", e.target.checked)}
+        />
+        Needs Second Print — unchecked, its Thaans skip straight from Print to Nellateeta
+      </label>
+
       <Field label="Remarks" hint="Anything else worth recording about this entry.">
         <textarea
           className={inputClass}
@@ -845,6 +856,7 @@ function AddDrawer({
           gradeCode: "",
           baleCount: "1",
           notes: "",
+          needsSecondPrint: true,
         },
   );
 
@@ -962,6 +974,17 @@ function CutDrawer({
 
   const valid = Number.isInteger(Number(thaanCount)) && Number(thaanCount) > 0;
 
+  const [history, setHistory] = useState<BaleCuttingEventRow[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void getBaleCuttingHistory(bale.id).then((rows) => {
+      if (!cancelled) setHistory(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bale.id]);
+
   return (
     <Drawer
       open
@@ -1000,6 +1023,29 @@ function CutDrawer({
             onChange={(e) => setThaanCount(e.target.value)}
           />
         </Field>
+
+        <section>
+          <h3 className="mb-2 text-[13px] font-semibold text-ink">
+            Cutting history{history !== null && history.length > 0 ? ` (${history.length})` : ""}
+          </h3>
+          {history === null ? (
+            <p className="text-[13px] text-muted">Loading…</p>
+          ) : history.length === 0 ? (
+            <p className="text-[13px] text-muted">Nothing recorded yet.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {history.map((h) => (
+                <div key={h.id} className="flex items-center justify-between text-[13px]">
+                  <span className="text-ink-2">{h.actorName ?? "Unknown"}</span>
+                  <span className="text-muted">{h.recordedAt}</span>
+                  <span className="font-mono text-ink-2 tabular-nums">
+                    +{h.count} Thaan{h.count === 1 ? "" : "s"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </Drawer>
   );

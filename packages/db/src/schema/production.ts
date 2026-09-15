@@ -288,6 +288,14 @@ export const bale = pgTable(
      */
     gradeCode: text("grade_code"),
 
+    /**
+     * Whether Thaans from this bale go through Second Print at all. Not
+     * every bale needs it; defaulting to `true` keeps today's behavior —
+     * every Thaan does every stage — for anything that doesn't explicitly
+     * say otherwise. See `stagesFor` in `apps/web/src/lib/stages.ts`.
+     */
+    needsSecondPrint: boolean("needs_second_print").notNull().default(true),
+
     /** How many physical bales this one entry covers. */
     baleCount: integer("bale_count").notNull().default(1),
 
@@ -348,6 +356,26 @@ export const bale = pgTable(
     ),
   ],
 );
+
+/**
+ * One `recordThaans` call, kept — `bale.cut_by_id`/`updated_at` only ever
+ * hold whoever touched the bale's cutting status *last*, because every
+ * subsequent call (another recording, or `markCuttingComplete`) overwrites
+ * them in place. Cutting a bale can genuinely take more than one session,
+ * by more than one person, so that single mutable pair can't answer "who
+ * recorded which Thaans, and when" once there's been more than one
+ * recording — this table can, because it's appended to, never updated.
+ */
+export const baleCuttingEvent = pgTable("bale_cutting_event", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  baleId: uuid("bale_id")
+    .notNull()
+    .references(() => bale.id, { onDelete: "cascade" }),
+  actorId: uuid("actor_id").references(() => actor.id, { onDelete: "restrict" }),
+  /** How many Thaans this one recording added. */
+  count: integer("count").notNull(),
+  recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 /**
  * One cut unit of cloth from a bale — the spreadsheet's own "Thaan"

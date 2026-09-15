@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import QRCode from "qrcode";
 
 import { db } from "@/lib/db";
-import { STAGES } from "@/lib/stages";
+import { stagesFor } from "@/lib/stages";
 
 /**
  * Thaans — what a bale becomes once it's cut. See
@@ -39,7 +39,11 @@ export type ThaanRow = {
 
 export async function loadThaans(): Promise<ThaanRow[]> {
   const rows = await db.execute<
-    Omit<ThaanRow, "pipelineStatus"> & { openStage: string | null; completedStages: number }
+    Omit<ThaanRow, "pipelineStatus"> & {
+      openStage: string | null;
+      completedStages: number;
+      needsSecondPrint: boolean;
+    }
   >(sql`
     select
       t.id,
@@ -58,7 +62,8 @@ export async function loadThaans(): Promise<ThaanRow[]> {
       to_char(t.voided_at, 'DD Mon YYYY, HH12:MI AM')        as "voidedAt",
       void_by.name                                            as "voidedByName",
       open_h.stage                                            as "openStage",
-      coalesce(done.n, 0)::int                                as "completedStages"
+      coalesce(done.n, 0)::int                                as "completedStages",
+      b.needs_second_print                                    as "needsSecondPrint"
     from thaan t
     join bale b on b.id = t.bale_id
     join supplier s on s.id = b.supplier_id
@@ -72,18 +77,24 @@ export async function loadThaans(): Promise<ThaanRow[]> {
     order by t.created_at desc, t.code
   `);
 
-  return rows.map(({ openStage, completedStages, ...row }) => ({
+  return rows.map(({ openStage, completedStages, needsSecondPrint, ...row }) => ({
     ...row,
-    pipelineStatus: pipelineStatus(row.code, openStage, completedStages),
+    pipelineStatus: pipelineStatus(row.code, openStage, completedStages, needsSecondPrint),
   }));
 }
 
-function pipelineStatus(code: string | null, openStage: string | null, completedStages: number): string {
+function pipelineStatus(
+  code: string | null,
+  openStage: string | null,
+  completedStages: number,
+  needsSecondPrint: boolean,
+): string {
   if (code === null) return "QR Pending";
   if (openStage !== null) return `Out for ${openStage}`;
   if (completedStages === 0) return "QR Generated";
-  if (completedStages >= STAGES.length) return "Finished";
-  return `Ready for ${STAGES[completedStages]}`;
+  const stages = stagesFor(needsSecondPrint);
+  if (completedStages >= stages.length) return "Finished";
+  return `Ready for ${stages[completedStages]}`;
 }
 
 /**

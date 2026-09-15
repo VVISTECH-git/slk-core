@@ -22,3 +22,14 @@ export const STAGES = [
 ] as const;
 
 export type Stage = (typeof STAGES)[number];
+
+/**
+ * The stage order a specific Thaan actually follows. Second Print isn't
+ * needed for every bale — set at intake (`bale.needs_second_print`) — so a
+ * Thaan whose bale doesn't need it skips straight from Print to Nellateeta.
+ * Every consumer of "what comes after stage N" reads this, not `STAGES`
+ * directly, so the skip can't drift out of sync between them.
+ */
+export function stagesFor(needsSecondPrint: boolean): readonly Stage[] {
+  return needsSecondPrint ? STAGES : STAGES.filter((s) => s !== "Second Print");
+}

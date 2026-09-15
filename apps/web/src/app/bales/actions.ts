@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import { db } from "@/lib/db";
 import { actingId, guard } from "@/lib/session";
+import { loadBaleCuttingHistory, type BaleCuttingEventRow } from "@/lib/bales";
 
 import { BALE_TYPES, UOMS } from "./constants";
 
@@ -44,6 +45,8 @@ export interface BaleDraft {
   /** SLK's own premium-ness mark for this batch — "A3", "G5"... Not from the supplier, not tied to the item. */
   gradeCode: string;
   notes: string;
+  /** Whether Thaans from this bale go through Second Print at all — see `stagesFor`. */
+  needsSecondPrint: boolean;
 }
 
 /** Everything about a bale except who supplied it — that's fixed once the bale's code is minted. */
@@ -154,7 +157,8 @@ export async function createBale(draft: BaleDraft): Promise<ActionResult> {
   const [row] = await db.execute<{ code: string }>(sql`
     insert into bale (
       code, supplier_id, bill_entry_date, transporter, invoice_number, invoice_date,
-      invoice_amount, type, metres_received, uom, item_id, grade_code, bale_count, notes, recorded_by_id
+      invoice_amount, type, metres_received, uom, item_id, grade_code, bale_count, notes,
+      needs_second_print, recorded_by_id
     ) values (
       nextval('bale_code_seq')::text,
       ${draft.supplierId},
@@ -170,6 +174,7 @@ export async function createBale(draft: BaleDraft): Promise<ActionResult> {
       ${draft.gradeCode.trim() || null},
       ${baleCount},
       ${draft.notes.trim() || null},
+      ${draft.needsSecondPrint},
       ${actorId}
     )
     returning code
@@ -210,6 +215,7 @@ export async function updateBale(baleId: string, draft: BaleEditDraft): Promise<
       grade_code = ${draft.gradeCode.trim() || null},
       bale_count = ${baleCount},
       notes = ${draft.notes.trim() || null},
+      needs_second_print = ${draft.needsSecondPrint},
       updated_at = now()
     where id = ${baleId}
     returning code
@@ -312,6 +318,11 @@ export async function recordThaans(baleId: string, thaanCount: string): Promise<
       select ${baleId} from generate_series(1, ${count})
     `);
 
+    await tx.execute(sql`
+      insert into bale_cutting_event (bale_id, actor_id, count)
+      values (${baleId}, ${actorId}, ${count})
+    `);
+
     return row.code;
   });
 
@@ -322,6 +333,13 @@ export async function recordThaans(baleId: string, thaanCount: string): Promise<
   revalidate();
 
   return { ok: true, message: `Recorded ${count} Thaan${count === 1 ? "" : "s"} for ${code}.` };
+}
+
+export async function getBaleCuttingHistory(baleId: string): Promise<BaleCuttingEventRow[]> {
+  const denied = await guard("floor");
+  if (denied !== null) return [];
+
+  return loadBaleCuttingHistory(baleId);
 }
 
 /**

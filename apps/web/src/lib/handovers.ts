@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { STAGES, type Stage } from "@/lib/stages";
+import { stagesFor, type Stage } from "@/lib/stages";
 
 /**
  * Kora to Shelf, step three: a Thaan's trip through the stage pipeline. See
@@ -70,6 +70,7 @@ export async function checkThaanForSend(
     openStage: string | null;
     completedStages: number;
     voidedAt: string | null;
+    needsSecondPrint: boolean;
   }>(sql`
     select
       t.id, t.code,
@@ -78,7 +79,8 @@ export async function checkThaanForSend(
       i.name                                               as "itemName",
       open_h.stage                                         as "openStage",
       coalesce(done.n, 0)::int                              as "completedStages",
-      t.voided_at                                           as "voidedAt"
+      t.voided_at                                           as "voidedAt",
+      b.needs_second_print                                  as "needsSecondPrint"
     from thaan t
     join bale b on b.id = t.bale_id
     join cloth_item i on i.id = b.item_id
@@ -99,7 +101,7 @@ export async function checkThaanForSend(
     return { ok: false, message: `${thaan.code} is already out for ${thaan.openStage}.` };
   }
 
-  const expected = STAGES[thaan.completedStages];
+  const expected = stagesFor(thaan.needsSecondPrint)[thaan.completedStages];
   if (expected === undefined) {
     return { ok: false, message: `${thaan.code} has already finished every stage.` };
   }

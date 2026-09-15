@@ -29,6 +29,8 @@ export type BaleRow = {
   /** SLK's own premium-ness mark for this batch — "A3", "G5"... Not from the supplier, not tied to the item. */
   gradeCode: string | null;
   notes: string | null;
+  /** Whether Thaans from this bale go through Second Print at all — see `stagesFor`. */
+  needsSecondPrint: boolean;
   status: "awaiting_cutting" | "cutting_in_progress" | "cut" | "returned";
   /** "14 Sep 2026" — when this bale was entered, not when the invoice was prepared. */
   billEntryDate: string;
@@ -69,6 +71,7 @@ export async function loadBales(): Promise<BaleRow[]> {
       b.bale_count                                  as "baleCount",
       b.grade_code                                  as "gradeCode",
       b.notes,
+      b.needs_second_print                          as "needsSecondPrint",
       b.status,
       to_char(b.bill_entry_date, 'DD Mon YYYY')     as "billEntryDate",
       to_char(b.bill_entry_date, 'YYYY-MM-DD')      as "billEntryDateOn",
@@ -99,6 +102,32 @@ export async function loadBales(): Promise<BaleRow[]> {
       group by th.bale_id
     ) t on t.bale_id = b.id
     order by b.bill_entry_date desc, b.code desc
+  `);
+}
+
+export type BaleCuttingEventRow = {
+  id: string;
+  count: number;
+  recordedAt: string;
+  actorName: string | null;
+};
+
+/**
+ * Every `recordThaans` call against one bale, oldest first — unlike
+ * `bale.cut_by_id`/`updated_at`, which only ever hold the most recent one.
+ * See `bale_cutting_event` in `packages/db/src/schema/production.ts`.
+ */
+export async function loadBaleCuttingHistory(baleId: string): Promise<BaleCuttingEventRow[]> {
+  return db.execute<BaleCuttingEventRow>(sql`
+    select
+      e.id,
+      e.count,
+      to_char(e.recorded_at, 'DD Mon YYYY, HH12:MI AM') as "recordedAt",
+      a.name as "actorName"
+    from bale_cutting_event e
+    left join actor a on a.id = e.actor_id
+    where e.bale_id = ${baleId}
+    order by e.recorded_at
   `);
 }
 

@@ -40,20 +40,28 @@ export function Thaans({ rows }: { rows: ThaanRow[] }) {
   const withQr = rows.filter((r) => r.code !== null).length;
   const voided = rows.filter((r) => r.voidedAt !== null).length;
 
-  const q = query.trim().toLowerCase();
+  // Comma- or space-separated, same as a scan batch — "1003,1004" or
+  // "T00002007 T00002008" searches for either, not one string that has
+  // to appear as typed.
+  const terms = query
+    .split(/[,\s]+/)
+    .map((t) => t.trim().toLowerCase())
+    .filter((t) => t !== "");
   const filtered =
-    q === ""
+    terms.length === 0
       ? rows
-      : rows.filter(
-          (r) =>
-            // Bale and Thaan codes match from the start only — codes share
-            // one number line ("1004" the bale, "T1004" a Thaan from a
-            // different bale entirely, since QR codes draw from one global
-            // sequence), so a substring match on "1004" would surface both.
-            r.baleCode.toLowerCase().startsWith(q) ||
-            (r.code ?? "").toLowerCase().startsWith(q) ||
-            r.supplierName.toLowerCase().includes(q) ||
-            r.itemName.toLowerCase().includes(q),
+      : rows.filter((r) =>
+          terms.some(
+            (term) =>
+              // Bale and Thaan codes match from the start only — codes share
+              // one number line ("1004" the bale, "T1004" a Thaan from a
+              // different bale entirely, since QR codes draw from one global
+              // sequence), so a substring match on "1004" would surface both.
+              r.baleCode.toLowerCase().startsWith(term) ||
+              (r.code ?? "").toLowerCase().startsWith(term) ||
+              r.supplierName.toLowerCase().includes(term) ||
+              r.itemName.toLowerCase().includes(term),
+          ),
         );
 
   const { preferences } = usePreferences();
@@ -93,11 +101,11 @@ export function Thaans({ rows }: { rows: ThaanRow[] }) {
                   setQuery(e.target.value);
                   setPage(1);
                 }}
-                placeholder="Search by bale code, Thaan code, supplier, or item…"
+                placeholder="Search by bale code, Thaan code, supplier, or item — comma- or space-separate several"
                 aria-label="Search Thaans"
                 className="w-80 rounded-lg border border-rule-2 bg-surface px-3 py-2 text-[13.5px] text-ink placeholder:text-faint"
               />
-              {q !== "" && (
+              {terms.length > 0 && (
                 <span className="text-[12.5px] text-muted">
                   {filtered.length} match{filtered.length === 1 ? "" : "es"}
                 </span>

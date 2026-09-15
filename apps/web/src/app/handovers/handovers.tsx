@@ -140,7 +140,10 @@ function SendPanel({
 }) {
   const [pending, start] = useTransition();
   const [stage, setStage] = useState<string>("");
-  const [vendorId, setVendorId] = useState<string>(IN_HOUSE);
+  // Blank, not IN_HOUSE — sending in-house has to be picked on purpose,
+  // the same as sending to a vendor, not fallen into by never touching
+  // the dropdown.
+  const [vendorId, setVendorId] = useState<string>("");
   const [items, setItems] = useState<ThaanForSend[]>([]);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -155,13 +158,18 @@ function SendPanel({
     stageRef.current = stage;
   }, [stage]);
 
-  /** Setting the stage — by hand or from the first scan — drops a vendor who doesn't do it. */
+  /**
+   * Setting the stage — by hand or from the first scan — drops a vendor
+   * who doesn't do it. Falls back to blank, not IN_HOUSE: a vendor
+   * becoming invalid for the new stage is a reason to make the reader
+   * choose again, not a reason to silently decide it was in-house.
+   */
   function pickStage(newStage: string) {
     setStage(newStage);
     setVendorId((prev) => {
-      if (prev === IN_HOUSE) return prev;
+      if (prev === "" || prev === IN_HOUSE) return prev;
       const still = vendors.find((v) => v.id === prev);
-      return still !== undefined && still.stages.includes(newStage) ? prev : IN_HOUSE;
+      return still !== undefined && still.stages.includes(newStage) ? prev : "";
     });
   }
 
@@ -252,6 +260,9 @@ function SendPanel({
             value={vendorId}
             onChange={(e) => setVendorId(e.target.value)}
           >
+            <option value="" disabled>
+              Choose…
+            </option>
             <option value={IN_HOUSE}>In-house (no vendor)</option>
             {/* Once a stage is known — chosen, or locked by the first scan — only
                 vendors who actually do that stage are worth offering: every Thaan
@@ -288,7 +299,7 @@ function SendPanel({
           )}
           <Button
             tone="primary"
-            disabled={items.length === 0 || stage === "" || pending}
+            disabled={items.length === 0 || stage === "" || vendorId === "" || pending}
             onClick={() => setConfirming(true)}
           >
             Send {items.length > 0 ? items.length : ""}

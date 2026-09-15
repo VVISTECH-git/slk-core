@@ -35,11 +35,14 @@ export function Vendors({ rows }: { rows: VendorRow[] }) {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<VendorRow | null>(null);
   const [page, setPage] = useState(1);
+  const [stageFilter, setStageFilter] = useState("");
 
-  const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+  const filtered = stageFilter === "" ? rows : rows.filter((r) => r.stages.includes(stageFilter));
+
+  const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const currentPage = Math.min(page, pages);
   const pageFrom = (currentPage - 1) * PER_PAGE;
-  const pageRows = rows.slice(pageFrom, pageFrom + PER_PAGE);
+  const pageRows = filtered.slice(pageFrom, pageFrom + PER_PAGE);
 
   function run(action: () => Promise<ActionResult>, onOk?: () => void) {
     start(async () => {
@@ -66,9 +69,39 @@ export function Vendors({ rows }: { rows: VendorRow[] }) {
 
       <div className="flex-1 px-8 py-6">
         <div className="mx-auto max-w-5xl">
+          {rows.length > 0 && (
+            <div className="mb-4 flex items-center gap-3">
+              <label className="flex items-center gap-2 text-[13px] text-ink-2">
+                Stage
+                <select
+                  className={inputClass}
+                  value={stageFilter}
+                  onChange={(e) => {
+                    setStageFilter(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="">All stages</option>
+                  {STAGES.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </label>
+              {stageFilter !== "" && (
+                <span className="text-[12.5px] text-muted">
+                  {filtered.length} vendor{filtered.length === 1 ? "" : "s"} do{filtered.length === 1 ? "es" : ""} {stageFilter}
+                </span>
+              )}
+            </div>
+          )}
+
           {rows.length === 0 ? (
             <p className="rounded-lg border border-dashed border-rule-2 px-4 py-10 text-center text-[13px] text-muted">
               No vendors yet. Add the first one to get started.
+            </p>
+          ) : filtered.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-rule-2 px-4 py-10 text-center text-[13px] text-muted">
+              No vendor does {stageFilter}.
             </p>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-rule bg-surface">
@@ -112,7 +145,7 @@ export function Vendors({ rows }: { rows: VendorRow[] }) {
                 </tbody>
               </table>
 
-              <Pager total={rows.length} page={currentPage} perPage={PER_PAGE} onPage={setPage} />
+              <Pager total={filtered.length} page={currentPage} perPage={PER_PAGE} onPage={setPage} />
             </div>
           )}
         </div>

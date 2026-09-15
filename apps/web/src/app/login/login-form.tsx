@@ -36,7 +36,7 @@ export function LoginForm() {
           navigation alone reuses the shell that was rendered for a visitor
           with no cookie.
         */
-        router.replace(answer.landOn ?? "/records");
+        router.replace(answer.landOn ?? "/");
         router.refresh();
       }
 

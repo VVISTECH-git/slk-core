@@ -18,13 +18,13 @@ export type Theme = (typeof THEMES)[number];
 
 /** Every screen with a "Show N" list — kept here so the Preferences page and every reader agree on the label. */
 export const DEFAULT_PAGE_OPTIONS = [
+  { value: "/", label: "Dashboard" },
   { value: "/bales", label: "Bale Intake" },
   { value: "/thaans", label: "Thaans" },
   { value: "/handovers", label: "Handovers" },
   { value: "/outstanding", label: "Currently Out" },
   { value: "/vendors", label: "Vendors" },
   { value: "/vendor-ledger", label: "Vendor Ledger" },
-  { value: "/finance", label: "Financial Dashboard" },
   { value: "/records", label: "Product Management" },
   { value: "/stock", label: "Stock Records" },
 ] as const;
@@ -39,7 +39,7 @@ export interface Preferences {
 export const DEFAULT_PREFERENCES: Preferences = {
   pageSize: 50,
   theme: "system",
-  defaultPage: "/records",
+  defaultPage: "/",
 };
 
 /**

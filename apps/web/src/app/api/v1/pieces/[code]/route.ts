@@ -1,4 +1,4 @@
-import { ApiError, guarded } from "@/lib/api";
+import { ApiError, guardedSignedIn } from "@/lib/api";
 import { findPieces } from "@/lib/pieces";
 
 /**
@@ -11,8 +11,12 @@ import { findPieces } from "@/lib/pieces";
  *
  * A product code returns the whole delivery, which is what makes counting one
  * possible: scan the box, see the ten sarees that came in it.
+ *
+ * Signed-in-only — a read, not an edit, and "which one is this" is exactly
+ * the question a job-role-specific screen (Handovers, say) would still need
+ * to ask about a scan that turns out to belong to something else.
  */
-export const GET = guarded("floor", async (request) => {
+export const GET = guardedSignedIn(async (request) => {
   const code = decodeURIComponent(
     new URL(request.url).pathname.split("/").pop() ?? "",
   ).trim();

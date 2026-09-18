@@ -1,5 +1,5 @@
 import { storageStatus } from "@/app/records/image-actions";
-import { guarded } from "@/lib/api";
+import { guardedSignedIn } from "@/lib/api";
 
 /**
  * Whether photographs can be uploaded at all.
@@ -10,6 +10,7 @@ import { guarded } from "@/lib/api";
  * back and do it again.
  *
  * `missing` names the environment variables rather than shrugging, because
- * whoever sees this is the person who can set them.
+ * whoever sees this is the person who can set them. Signed-in-only — a
+ * config check, nothing sensitive in the answer.
  */
-export const GET = guarded("floor", () => storageStatus());
+export const GET = guardedSignedIn(() => storageStatus());

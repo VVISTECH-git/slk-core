@@ -1,6 +1,7 @@
 import { ApiError, body, fail, ok } from "@/lib/api";
 import {
   actorByCode,
+  actorForToken,
   clearFailures,
   lockedUntil,
   mintToken,
@@ -100,9 +101,27 @@ export async function POST(request: Request) {
 
   const { token, expiresAt } = await mintToken(who.id, device);
 
+  /*
+    Re-read through actorForToken rather than trusting `who` as-is — that
+    came from actorByCode, a plain row with no job roles attached. The app
+    needs them from the first response, not only after its next /auth/me:
+    a phone that opens straight onto a home screen decided by job role
+    should not flash the wrong one first because login handed back less
+    than a re-check would.
+  */
+  const authed = await actorForToken(token);
+
   return ok({
     token,
     expiresAt: expiresAt.toISOString(),
-    actor: { id: who.id, code: who.code, name: who.name, role: who.role },
+    actor: authed === null
+      ? { id: who.id, code: who.code, name: who.name, role: who.role, jobRoles: [] }
+      : {
+          id: authed.id,
+          code: authed.code,
+          name: authed.name,
+          role: authed.role,
+          jobRoles: authed.jobRoles,
+        },
   });
 }

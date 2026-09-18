@@ -100,6 +100,46 @@ export function guarded<T>(
 }
 
 /**
+ * Wrap a handler so it runs for any signed-in actor, no job role required —
+ * for routes that were never actually privileged, just gated at "floor"
+ * because that was the lowest Role there was. Session validation
+ * (`/auth/me`, `/auth/logout`) and shared reference data with nothing
+ * sensitive in it (`/options`, `/locations`, `/storage`, a piece lookup by
+ * code) belong here, not behind `guarded`'s Admin-only default — sweeping
+ * every old "floor" into Admin also swept these along with it, which broke
+ * sign-in itself for anyone who is not an Admin (see this function's
+ * introduction). `guarded`/`guardedJobRole` are still what every route that
+ * actually changes something, or shows something worth restricting, uses.
+ */
+export function guardedSignedIn<T>(
+  handler: (request: Request, actor: AuthedActor) => Promise<T>,
+): (request: Request) => Promise<NextResponse> {
+  return async (request: Request) => {
+    let who: AuthedActor | null;
+
+    try {
+      who = await actorFor(request);
+    } catch (error) {
+      console.error("[api] authenticating", error);
+      return fail("Cannot reach the database.", 503);
+    }
+
+    if (who === null) return fail("Please sign in again.", 401);
+
+    try {
+      return ok(await handler(request, who));
+    } catch (error) {
+      if (error instanceof ApiError) {
+        return fail(error.message, error.status, error.errors);
+      }
+
+      console.error("[api] handling", request.method, request.url, error);
+      return fail("Something went wrong. Please try again.", 500);
+    }
+  };
+}
+
+/**
  * Job-role equivalent of [guarded] — for the Bale Intake and Handovers
  * mobile routes, which Role (Floor/Office/Owner) has no say over. Otherwise
  * identical: same envelope, same 401-vs-403 distinction, same error handling.

@@ -1,4 +1,4 @@
-import { guarded } from "@/lib/api";
+import { guardedSignedIn } from "@/lib/api";
 import { loadOptions } from "@/lib/editor";
 
 /**
@@ -14,7 +14,8 @@ import { loadOptions } from "@/lib/editor";
  * industry), and a client that holds all of them can narrow without asking
  * again. It is a few hundred rows.
  *
- * `floor` can read it. Choosing from a vocabulary is not editing it — that is
- * Master Lists, which is not exposed here at all.
+ * Signed-in-only. Choosing from a vocabulary is not editing it — that is
+ * Master Lists, which is not exposed here at all — and every job role's
+ * form reads from this same list, so gating it to one would break the rest.
  */
-export const GET = guarded("floor", () => loadOptions());
+export const GET = guardedSignedIn(() => loadOptions());

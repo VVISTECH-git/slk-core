@@ -1,4 +1,4 @@
-import { guarded } from "@/lib/api";
+import { guardedSignedIn } from "@/lib/api";
 import { loadPickableLocations } from "@/lib/locations";
 
 /**
@@ -11,5 +11,8 @@ import { loadPickableLocations } from "@/lib/locations";
  *
  * The pickable ones only, internal first, which is the order somebody
  * standing in a warehouse wants: the place they are is near the top.
+ *
+ * Signed-in-only — reference data every job role's form needs, same
+ * reasoning as /options.
  */
-export const GET = guarded("floor", () => loadPickableLocations());
+export const GET = guardedSignedIn(() => loadPickableLocations());

@@ -24,7 +24,6 @@ import {
   setActive,
   setJobRoles,
   setPin,
-  setRole,
   type Result,
 } from "./actions";
 
@@ -39,24 +38,6 @@ import {
  * forgotten PIN, a handset left somewhere — and a screen for that should be
  * legible on the day rather than clever.
  */
-
-const ROLES = [
-  {
-    key: "floor",
-    label: "Floor",
-    what: "Count, move and photograph stock. Receive a delivery.",
-  },
-  {
-    key: "office",
-    label: "Office",
-    what: "Everything floor can, plus pricing, the catalogue and Master Lists.",
-  },
-  {
-    key: "owner",
-    label: "Owner",
-    what: "Everything, including this screen.",
-  },
-] as const;
 
 export function Staff({
   rows,
@@ -115,7 +96,6 @@ export function Staff({
               <tr className="border-b border-rule text-left text-[12px] font-medium text-muted">
                 <th className="px-4 py-2.5">Name</th>
                 <th className="px-3 py-2.5">Code</th>
-                <th className="px-3 py-2.5">Role</th>
                 <th className="px-3 py-2.5">Job roles</th>
                 <th className="px-3 py-2.5 text-right">Signed in</th>
                 <th className="px-3 py-2.5">Last seen</th>
@@ -127,7 +107,7 @@ export function Staff({
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-16 text-center">
+                  <td colSpan={7} className="px-4 py-16 text-center">
                     <p className="mb-1 text-[15px] font-medium text-ink">
                       Nobody yet
                     </p>
@@ -158,22 +138,6 @@ export function Staff({
 
                     <td className="px-3 font-mono text-[12.5px] text-ink-2">
                       {row.code}
-                    </td>
-
-                    <td className="px-3">
-                      <select
-                        value={row.role}
-                        disabled={pending}
-                        onChange={(e) => run(() => setRole(row.id, e.target.value))}
-                        aria-label={`Role for ${row.name}`}
-                        className="rounded-md border border-rule-2 bg-surface px-2 py-1 text-[12.5px] text-ink"
-                      >
-                        {ROLES.map((r) => (
-                          <option key={r.key} value={r.key}>
-                            {r.label}
-                          </option>
-                        ))}
-                      </select>
                     </td>
 
                     <td className="px-3">
@@ -290,10 +254,13 @@ function AddDrawer({
 }) {
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState<string>("floor");
   const [pin, setPin] = useState("");
 
-  const chosen = ROLES.find((r) => r.key === role);
+  // Role no longer grants anything (see auth.ts's own comment on
+  // ADMIN_OVERRIDE_JOB_ROLE) — the column stays, so createStaff still wants
+  // a value, but there is nothing left for a person adding staff to decide
+  // here. Job roles, assigned after Add, are what actually matters now.
+  const role = "floor";
 
   return (
     <Drawer
@@ -339,20 +306,6 @@ function AddDrawer({
             spellCheck={false}
             className={`${inputClass} font-mono`}
           />
-        </Field>
-
-        <Field label="Role" hint={chosen?.what ?? ""}>
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            className={inputClass}
-          >
-            {ROLES.map((r) => (
-              <option key={r.key} value={r.key}>
-                {r.label}
-              </option>
-            ))}
-          </select>
         </Field>
 
         <Field

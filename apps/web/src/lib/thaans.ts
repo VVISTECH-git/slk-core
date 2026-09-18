@@ -185,45 +185,65 @@ export async function loadStageFunnel(): Promise<{ eligible: number; stages: Sta
 
 /**
  * Every non-voided Thaan, bucketed by where it currently sits — "Not
- * started", each of `STAGES`, or "Finished". Mirrors `loadBaleStageHeatmap`
- * (`lib/bales.ts`) exactly, bucket logic included — that function's own
- * comment explains why "Out for X" and "X done, not yet sent on" share one
- * "X" bucket — just without grouping by bale, since the two callers below
- * want a whole-pipeline view, not a per-bale one. Kept as its own copy
- * rather than sharing code across the two files: the duplication is small,
- * stable, and load-bearing for staying in sync (`stagesFor`'s per-bale
- * conditional stage list is the one part worth not silently drifting on) —
- * if you change the bucket rule here, change it there too.
+ * started", each of `STAGES`, or "Finished" — with who's holding it (if
+ * anyone) and since when, so a bucket with hundreds of Thaans in it is
+ * still answerable at a glance: which vendor, which bale, how long. Bucket
+ * logic mirrors `loadBaleStageHeatmap` (`lib/bales.ts`) exactly — that
+ * function's own comment explains why "Out for X" and "X done, not yet
+ * sent on" share one "X" bucket — just without grouping by bale, since the
+ * two callers below want a whole-pipeline view, not a per-bale one. Kept as
+ * its own copy rather than sharing code across the two files: the
+ * duplication is small, stable, and load-bearing for staying in sync
+ * (`stagesFor`'s per-bale conditional stage list is the one part worth not
+ * silently drifting on) — if you change the bucket rule here, change it
+ * there too.
+ *
+ * `sinceAt` is whichever event actually put the Thaan in this bucket: the
+ * open handover's `sentAt` if it's out for a stage, else the most recent
+ * completed handover's `receivedAt` if it's waiting to be sent for the
+ * next one, else the bale's own `billEntryDate` if it hasn't started —
+ * "how long has this actually been sitting here", not a proxy for it.
  */
-async function loadThaanBuckets(): Promise<{ thaanId: string; baleId: string; bucket: string }[]> {
-  const bales = await db.execute<{ id: string; needsSecondPrint: boolean }>(sql`
-    select id, needs_second_print as "needsSecondPrint" from bale
+async function loadThaanBuckets(): Promise<
+  { thaanId: string; baleCode: string; bucket: string; vendorName: string | null; sinceAt: string | Date | null }[]
+> {
+  const bales = await db.execute<{ id: string; needsSecondPrint: boolean; code: string; billEntryDate: string | Date }>(sql`
+    select id, needs_second_print as "needsSecondPrint", code, bill_entry_date as "billEntryDate" from bale
   `);
-  const needsSecondPrintByBale = new Map(bales.map((b) => [b.id, b.needsSecondPrint]));
+  const balesById = new Map(bales.map((b) => [b.id, b]));
 
   const thaanRows = await db.execute<{
     thaanId: string;
     baleId: string;
     hasCode: boolean;
     openStage: string | null;
+    openSentAt: string | Date | null;
+    openVendorName: string | null;
     completedCount: number;
+    lastReceivedAt: string | Date | null;
   }>(sql`
     select
       t.id as "thaanId",
       t.bale_id as "baleId",
       (t.code is not null) as "hasCode",
       open_h.stage as "openStage",
-      coalesce(done.n, 0)::int as "completedCount"
+      open_h.sent_at as "openSentAt",
+      ov.name as "openVendorName",
+      coalesce(done.n, 0)::int as "completedCount",
+      done.last_received_at as "lastReceivedAt"
     from thaan t
     left join handover open_h on open_h.thaan_id = t.id and open_h.received_at is null
+    left join vendor ov on ov.id = open_h.vendor_id
     left join (
-      select thaan_id, count(*)::int as n from handover where received_at is not null group by thaan_id
+      select thaan_id, count(*)::int as n, max(received_at) as last_received_at
+      from handover where received_at is not null group by thaan_id
     ) done on done.thaan_id = t.id
     where t.voided_at is null
   `);
 
   return thaanRows.map((row) => {
-    const stages = stagesFor(needsSecondPrintByBale.get(row.baleId) ?? true);
+    const bale = balesById.get(row.baleId);
+    const stages = stagesFor(bale?.needsSecondPrint ?? true);
 
     let bucket: string;
     if (!row.hasCode || (row.openStage === null && row.completedCount === 0)) bucket = "Not started";
@@ -231,50 +251,115 @@ async function loadThaanBuckets(): Promise<{ thaanId: string; baleId: string; bu
     else if (row.completedCount >= stages.length) bucket = "Finished";
     else bucket = stages[row.completedCount] ?? "Finished";
 
-    return { thaanId: row.thaanId, baleId: row.baleId, bucket };
+    const sinceAt = row.openStage !== null ? row.openSentAt : row.completedCount > 0 ? row.lastReceivedAt : (bale?.billEntryDate ?? null);
+
+    return {
+      thaanId: row.thaanId,
+      baleCode: bale?.code ?? "—",
+      bucket,
+      vendorName: row.openStage !== null ? row.openVendorName : null,
+      sinceAt,
+    };
   });
 }
 
-export type StageSummaryRow = { bucket: string; count: number };
+/** "13 Sep 2026" — matches the "DD Mon YYYY" convention every other date in this API is already formatted as (see `to_char(..., 'DD Mon YYYY')` elsewhere in this file), for a value that started as a raw Date/string rather than SQL. */
+function formatDate(value: string | Date | null): string | null {
+  if (value === null) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+/** Whole days between `value` and now — the actual backlog signal; a date alone still makes the reader do the subtraction. */
+function daysSince(value: string | Date | null): number | null {
+  if (value === null) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  return Math.max(0, Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24)));
+}
+
+function earlier(a: string | Date | null, b: string | Date | null): string | Date | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return a < b ? a : b;
+}
+
+export type StageSummaryRow = {
+  bucket: string;
+  count: number;
+  /** How long the oldest Thaan in this bucket has been sitting there — null when the bucket is empty. How backlogged it is, not just how big. */
+  oldestDaysWaiting: number | null;
+  oldestSince: string | null;
+};
 
 /**
  * How many Thaans currently sit at each point in the pipeline, across the
- * whole business — Production Manager and Operations Manager's own
- * landing view, not one bale's own breakdown (that's the Dashboard's
- * heatmap).
+ * whole business, and how long the oldest one there has been waiting —
+ * Production Manager and Operations Manager's own landing view, not one
+ * bale's own breakdown (that's the Dashboard's heatmap). A count alone
+ * doesn't say anything at real volume — "340 at Salava" is meaningless
+ * without knowing whether that's a healthy pipeline or a three-week
+ * backlog; `oldestDaysWaiting` is what turns the count into a signal.
  */
 export async function loadStageSummary(): Promise<StageSummaryRow[]> {
   const buckets = await loadThaanBuckets();
 
   const totals = new Map<string, number>();
-  for (const { bucket } of buckets) totals.set(bucket, (totals.get(bucket) ?? 0) + 1);
+  const oldest = new Map<string, string | Date>();
+  for (const b of buckets) {
+    totals.set(b.bucket, (totals.get(b.bucket) ?? 0) + 1);
+    const older = earlier(oldest.get(b.bucket) ?? null, b.sinceAt);
+    if (older !== null) oldest.set(b.bucket, older);
+  }
 
   const columns = ["Not started", ...STAGES, "Finished"];
-  return columns.map((bucket) => ({ bucket, count: totals.get(bucket) ?? 0 }));
+  return columns.map((bucket) => {
+    const since = oldest.get(bucket) ?? null;
+    return { bucket, count: totals.get(bucket) ?? 0, oldestDaysWaiting: daysSince(since), oldestSince: formatDate(since) };
+  });
 }
 
-export type StageThaanRow = {
-  thaanCode: string | null;
+export type StageGroupRow = {
   baleCode: string;
   /** Who currently has it, if this bucket means "out for" that stage — null for every other bucket. */
   vendorName: string | null;
+  count: number;
+  /** How long the oldest Thaan in this group has been sitting there — oldest-first is the drill-down's default order. */
+  daysWaiting: number | null;
+  since: string | null;
 };
 
-/** The actual Thaans sitting in one bucket — the stage summary's drill-down. */
-export async function loadThaansInBucket(bucket: string): Promise<StageThaanRow[]> {
-  const buckets = await loadThaanBuckets();
-  const ids = buckets.filter((b) => b.bucket === bucket).map((b) => b.thaanId);
-  if (ids.length === 0) return [];
+/**
+ * One bucket's Thaans, grouped by vendor and bale rather than listed one by
+ * one — a stage with hundreds of Thaans in it is a hundred rows of "T00001,
+ * T00002, T00003…" that answers nothing; grouped and sorted oldest-first,
+ * the same list answers "who's holding what, and what's been stuck
+ * longest" in a screenful. The stage summary's drill-down.
+ */
+export async function loadThaansInBucket(bucket: string): Promise<StageGroupRow[]> {
+  const buckets = (await loadThaanBuckets()).filter((b) => b.bucket === bucket);
 
-  return db.execute<StageThaanRow>(sql`
-    select t.code as "thaanCode", b.code as "baleCode", v.name as "vendorName"
-    from thaan t
-    join bale b on b.id = t.bale_id
-    left join handover open_h on open_h.thaan_id = t.id and open_h.received_at is null
-    left join vendor v on v.id = open_h.vendor_id
-    where t.id in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
-    order by b.code, t.code
-  `);
+  const groups = new Map<string, { baleCode: string; vendorName: string | null; count: number; sinceAt: string | Date | null }>();
+  for (const b of buckets) {
+    const key = `${b.vendorName ?? ""}::${b.baleCode}`;
+    const group = groups.get(key) ?? { baleCode: b.baleCode, vendorName: b.vendorName, count: 0, sinceAt: null };
+    group.count += 1;
+    group.sinceAt = earlier(group.sinceAt, b.sinceAt);
+    groups.set(key, group);
+  }
+
+  return [...groups.values()]
+    .sort((a, b) => {
+      if (a.sinceAt === null) return b.sinceAt === null ? 0 : 1;
+      if (b.sinceAt === null) return -1;
+      return a.sinceAt < b.sinceAt ? -1 : a.sinceAt > b.sinceAt ? 1 : 0;
+    })
+    .map((g) => ({
+      baleCode: g.baleCode,
+      vendorName: g.vendorName,
+      count: g.count,
+      daysWaiting: daysSince(g.sinceAt),
+      since: formatDate(g.sinceAt),
+    }));
 }
 
 /**

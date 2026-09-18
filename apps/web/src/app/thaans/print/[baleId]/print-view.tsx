@@ -1,8 +1,9 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Button } from "@/components/ui";
+import { Button, Field, inputClass } from "@/components/ui";
 import type { ThaanPrintBatch } from "@/lib/thaans";
 
 /**
@@ -21,6 +22,16 @@ export function PrintView({
 }) {
   const router = useRouter();
 
+  // Ink or paper running out partway through a long roll is a printer
+  // failure, not a data problem — there's no signal from the printer to
+  // tell us where it actually stopped. So the person reads the last label
+  // that actually came out physically and picks up right after it, instead
+  // of either reprinting labels that already exist or hunting one-by-one
+  // through the Thaans screen's single-reprint action. `printedThrough` is
+  // how many labels (from the top) to skip — 0 means print everything.
+  const [printedThrough, setPrintedThrough] = useState(0);
+  const rows = useMemo(() => batch.rows.slice(printedThrough), [batch.rows, printedThrough]);
+
   return (
     <div className="min-h-screen bg-surface-2">
       <style>{`
@@ -34,25 +45,48 @@ export function PrintView({
         }
       `}</style>
 
-      <div className="no-print flex items-center justify-between border-b border-rule bg-surface px-8 py-4">
+      <div className="no-print flex items-center justify-between gap-4 border-b border-rule bg-surface px-8 py-4">
         <div>
           <h1 className="text-[15px] font-semibold text-ink">Print QR codes — {batch.baleCode}</h1>
           <p className="mt-0.5 text-[12.5px] text-muted">
-            {batch.rows.length} Thaan{batch.rows.length === 1 ? "" : "s"}. Laid out for an 80mm
-            receipt roll — check the first printout against your printer before running the rest.
+            {printedThrough === 0
+              ? `${batch.rows.length} Thaan${batch.rows.length === 1 ? "" : "s"}.`
+              : `Printing ${rows.length} of ${batch.rows.length} — resuming after ${printedThrough} already done.`}{" "}
+            Laid out for an 80mm receipt roll — check the first printout against your printer before
+            running the rest.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={() => router.push(back.href)}>{back.label}</Button>
-          <Button tone="primary" onClick={() => window.print()}>
-            Print
-          </Button>
+        <div className="flex items-end gap-3">
+          {batch.rows.length > 1 && (
+            <div className="w-56">
+              <Field label="Resume from" hint="Printer ran out partway? Pick the last label that actually printed.">
+                <select
+                  className={inputClass}
+                  value={printedThrough}
+                  onChange={(e) => setPrintedThrough(Number(e.target.value))}
+                >
+                  <option value={0}>Start — print all {batch.rows.length}</option>
+                  {batch.rows.slice(0, -1).map((row, i) => (
+                    <option key={row.id} value={i + 1}>
+                      After #{i + 1} · {row.code}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Button onClick={() => router.push(back.href)}>{back.label}</Button>
+            <Button tone="primary" onClick={() => window.print()}>
+              Print
+            </Button>
+          </div>
         </div>
       </div>
 
       <div className="flex justify-center py-8">
         <div className="roll w-[80mm] bg-white shadow-[var(--shadow)]">
-          {batch.rows.map((row, i) => (
+          {rows.map((row, i) => (
             <div
               key={row.id}
               className={`flex flex-col items-center gap-1 px-3 py-4 text-center ${

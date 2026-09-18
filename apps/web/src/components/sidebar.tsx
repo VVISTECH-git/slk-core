@@ -89,7 +89,6 @@ const NAV = [
     href: "/vendor-ledger",
     label: "Vendor Ledger",
     icon: "M4 4h12v12H4z M7 8h6 M7 11h6 M7 14h3",
-    minRole: "office",
   },
   {
     href: "/records",
@@ -127,7 +126,6 @@ const NAV = [
     href: "/staff",
     label: "Staff",
     icon: "M7 9a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z M2.5 16c0-2.5 2-4.2 4.5-4.2s4.5 1.7 4.5 4.2 M13 5.2a2.2 2.2 0 0 1 0 4.3 M14 11.6c1.9.4 3.2 1.8 3.2 3.9",
-    minRole: "owner",
   },
   {
     // Job functions staff are assigned to — "Bale Custodian" is the
@@ -136,7 +134,6 @@ const NAV = [
     href: "/job-roles",
     label: "Job Roles",
     icon: "M6 8V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3 M3 8h14v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M8 8v4h4V8",
-    minRole: "owner",
   },
   {
     // Every storefront, every consignment on it, and the buttons that put
@@ -144,7 +141,6 @@ const NAV = [
     href: "/channels",
     label: "Channels",
     icon: "M4 6l1-3h10l1 3 M4 6h12v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6z M8 9v2a2 2 0 0 0 4 0V9",
-    minRole: "owner",
   },
   {
     // What the photograph bucket costs. Not floor work — nobody photographing
@@ -153,7 +149,6 @@ const NAV = [
     href: "/storage",
     label: "Storage",
     icon: "M4 5h12v4H4z M4 11h12v4H4z M6.5 7h.01 M6.5 13h.01",
-    minRole: "office",
   },
   {
     // What the database itself costs, the same question Storage answers for
@@ -161,16 +156,12 @@ const NAV = [
     href: "/database",
     label: "Database",
     icon: "M4 5a6 2 0 1 0 12 0a6 2 0 1 0-12 0 M4 5v8a6 2 0 0 0 12 0V5 M4 9a6 2 0 0 0 12 0",
-    minRole: "office",
   },
 ] as const;
 
-/** Matches ROLE_RANK in @/lib/auth — duplicated so this client bundle never
- * has to import that module, which pulls in node:crypto for the token
- * helpers that live beside the ranking. */
-const ROLE_RANK: Record<string, number> = { floor: 0, office: 1, owner: 2 };
-
-/** Matches ADMIN_OVERRIDE_JOB_ROLE in @/lib/auth — same reasoning as ROLE_RANK above. */
+/** Matches ADMIN_OVERRIDE_JOB_ROLE in @/lib/auth — duplicated so this client
+ * bundle never has to import that module, which pulls in node:crypto for
+ * the token helpers that live beside it. */
 const ADMIN_JOB_ROLE = "Admin";
 
 const RAIL_KEY = "slk.sidebar.rail";
@@ -292,15 +283,14 @@ export function Sidebar({ actor }: { actor: SidebarActor }) {
       !HIDDEN.has(item.href) &&
       // Hidden rather than shown-and-refused: a link that always says no is
       // a worse way of saying "not for you" than not being there.
-      (!("minRole" in item) ||
-        (ROLE_RANK[actor.role] ?? 0) >= ROLE_RANK[item.minRole]) &&
-      // Job-role gate is separate from, not layered on top of, minRole — a
-      // page carries one or the other (see bales/page.tsx and
-      // handovers/page.tsx), never both, so this only narrows the items that
-      // opted into it.
-      (!("jobRoles" in item) ||
-        actor.jobRoles.includes(ADMIN_JOB_ROLE) ||
-        item.jobRoles.some((role) => actor.jobRoles.includes(role))),
+      //
+      // Floor/Office/Owner (minRole) is retired as a source of access — see
+      // auth.ts's own comment on ADMIN_OVERRIDE_JOB_ROLE. An item that opted
+      // into a specific job-role gate (Bale Intake, Handovers) shows for
+      // that job role or Admin; everything else shows for Admin only, full
+      // stop, until it is given a more specific job role to ask for instead.
+      (actor.jobRoles.includes(ADMIN_JOB_ROLE) ||
+        ("jobRoles" in item && item.jobRoles.some((role) => actor.jobRoles.includes(role)))),
   );
 
   return (

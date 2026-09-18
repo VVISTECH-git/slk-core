@@ -7,11 +7,14 @@ import { actor, actorToken, loginAttempt, type Actor } from "@slk/db";
 import { db } from "@/lib/db";
 
 /**
- * The one job role that grants full access — Owner-equivalent, wherever an
- * actor holds it, regardless of their own assigned Role. `actorForToken`
- * below is the single place this override is applied, so both doors (the
- * portal's cookie and the phone's bearer token — see actorForToken's own
- * comment) inherit it without a second check anywhere else.
+ * The one job role that grants full access — everywhere, unconditionally.
+ *
+ * Floor/Office/Owner (`Role`, `ROLE_RANK`, `allows` in roles.ts) has been
+ * retired as a source of access. It still exists as a column on `actor` and
+ * still shows on the Staff page — a historical label, kept because ripping
+ * the column out is a separate, later change — but nothing in this app
+ * consults it to decide what anyone may do anymore. `hasAnyJobRole` below,
+ * not `allows`, is what every gate in session.ts and api.ts actually calls.
  */
 const ADMIN_OVERRIDE_JOB_ROLE = "Admin";
 
@@ -25,10 +28,11 @@ export type AuthedActor = Actor & { jobRoles: string[] };
 
 /**
  * Whether any of the given job roles would satisfy a job-role gate — Admin
- * always does, since it means "everywhere," same reasoning as the Role
- * override above. Pages/actions that are gated by job role rather than Role
- * (Bale Intake, Handovers — see requireJobRole/guardJobRole in session.ts)
- * call this instead of `allows`.
+ * always does, since it means "everywhere." This is the one function every
+ * permission decision in this app now goes through, whether a page/action
+ * asks for a specific job role (Bale Intake, Handovers) or, via an empty
+ * `needed` list, for nothing less than Admin itself (everything else,
+ * for now, until a more specific job role is carved out for it).
  */
 export function hasAnyJobRole(who: AuthedActor, needed: string[]): boolean {
   return (
@@ -192,13 +196,12 @@ export async function actorForToken(token: string): Promise<AuthedActor | null> 
   const row = rows[0];
   if (row === undefined) return null;
 
-  // Overridden here, once, rather than checked at every call site: the
-  // Admin job role means "owner everywhere", not "owner, if whoever wrote
-  // this particular guard remembered to ask" — see this file's own comment
-  // on ADMIN_OVERRIDE_JOB_ROLE. The actor row underneath is untouched; a
-  // Staff-page listing that reads `role` straight from the table (not
-  // through this function) still shows what was literally assigned.
-  if (row.jobRoles.includes(ADMIN_OVERRIDE_JOB_ROLE)) row.role = "owner";
+  // No role override here anymore — Floor/Office/Owner has been retired as
+  // a source of access entirely (see requireActor/requirePage/guard in
+  // session.ts, and guarded in api.ts, which now check jobRoles directly
+  // and ignore `role` for every permission decision). `role` on the
+  // returned actor is what the Staff page shows: a literal, historical
+  // label, nothing else reads it to decide what anyone may do.
 
   /*
     Touched at most once a day.

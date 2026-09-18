@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { actorFor, allows, hasAnyJobRole, type AuthedActor, type Role } from "@/lib/auth";
+import { actorFor, hasAnyJobRole, type AuthedActor, type Role } from "@/lib/auth";
 
 /**
  * The shape every /api/v1 route answers in.
@@ -50,8 +50,14 @@ export class ApiError extends Error {
 }
 
 /**
- * Wrap a handler so it only ever runs for a signed-in actor of sufficient
- * role, and so nothing it throws reaches the caller as a stack trace.
+ * Wrap a handler so it only ever runs for a signed-in Admin, and so nothing
+ * it throws reaches the caller as a stack trace.
+ *
+ * `needed: Role` stays in the signature so existing call sites needed no
+ * changes, but Floor/Office/Owner is retired (see auth.ts's own comment on
+ * ADMIN_OVERRIDE_JOB_ROLE) and no longer affects this check — every route
+ * still calling `guarded` means "Admin job role," full stop, until it's
+ * moved to `guardedJobRole` for something more specific.
  *
  * The actor is passed in rather than looked up again inside, because a
  * handler that re-reads the token is a handler that can forget to.
@@ -74,7 +80,7 @@ export function guarded<T>(
     // right thing to do when a token has expired or been revoked.
     if (who === null) return fail("Please sign in again.", 401);
 
-    if (!allows(who.role, needed)) {
+    if (!hasAnyJobRole(who, [])) {
       return fail("Your account cannot do that.", 403);
     }
 

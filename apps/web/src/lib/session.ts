@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 
 import {
   actorForToken,
-  allows,
   bearerFrom,
   hasAnyJobRole,
   mintToken,
@@ -79,12 +78,20 @@ export async function currentActor(): Promise<AuthedActor | null> {
  * Throws rather than returns null on purpose. A caller that forgets to handle
  * a null carries on as though it were signed in; one that forgets to handle a
  * throw does not run.
+ *
+ * `needed: Role` stays in the signature so the ~25 call sites across the app
+ * (`requirePage()`, `guard("office")`, and so on) needed no changes — but
+ * Floor/Office/Owner is retired (see auth.ts's own comment on
+ * ADMIN_OVERRIDE_JOB_ROLE) and this parameter no longer affects the check.
+ * Every one of those call sites now means the same thing: nothing less than
+ * the Admin job role, until it is given a more specific one to ask for
+ * instead (see requireJobRoleActor for what that looks like).
  */
 export async function requireActor(needed: Role = "floor"): Promise<AuthedActor> {
   const who = await currentActor();
 
   if (who === null) throw new NotSignedIn();
-  if (!allows(who.role, needed)) throw new NotAllowed(needed);
+  if (!hasAnyJobRole(who, [])) throw new NotAllowed(needed);
 
   return who;
 }
@@ -97,10 +104,14 @@ export class NotSignedIn extends Error {
   }
 }
 
-/** Signed in, but not far enough up. Named so the message can say what is wanted. */
+/**
+ * Signed in, but not an Admin. `needed` is kept only to say something
+ * specific in the rare place a caller still reads it — the message itself no
+ * longer varies by what was asked for, since only one thing ever passes now.
+ */
 export class NotAllowed extends Error {
   constructor(readonly needed: Role) {
-    super(`That needs ${needed} access.`);
+    super("That needs the Admin job role.");
     this.name = "NotAllowed";
   }
 }
@@ -132,7 +143,9 @@ export async function requirePage(needed: Role = "floor"): Promise<AuthedActor> 
 
   // Somewhere that says so, rather than back to the grid with a query string
   // nothing renders — a bounce with no explanation reads as a broken link.
-  if (!allows(who.role, needed)) redirect(`/denied?needs=${needed}`);
+  // See requireActor's own comment: `needed` no longer changes this check,
+  // only what the denied page prints.
+  if (!hasAnyJobRole(who, [])) redirect(`/denied?needs=${needed}`);
 
   return who;
 }

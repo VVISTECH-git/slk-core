@@ -16,12 +16,20 @@ import {
 
 /**
  * Every vendor-billing action, gated to this one job role (Admin always
- * passes too, via hasAnyJobRole). Kept as a shared const so the page-level
- * gate (vendors/page.tsx, vendor-ledger/page.tsx) and the sidebar entry
- * (components/sidebar.tsx) can't quietly drift from what the actions
- * themselves actually enforce.
+ * passes too, via hasAnyJobRole).
+ *
+ * Not exported, unlike the pattern its own name suggests: this file is
+ * `"use server"`, which only allows async function exports across a module
+ * boundary — a route handler (or any other importer) pulling in so much as
+ * this one plain array fails the production build outright ("A 'use
+ * server' file can only export async functions, found object"), even
+ * though the very same file happily exports async functions and `interface`s
+ * (types are erased, so they don't count). Every other gate — the API
+ * routes under api/v1/vendors, vendors/page.tsx, vendor-ledger/page.tsx,
+ * the sidebar entry — repeats the literal `["Finance Manager"]` by hand
+ * instead, and has to be kept in sync with this by eye.
  */
-export const FINANCE_JOB_ROLES = ["Finance Manager"];
+const FINANCE_JOB_ROLES = ["Finance Manager"];
 
 export interface ActionResult {
   ok: boolean;

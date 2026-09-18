@@ -27,10 +27,16 @@ export function PrintView({
   // tell us where it actually stopped. So the person reads the last label
   // that actually came out physically and picks up right after it, instead
   // of either reprinting labels that already exist or hunting one-by-one
-  // through the Thaans screen's single-reprint action. `printedThrough` is
-  // how many labels (from the top) to skip — 0 means print everything.
-  const [printedThrough, setPrintedThrough] = useState(0);
-  const rows = useMemo(() => batch.rows.slice(printedThrough), [batch.rows, printedThrough]);
+  // through the Thaans screen's single-reprint action. Plain 1-based
+  // From/To — not a dropdown listing every one of a few hundred codes.
+  const [from, setFrom] = useState(1);
+  const [to, setTo] = useState(batch.rows.length);
+  const fromClamped = Math.min(Math.max(from, 1), batch.rows.length);
+  const toClamped = Math.min(Math.max(to, fromClamped), batch.rows.length);
+  const rows = useMemo(
+    () => batch.rows.slice(fromClamped - 1, toClamped),
+    [batch.rows, fromClamped, toClamped],
+  );
 
   return (
     <div className="min-h-screen bg-surface-2">
@@ -49,30 +55,40 @@ export function PrintView({
         <div>
           <h1 className="text-[15px] font-semibold text-ink">Print QR codes — {batch.baleCode}</h1>
           <p className="mt-0.5 text-[12.5px] text-muted">
-            {printedThrough === 0
+            {rows.length === batch.rows.length
               ? `${batch.rows.length} Thaan${batch.rows.length === 1 ? "" : "s"}.`
-              : `Printing ${rows.length} of ${batch.rows.length} — resuming after ${printedThrough} already done.`}{" "}
+              : `Printing ${rows.length} of ${batch.rows.length} — #${fromClamped} to #${toClamped}.`}{" "}
             Laid out for an 80mm receipt roll — check the first printout against your printer before
             running the rest.
           </p>
         </div>
         <div className="flex items-end gap-3">
           {batch.rows.length > 1 && (
-            <div className="w-56">
-              <Field label="Resume from" hint="Printer ran out partway? Pick the last label that actually printed.">
-                <select
-                  className={inputClass}
-                  value={printedThrough}
-                  onChange={(e) => setPrintedThrough(Number(e.target.value))}
-                >
-                  <option value={0}>Start — print all {batch.rows.length}</option>
-                  {batch.rows.slice(0, -1).map((row, i) => (
-                    <option key={row.id} value={i + 1}>
-                      After #{i + 1} · {row.code}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+            <div className="flex gap-2">
+              <div className="w-24">
+                <Field label="From #" hint="Printer ran out partway? Set this to where it stopped.">
+                  <input
+                    className={inputClass}
+                    type="number"
+                    min={1}
+                    max={batch.rows.length}
+                    value={from}
+                    onChange={(e) => setFrom(Number(e.target.value) || 1)}
+                  />
+                </Field>
+              </div>
+              <div className="w-24">
+                <Field label="To #">
+                  <input
+                    className={inputClass}
+                    type="number"
+                    min={1}
+                    max={batch.rows.length}
+                    value={to}
+                    onChange={(e) => setTo(Number(e.target.value) || batch.rows.length)}
+                  />
+                </Field>
+              </div>
             </div>
           )}
           <div className="flex gap-2">

@@ -209,45 +209,50 @@ async function loadThaanBuckets(
 ): Promise<
   { thaanId: string; baleCode: string; baleType: string; bucket: string; vendorName: string | null; sinceAt: string | Date | null }[]
 > {
-  const bales = await db.execute<{
-    id: string;
-    needsSecondPrint: boolean;
-    code: string;
-    billEntryDate: string | Date;
-    type: string;
-  }>(sql`
-    select id, needs_second_print as "needsSecondPrint", code, bill_entry_date as "billEntryDate", type from bale
-  `);
+  // Independent of each other — run concurrently rather than paying two
+  // sequential network round trips for what's otherwise a sub-millisecond
+  // query at this table size; the round trip itself (not the query) is
+  // what a caller a continent away from the database actually feels.
+  const [bales, thaanRows] = await Promise.all([
+    db.execute<{
+      id: string;
+      needsSecondPrint: boolean;
+      code: string;
+      billEntryDate: string | Date;
+      type: string;
+    }>(sql`
+      select id, needs_second_print as "needsSecondPrint", code, bill_entry_date as "billEntryDate", type from bale
+    `),
+    db.execute<{
+      thaanId: string;
+      baleId: string;
+      hasCode: boolean;
+      openStage: string | null;
+      openSentAt: string | Date | null;
+      openVendorName: string | null;
+      completedCount: number;
+      lastReceivedAt: string | Date | null;
+    }>(sql`
+      select
+        t.id as "thaanId",
+        t.bale_id as "baleId",
+        (t.code is not null) as "hasCode",
+        open_h.stage as "openStage",
+        open_h.sent_at as "openSentAt",
+        ov.name as "openVendorName",
+        coalesce(done.n, 0)::int as "completedCount",
+        done.last_received_at as "lastReceivedAt"
+      from thaan t
+      left join handover open_h on open_h.thaan_id = t.id and open_h.received_at is null
+      left join vendor ov on ov.id = open_h.vendor_id
+      left join (
+        select thaan_id, count(*)::int as n, max(received_at) as last_received_at
+        from handover where received_at is not null group by thaan_id
+      ) done on done.thaan_id = t.id
+      where t.voided_at is null
+    `),
+  ]);
   const balesById = new Map(bales.map((b) => [b.id, b]));
-
-  const thaanRows = await db.execute<{
-    thaanId: string;
-    baleId: string;
-    hasCode: boolean;
-    openStage: string | null;
-    openSentAt: string | Date | null;
-    openVendorName: string | null;
-    completedCount: number;
-    lastReceivedAt: string | Date | null;
-  }>(sql`
-    select
-      t.id as "thaanId",
-      t.bale_id as "baleId",
-      (t.code is not null) as "hasCode",
-      open_h.stage as "openStage",
-      open_h.sent_at as "openSentAt",
-      ov.name as "openVendorName",
-      coalesce(done.n, 0)::int as "completedCount",
-      done.last_received_at as "lastReceivedAt"
-    from thaan t
-    left join handover open_h on open_h.thaan_id = t.id and open_h.received_at is null
-    left join vendor ov on ov.id = open_h.vendor_id
-    left join (
-      select thaan_id, count(*)::int as n, max(received_at) as last_received_at
-      from handover where received_at is not null group by thaan_id
-    ) done on done.thaan_id = t.id
-    where t.voided_at is null
-  `);
 
   return thaanRows
     .filter((row) => baleType === undefined || balesById.get(row.baleId)?.type === baleType)

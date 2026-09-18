@@ -1,4 +1,4 @@
-import { boolean, check, date, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, date, index, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 import { actor } from "./access";
@@ -424,7 +424,14 @@ export const thaan = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [uniqueIndex("thaan_code_key").on(t.code)],
+  (t) => [
+    uniqueIndex("thaan_code_key").on(t.code),
+    // Every bale-scoped read (loadBales' own per-bale counts, Record
+    // Cutting/Print QR Labels' shared GET /bales, the Thaan-print lookup,
+    // generateQrCodes' own update) filters or groups on this — a full
+    // table scan on every one of those once `thaan` stopped being tiny.
+    index("thaan_bale_id_idx").on(t.baleId),
+  ],
 );
 
 /**
@@ -571,6 +578,12 @@ export const handover = pgTable(
     uniqueIndex("handover_one_open_per_thaan")
       .on(t.thaanId)
       .where(sql`${t.receivedAt} is null`),
+    // The partial index above only covers the open-row case (`receivedAt is
+    // null`) — every query that wants a Thaan's whole handover history, or
+    // aggregates completed stages across `receivedAt is not null` (the
+    // stage funnel, the bale heatmap, a Thaan's own pipeline status), needs
+    // a plain index on the same column to avoid a full table scan instead.
+    index("handover_thaan_id_idx").on(t.thaanId),
     check(
       "handover_stage_known",
       sql`${t.stage} in (

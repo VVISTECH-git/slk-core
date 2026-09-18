@@ -240,3 +240,24 @@ export async function loadThaanPrintBatch(baleId: string, onlyThaanId?: string):
 
   return { baleCode: bale?.code ?? "", rows };
 }
+
+/**
+ * A bale's coded Thaans, code only — no QR image. What mobile's own
+ * "Print QR Labels" wants: it renders each QR itself, from the code, with
+ * `pw.BarcodeWidget`, so `loadThaanPrintBatch`'s own per-row `qr()` call
+ * (a real SVG render, not free — 60 of them for a bale that size) would be
+ * pure waste here, generated only to be thrown away unread.
+ */
+export async function loadThaanCodesForBale(baleId: string): Promise<{ baleCode: string; codes: string[] }> {
+  const [bale] = await db.execute<{ code: string }>(sql`
+    select code from bale where id = ${baleId}
+  `);
+
+  const thaans = await db.execute<{ code: string }>(sql`
+    select code from thaan
+    where bale_id = ${baleId} and code is not null
+    order by code
+  `);
+
+  return { baleCode: bale?.code ?? "", codes: thaans.map((t) => t.code) };
+}

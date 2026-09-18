@@ -184,6 +184,100 @@ export async function loadStageFunnel(): Promise<{ eligible: number; stages: Sta
 }
 
 /**
+ * Every non-voided Thaan, bucketed by where it currently sits — "Not
+ * started", each of `STAGES`, or "Finished". Mirrors `loadBaleStageHeatmap`
+ * (`lib/bales.ts`) exactly, bucket logic included — that function's own
+ * comment explains why "Out for X" and "X done, not yet sent on" share one
+ * "X" bucket — just without grouping by bale, since the two callers below
+ * want a whole-pipeline view, not a per-bale one. Kept as its own copy
+ * rather than sharing code across the two files: the duplication is small,
+ * stable, and load-bearing for staying in sync (`stagesFor`'s per-bale
+ * conditional stage list is the one part worth not silently drifting on) —
+ * if you change the bucket rule here, change it there too.
+ */
+async function loadThaanBuckets(): Promise<{ thaanId: string; baleId: string; bucket: string }[]> {
+  const bales = await db.execute<{ id: string; needsSecondPrint: boolean }>(sql`
+    select id, needs_second_print as "needsSecondPrint" from bale
+  `);
+  const needsSecondPrintByBale = new Map(bales.map((b) => [b.id, b.needsSecondPrint]));
+
+  const thaanRows = await db.execute<{
+    thaanId: string;
+    baleId: string;
+    hasCode: boolean;
+    openStage: string | null;
+    completedCount: number;
+  }>(sql`
+    select
+      t.id as "thaanId",
+      t.bale_id as "baleId",
+      (t.code is not null) as "hasCode",
+      open_h.stage as "openStage",
+      coalesce(done.n, 0)::int as "completedCount"
+    from thaan t
+    left join handover open_h on open_h.thaan_id = t.id and open_h.received_at is null
+    left join (
+      select thaan_id, count(*)::int as n from handover where received_at is not null group by thaan_id
+    ) done on done.thaan_id = t.id
+    where t.voided_at is null
+  `);
+
+  return thaanRows.map((row) => {
+    const stages = stagesFor(needsSecondPrintByBale.get(row.baleId) ?? true);
+
+    let bucket: string;
+    if (!row.hasCode || (row.openStage === null && row.completedCount === 0)) bucket = "Not started";
+    else if (row.openStage !== null) bucket = row.openStage;
+    else if (row.completedCount >= stages.length) bucket = "Finished";
+    else bucket = stages[row.completedCount] ?? "Finished";
+
+    return { thaanId: row.thaanId, baleId: row.baleId, bucket };
+  });
+}
+
+export type StageSummaryRow = { bucket: string; count: number };
+
+/**
+ * How many Thaans currently sit at each point in the pipeline, across the
+ * whole business — Production Manager and Operations Manager's own
+ * landing view, not one bale's own breakdown (that's the Dashboard's
+ * heatmap).
+ */
+export async function loadStageSummary(): Promise<StageSummaryRow[]> {
+  const buckets = await loadThaanBuckets();
+
+  const totals = new Map<string, number>();
+  for (const { bucket } of buckets) totals.set(bucket, (totals.get(bucket) ?? 0) + 1);
+
+  const columns = ["Not started", ...STAGES, "Finished"];
+  return columns.map((bucket) => ({ bucket, count: totals.get(bucket) ?? 0 }));
+}
+
+export type StageThaanRow = {
+  thaanCode: string | null;
+  baleCode: string;
+  /** Who currently has it, if this bucket means "out for" that stage — null for every other bucket. */
+  vendorName: string | null;
+};
+
+/** The actual Thaans sitting in one bucket — the stage summary's drill-down. */
+export async function loadThaansInBucket(bucket: string): Promise<StageThaanRow[]> {
+  const buckets = await loadThaanBuckets();
+  const ids = buckets.filter((b) => b.bucket === bucket).map((b) => b.thaanId);
+  if (ids.length === 0) return [];
+
+  return db.execute<StageThaanRow>(sql`
+    select t.code as "thaanCode", b.code as "baleCode", v.name as "vendorName"
+    from thaan t
+    join bale b on b.id = t.bale_id
+    left join handover open_h on open_h.thaan_id = t.id and open_h.received_at is null
+    left join vendor v on v.id = open_h.vendor_id
+    where t.id in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
+    order by b.code, t.code
+  `);
+}
+
+/**
  * A QR code as an SVG data URI, generated server-side — same reasoning as
  * the catalogue's own `qr()` in `lib/pieces.ts`: these get printed, and a
  * printer should be given something that scales rather than a bitmap.

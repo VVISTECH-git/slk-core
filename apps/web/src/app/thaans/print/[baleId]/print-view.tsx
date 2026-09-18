@@ -24,18 +24,19 @@ export function PrintView({
 
   // Ink or paper running out partway through a long roll is a printer
   // failure, not a data problem — there's no signal from the printer to
-  // tell us where it actually stopped. So the person reads the last label
-  // that actually came out physically and picks up right after it, instead
-  // of either reprinting labels that already exist or hunting one-by-one
-  // through the Thaans screen's single-reprint action. Plain 1-based
-  // From/To — not a dropdown listing every one of a few hundred codes.
-  const [from, setFrom] = useState(1);
-  const [to, setTo] = useState(batch.rows.length);
-  const fromClamped = Math.min(Math.max(from, 1), batch.rows.length);
-  const toClamped = Math.min(Math.max(to, fromClamped), batch.rows.length);
+  // tell us where it actually stopped. So the person reads the *code* off
+  // the last label that actually came out physically and types that in —
+  // nobody standing at a printer knows a label was "#50", they know it was
+  // "T00002120". Not a dropdown listing every one of a few hundred codes,
+  // either.
+  const [from, setFrom] = useState(batch.rows[0]?.code ?? "");
+  const [to, setTo] = useState(batch.rows[batch.rows.length - 1]?.code ?? "");
+  const fromIndex = batch.rows.findIndex((r) => r.code === from.trim().toUpperCase());
+  const toIndex = batch.rows.findIndex((r) => r.code === to.trim().toUpperCase());
+  const rangeValid = fromIndex !== -1 && toIndex !== -1 && fromIndex <= toIndex;
   const rows = useMemo(
-    () => batch.rows.slice(fromClamped - 1, toClamped),
-    [batch.rows, fromClamped, toClamped],
+    () => (rangeValid ? batch.rows.slice(fromIndex, toIndex + 1) : []),
+    [batch.rows, rangeValid, fromIndex, toIndex],
   );
 
   return (
@@ -55,9 +56,11 @@ export function PrintView({
         <div>
           <h1 className="text-[15px] font-semibold text-ink">Print QR codes — {batch.baleCode}</h1>
           <p className="mt-0.5 text-[12.5px] text-muted">
-            {rows.length === batch.rows.length
-              ? `${batch.rows.length} Thaan${batch.rows.length === 1 ? "" : "s"}.`
-              : `Printing ${rows.length} of ${batch.rows.length} — #${fromClamped} to #${toClamped}.`}{" "}
+            {!rangeValid
+              ? "That code isn't on this bale, or From comes after To."
+              : rows.length === batch.rows.length
+                ? `${batch.rows.length} Thaan${batch.rows.length === 1 ? "" : "s"}.`
+                : `Printing ${rows.length} of ${batch.rows.length}.`}{" "}
             Laid out for an 80mm receipt roll — check the first printout against your printer before
             running the rest.
           </p>
@@ -65,27 +68,21 @@ export function PrintView({
         <div className="flex items-end gap-3">
           {batch.rows.length > 1 && (
             <div className="flex gap-2">
-              <div className="w-24">
-                <Field label="From #" hint="Printer ran out partway? Set this to where it stopped.">
+              <div className="w-36">
+                <Field label="From code" hint="Printer ran out partway? Set this to the last label that actually printed.">
                   <input
                     className={inputClass}
-                    type="number"
-                    min={1}
-                    max={batch.rows.length}
                     value={from}
-                    onChange={(e) => setFrom(Number(e.target.value) || 1)}
+                    onChange={(e) => setFrom(e.target.value)}
                   />
                 </Field>
               </div>
-              <div className="w-24">
-                <Field label="To #">
+              <div className="w-36">
+                <Field label="To code">
                   <input
                     className={inputClass}
-                    type="number"
-                    min={1}
-                    max={batch.rows.length}
                     value={to}
-                    onChange={(e) => setTo(Number(e.target.value) || batch.rows.length)}
+                    onChange={(e) => setTo(e.target.value)}
                   />
                 </Field>
               </div>
@@ -93,7 +90,7 @@ export function PrintView({
           )}
           <div className="flex gap-2">
             <Button onClick={() => router.push(back.href)}>{back.label}</Button>
-            <Button tone="primary" onClick={() => window.print()}>
+            <Button tone="primary" onClick={() => window.print()} disabled={!rangeValid}>
               Print
             </Button>
           </div>

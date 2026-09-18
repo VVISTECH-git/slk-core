@@ -7,6 +7,15 @@ import { actor, actorToken, loginAttempt, type Actor } from "@slk/db";
 import { db } from "@/lib/db";
 
 /**
+ * The one job role that grants full access — Owner-equivalent, wherever an
+ * actor holds it, regardless of their own assigned Role. `actorForToken`
+ * below is the single place this override is applied, so both doors (the
+ * portal's cookie and the phone's bearer token — see actorForToken's own
+ * comment) inherit it without a second check anywhere else.
+ */
+const ADMIN_OVERRIDE_JOB_ROLE = "Admin";
+
+/**
  * Re-exported so callers in this app have one import for the whole of it.
  *
  * `pinProblem` and `MIN_PIN_LENGTH` live in @slk/domain rather than here
@@ -136,6 +145,15 @@ export async function actorForToken(token: string): Promise<Actor | null> {
       updatedAt: actor.updatedAt,
       tokenId: actorToken.id,
       lastUsedAt: actorToken.lastUsedAt,
+      // A correlated EXISTS rather than a join: actor_job_role is a
+      // many-to-many, and joining it here would multiply this row once per
+      // job role held, which is exactly the kind of bug a LIMIT 1 hides
+      // until the wrong job role happens to sort last.
+      hasAdminOverride: sql<boolean>`exists (
+        select 1 from actor_job_role ajr
+        join job_role jr on jr.id = ajr.job_role_id
+        where ajr.actor_id = ${actor.id} and jr.name = ${ADMIN_OVERRIDE_JOB_ROLE}
+      )`,
     })
     .from(actorToken)
     .innerJoin(actor, eq(actor.id, actorToken.actorId))
@@ -152,6 +170,14 @@ export async function actorForToken(token: string): Promise<Actor | null> {
   const row = rows[0];
   if (row === undefined) return null;
 
+  // Overridden here, once, rather than checked at every call site: the
+  // Admin job role means "owner everywhere", not "owner, if whoever wrote
+  // this particular guard remembered to ask" — see this file's own comment
+  // on ADMIN_OVERRIDE_JOB_ROLE. The actor row underneath is untouched; a
+  // Staff-page listing that reads `role` straight from the table (not
+  // through this function) still shows what was literally assigned.
+  if (row.hasAdminOverride) row.role = "owner";
+
   /*
     Touched at most once a day.
 
@@ -159,7 +185,7 @@ export async function actorForToken(token: string): Promise<Actor | null> {
     used four seconds ago is not, and doing it per request would turn every
     read of the catalogue into a write to this table.
   */
-  const { tokenId, lastUsedAt, ...found } = row;
+  const { tokenId, lastUsedAt, hasAdminOverride: _hasAdminOverride, ...found } = row;
   const stale =
     lastUsedAt === null || Date.now() - lastUsedAt.getTime() > 24 * 60 * 60 * 1000;
 

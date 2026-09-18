@@ -204,11 +204,19 @@ export async function loadStageFunnel(): Promise<{ eligible: number; stages: Sta
  * next one, else the bale's own `billEntryDate` if it hasn't started —
  * "how long has this actually been sitting here", not a proxy for it.
  */
-async function loadThaanBuckets(): Promise<
-  { thaanId: string; baleCode: string; bucket: string; vendorName: string | null; sinceAt: string | Date | null }[]
+async function loadThaanBuckets(
+  baleType?: string,
+): Promise<
+  { thaanId: string; baleCode: string; baleType: string; bucket: string; vendorName: string | null; sinceAt: string | Date | null }[]
 > {
-  const bales = await db.execute<{ id: string; needsSecondPrint: boolean; code: string; billEntryDate: string | Date }>(sql`
-    select id, needs_second_print as "needsSecondPrint", code, bill_entry_date as "billEntryDate" from bale
+  const bales = await db.execute<{
+    id: string;
+    needsSecondPrint: boolean;
+    code: string;
+    billEntryDate: string | Date;
+    type: string;
+  }>(sql`
+    select id, needs_second_print as "needsSecondPrint", code, bill_entry_date as "billEntryDate", type from bale
   `);
   const balesById = new Map(bales.map((b) => [b.id, b]));
 
@@ -241,26 +249,29 @@ async function loadThaanBuckets(): Promise<
     where t.voided_at is null
   `);
 
-  return thaanRows.map((row) => {
-    const bale = balesById.get(row.baleId);
-    const stages = stagesFor(bale?.needsSecondPrint ?? true);
+  return thaanRows
+    .filter((row) => baleType === undefined || balesById.get(row.baleId)?.type === baleType)
+    .map((row) => {
+      const bale = balesById.get(row.baleId);
+      const stages = stagesFor(bale?.needsSecondPrint ?? true);
 
-    let bucket: string;
-    if (!row.hasCode || (row.openStage === null && row.completedCount === 0)) bucket = "Not started";
-    else if (row.openStage !== null) bucket = row.openStage;
-    else if (row.completedCount >= stages.length) bucket = "Finished";
-    else bucket = stages[row.completedCount] ?? "Finished";
+      let bucket: string;
+      if (!row.hasCode || (row.openStage === null && row.completedCount === 0)) bucket = "Not started";
+      else if (row.openStage !== null) bucket = row.openStage;
+      else if (row.completedCount >= stages.length) bucket = "Finished";
+      else bucket = stages[row.completedCount] ?? "Finished";
 
-    const sinceAt = row.openStage !== null ? row.openSentAt : row.completedCount > 0 ? row.lastReceivedAt : (bale?.billEntryDate ?? null);
+      const sinceAt = row.openStage !== null ? row.openSentAt : row.completedCount > 0 ? row.lastReceivedAt : (bale?.billEntryDate ?? null);
 
-    return {
-      thaanId: row.thaanId,
-      baleCode: bale?.code ?? "—",
-      bucket,
-      vendorName: row.openStage !== null ? row.openVendorName : null,
-      sinceAt,
-    };
-  });
+      return {
+        thaanId: row.thaanId,
+        baleCode: bale?.code ?? "—",
+        baleType: bale?.type ?? "—",
+        bucket,
+        vendorName: row.openStage !== null ? row.openVendorName : null,
+        sinceAt,
+      };
+    });
 }
 
 /** "13 Sep 2026" — matches the "DD Mon YYYY" convention every other date in this API is already formatted as (see `to_char(..., 'DD Mon YYYY')` elsewhere in this file), for a value that started as a raw Date/string rather than SQL. */
@@ -299,9 +310,15 @@ export type StageSummaryRow = {
  * doesn't say anything at real volume — "340 at Salava" is meaningless
  * without knowing whether that's a healthy pipeline or a three-week
  * backlog; `oldestDaysWaiting` is what turns the count into a signal.
+ *
+ * `baleType` narrows to one of `bale.type`'s five values ("Sarees",
+ * "Fabric", "Chunnies", "Bedsheets", "Pillows") — the same breakdown, scoped
+ * to what `loadTypeSummary`'s own drill-down needs: whether a type that's
+ * mostly Finished still has anything left in the pipeline behind it, not
+ * just its overall completion.
  */
-export async function loadStageSummary(): Promise<StageSummaryRow[]> {
-  const buckets = await loadThaanBuckets();
+export async function loadStageSummary(baleType?: string): Promise<StageSummaryRow[]> {
+  const buckets = await loadThaanBuckets(baleType);
 
   const totals = new Map<string, number>();
   const oldest = new Map<string, string | Date>();
@@ -333,10 +350,11 @@ export type StageGroupRow = {
  * one — a stage with hundreds of Thaans in it is a hundred rows of "T00001,
  * T00002, T00003…" that answers nothing; grouped and sorted oldest-first,
  * the same list answers "who's holding what, and what's been stuck
- * longest" in a screenful. The stage summary's drill-down.
+ * longest" in a screenful. The stage summary's drill-down. `baleType` — see
+ * `loadStageSummary`'s own comment — narrows to one bale type.
  */
-export async function loadThaansInBucket(bucket: string): Promise<StageGroupRow[]> {
-  const buckets = (await loadThaanBuckets()).filter((b) => b.bucket === bucket);
+export async function loadThaansInBucket(bucket: string, baleType?: string): Promise<StageGroupRow[]> {
+  const buckets = (await loadThaanBuckets(baleType)).filter((b) => b.bucket === bucket);
 
   const groups = new Map<string, { baleCode: string; vendorName: string | null; count: number; sinceAt: string | Date | null }>();
   for (const b of buckets) {
@@ -360,6 +378,43 @@ export async function loadThaansInBucket(bucket: string): Promise<StageGroupRow[
       daysWaiting: daysSince(g.sinceAt),
       since: formatDate(g.sinceAt),
     }));
+}
+
+/** `bale.type`'s own fixed set — see `bale_type_known` in `packages/db/src/schema/production.ts`. */
+const BALE_TYPES = ["Sarees", "Fabric", "Chunnies", "Bedsheets", "Pillows"];
+
+export type TypeSummaryRow = {
+  type: string;
+  total: number;
+  finished: number;
+};
+
+/**
+ * Every bale type's own completion — how many of its Thaans are Finished
+ * against how many exist at all. Not what "time to reorder raw cloth of
+ * this type" means by itself (that's a judgement call, made by whoever
+ * reads this, about their own lead times and buffer) — but the one number
+ * that actually answers it: a type sitting at 95% Finished with nothing
+ * left behind it isn't "doing well", it's about to run out of stock to
+ * cut. `loadStageSummary(type)` is this same type's own full pipeline
+ * breakdown, for seeing exactly where that last 5% still sits.
+ *
+ * Types with zero Thaans on file are left out — nothing to reorder against
+ * yet, and a 0/0 row answers nothing.
+ */
+export async function loadTypeSummary(): Promise<TypeSummaryRow[]> {
+  const buckets = await loadThaanBuckets();
+
+  const totals = new Map<string, number>();
+  const finished = new Map<string, number>();
+  for (const b of buckets) {
+    totals.set(b.baleType, (totals.get(b.baleType) ?? 0) + 1);
+    if (b.bucket === "Finished") finished.set(b.baleType, (finished.get(b.baleType) ?? 0) + 1);
+  }
+
+  return BALE_TYPES.map((type) => ({ type, total: totals.get(type) ?? 0, finished: finished.get(type) ?? 0 })).filter(
+    (r) => r.total > 0,
+  );
 }
 
 /**

@@ -6,5 +6,11 @@ import { loadStageSummary } from "@/lib/thaans";
  * Production Manager and Operations Manager's own landing view. Mobile's
  * REST equivalent of the numbers already baked into the web Dashboard's
  * "Thaans by current stage" chart.
+ *
+ * `?type=` narrows to one `bale.type` — the same breakdown, scoped to one
+ * type, for drilling in from the type summary.
  */
-export const GET = guardedJobRole(["Production Manager", "Operations Manager"], () => loadStageSummary());
+export const GET = guardedJobRole(["Production Manager", "Operations Manager"], (request) => {
+  const type = new URL(request.url).searchParams.get("type")?.trim();
+  return loadStageSummary(type === "" || type === null ? undefined : type);
+});

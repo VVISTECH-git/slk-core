@@ -220,6 +220,7 @@ export function Staff({
       {adding && (
         <AddDrawer
           minPin={minPin}
+          jobRoles={jobRoles}
           pending={pending}
           onClose={() => setAdding(false)}
           onRun={run}
@@ -241,13 +242,54 @@ export function Staff({
   );
 }
 
+/**
+ * What is wrong with a PIN, or null if nothing is — duplicated from
+ * `@slk/domain`'s own `pinProblem` (packages/domain/src/secret.ts), which
+ * this must keep agreeing with. Not imported directly: that module opens
+ * with `node:crypto` for the hashing functions beside it, and pulling that
+ * into a client bundle is exactly what sidebar.tsx's own duplicated
+ * ADMIN_OVERRIDE_JOB_ROLE comment already explains the reasoning for.
+ *
+ * Purely a client-side head start — createStaff calls the real one
+ * server-side regardless, so a mismatch here only ever means a worse error
+ * message shows up one submit later, never a PIN this check wrongly allowed.
+ */
+function pinProblem(pin: string, minPin: number): string | null {
+  if (pin.length < minPin) {
+    return `A PIN needs at least ${minPin} characters.`;
+  }
+
+  if (new Set(pin).size === 1) {
+    return "That PIN is the same character repeated. Pick another.";
+  }
+
+  const step = pin.codePointAt(1)! - pin.codePointAt(0)!;
+
+  if (step === 1 || step === -1) {
+    let run = true;
+
+    for (let i = 1; i < pin.length; i++) {
+      if (pin.codePointAt(i)! - pin.codePointAt(i - 1)! !== step) {
+        run = false;
+        break;
+      }
+    }
+
+    if (run) return "That PIN is a sequence. Pick another.";
+  }
+
+  return null;
+}
+
 function AddDrawer({
   minPin,
+  jobRoles,
   pending,
   onClose,
   onRun,
 }: {
   minPin: number;
+  jobRoles: JobRoleRow[];
   pending: boolean;
   onClose: () => void;
   onRun: (action: () => Promise<Result>, onOk?: () => void) => void;
@@ -255,11 +297,12 @@ function AddDrawer({
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [pin, setPin] = useState("");
+  const [jobRoleIds, setJobRoleIds] = useState<string[]>([]);
 
   // Role no longer grants anything (see auth.ts's own comment on
   // ADMIN_OVERRIDE_JOB_ROLE) — the column stays, so createStaff still wants
   // a value, but there is nothing left for a person adding staff to decide
-  // here. Job roles, assigned after Add, are what actually matters now.
+  // here. Job roles, picked below, are what actually matters now.
   const role = "floor";
 
   return (
@@ -272,9 +315,15 @@ function AddDrawer({
           <Button onClick={onClose}>Cancel</Button>
           <Button
             tone="primary"
-            disabled={pending || code.trim() === "" || name.trim() === ""}
+            disabled={
+              pending ||
+              code.trim() === "" ||
+              name.trim() === "" ||
+              jobRoleIds.length === 0 ||
+              pinProblem(pin, minPin) !== null
+            }
             onClick={() =>
-              onRun(() => createStaff(code, name, role, pin), onClose)
+              onRun(() => createStaff(code, name, role, pin, jobRoleIds), onClose)
             }
           >
             Add
@@ -310,7 +359,14 @@ function AddDrawer({
 
         <Field
           label="PIN"
-          hint={`At least ${minPin} digits, and not a run or a repeat. Tell them in person — it cannot be read back from here afterwards.`}
+          hint={
+            // Live, once there is something to judge — otherwise every
+            // empty drawer opens already complaining.
+            pin === ""
+              ? `At least ${minPin} digits, and not a run or a repeat. Tell them in person — it cannot be read back from here afterwards.`
+              : (pinProblem(pin, minPin) ??
+                "Tell them in person — it cannot be read back from here afterwards.")
+          }
         >
           <input
             value={pin}
@@ -319,6 +375,43 @@ function AddDrawer({
             inputMode="numeric"
             className={inputClass}
           />
+        </Field>
+
+        <Field
+          label="Job roles"
+          hint="What they'll actually be able to do — at least one, mandatory: a person with none could sign in but reach nothing at all."
+        >
+          {jobRoles.length === 0 ? (
+            <p className="text-[12.5px] text-muted">
+              No job roles yet — add one from Job Roles first.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-1 rounded-md border border-rule-2 p-2">
+              {jobRoles.map((r) => {
+                const checked = jobRoleIds.includes(r.id);
+                return (
+                  <label
+                    key={r.id}
+                    className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-[13px] text-ink-2 hover:bg-surface-2"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() =>
+                        setJobRoleIds(
+                          checked
+                            ? jobRoleIds.filter((id) => id !== r.id)
+                            : [...jobRoleIds, r.id],
+                        )
+                      }
+                      className="accent-[var(--brick)]"
+                    />
+                    <span className="truncate">{r.name}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </Field>
       </div>
     </Drawer>

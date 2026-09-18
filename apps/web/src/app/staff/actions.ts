@@ -41,6 +41,14 @@ export async function createStaff(
   name: string,
   role: string,
   pin: string,
+  /**
+   * Mandatory, not optional — Role stopped granting anything (see auth.ts's
+   * own comment on ADMIN_OVERRIDE_JOB_ROLE), so a person added with none
+   * would be a working sign-in that can reach nothing at all, a dead end
+   * indistinguishable from a bug until someone happens to open Staff and
+   * notice. Assign at creation, not as a separate step easy to forget.
+   */
+  jobRoleIds: string[],
 ): Promise<Result> {
   const denied = await guard("owner");
   if (denied !== null) return denied;
@@ -51,6 +59,9 @@ export async function createStaff(
   if (wantedCode === "") return { ok: false, message: "A code is needed." };
   if (wantedName === "") return { ok: false, message: "A name is needed." };
   if (!isRole(role)) return { ok: false, message: "Unknown role." };
+  if (jobRoleIds.length === 0) {
+    return { ok: false, message: "At least one job role is needed." };
+  }
 
   const problem = pinProblem(pin);
   if (problem !== null) return { ok: false, message: problem };
@@ -64,14 +75,29 @@ export async function createStaff(
     return { ok: false, message: `"${wantedCode}" is already taken.` };
   }
 
-  await db.insert(actor).values({
-    code: wantedCode,
-    name: wantedName,
-    role,
-    secretHash: await hashSecret(pin),
+  // One transaction: a person half-added, signed in but holding no job
+  // role, is exactly the dead end the mandatory check above exists to
+  // rule out — a failure partway through must not leave one anyway.
+  await db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(actor)
+      .values({
+        code: wantedCode,
+        name: wantedName,
+        role,
+        secretHash: await hashSecret(pin),
+      })
+      .returning({ id: actor.id });
+
+    for (const jobRoleId of jobRoleIds) {
+      await tx.execute(sql`
+        insert into actor_job_role (actor_id, job_role_id) values (${created!.id}, ${jobRoleId})
+      `);
+    }
   });
 
   done();
+  revalidatePath("/job-roles");
 
   return { ok: true, message: `Added ${wantedName} as ${wantedCode}.` };
 }

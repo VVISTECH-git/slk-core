@@ -601,6 +601,67 @@ export const handover = pgTable(
   ],
 );
 
+/**
+ * A Thaan flagged damaged — who was holding it (vendor, or null for
+ * in-house) and during which stage, at the moment it was flagged, plus the
+ * two steps Finance takes afterwards: `addressedAt` (reviewed during that
+ * vendor's settlement — see `addressDamagedThaan`) and, only once addressed,
+ * `writtenOffAt` (retired for good — see `writeOffDamagedThaan`). Flagging
+ * also voids the Thaan itself (`thaan.voidedAt`) so it stops moving through
+ * the pipeline; this table is the audit trail and the vendor-accountability
+ * record that a plain void doesn't carry.
+ *
+ * `vendorId`/`stage` are captured here rather than read live off `handover`
+ * later, same reasoning as `vendorTransaction.unitPrice`: who was actually
+ * holding it when it was flagged shouldn't drift if the Thaan's handover
+ * history changes shape afterwards (e.g. corrections). Whoever flags it can
+ * override the auto-derived vendor — the derived one is a best guess from
+ * the Thaan's most recent handover, not always right.
+ */
+export const thaanDamage = pgTable(
+  "thaan_damage",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    thaanId: uuid("thaan_id")
+      .notNull()
+      .references(() => thaan.id, { onDelete: "restrict" }),
+    vendorId: uuid("vendor_id").references(() => vendor.id, { onDelete: "restrict" }),
+    /** The stage it was damaged during, if known — null when the Thaan had no handover history yet. */
+    stage: text("stage"),
+    notes: text("notes"),
+
+    flaggedAt: timestamp("flagged_at", { withTimezone: true }).notNull().defaultNow(),
+    flaggedBy: uuid("flagged_by_id").references(() => actor.id, { onDelete: "restrict" }),
+
+    /** Reviewed against this vendor's settlement — null means still sitting, unaddressed. */
+    addressedAt: timestamp("addressed_at", { withTimezone: true }),
+    addressedBy: uuid("addressed_by_id").references(() => actor.id, { onDelete: "restrict" }),
+
+    /** Retired for good — only ever set once `addressedAt` already is. */
+    writtenOffAt: timestamp("written_off_at", { withTimezone: true }),
+    writtenOffBy: uuid("written_off_by_id").references(() => actor.id, { onDelete: "restrict" }),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // A Thaan can't be flagged twice while an existing flag is still open —
+    // mirrors `handover_one_open_per_thaan`. Once written off, a fresh flag
+    // could in principle be raised again (the row is retired, not deleted),
+    // so the partial index only covers the not-yet-written-off case.
+    uniqueIndex("thaan_damage_one_open_per_thaan")
+      .on(t.thaanId)
+      .where(sql`${t.writtenOffAt} is null`),
+    index("thaan_damage_vendor_id_idx").on(t.vendorId),
+    check(
+      "thaan_damage_stage_known",
+      sql`${t.stage} is null or ${t.stage} in (
+        'Label Stitching', 'Salava', 'Karakkaya', 'Print', 'Second Print', 'Nellateeta', 'Udukulu', 'Ironing'
+      )`,
+    ),
+  ],
+);
+
 export type Supplier = typeof supplier.$inferSelect;
 export type ClothItem = typeof clothItem.$inferSelect;
 export type Vendor = typeof vendor.$inferSelect;
@@ -610,3 +671,4 @@ export type Thaan = typeof thaan.$inferSelect;
 export type VendorTransaction = typeof vendorTransaction.$inferSelect;
 export type VendorPayment = typeof vendorPayment.$inferSelect;
 export type Handover = typeof handover.$inferSelect;
+export type ThaanDamage = typeof thaanDamage.$inferSelect;

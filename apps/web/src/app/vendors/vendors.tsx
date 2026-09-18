@@ -6,16 +6,21 @@ import { useRouter } from "next/navigation";
 
 import { Pager } from "@/components/grid";
 import { Button, Drawer, Field, Header, ToastBar, inputClass, useToast } from "@/components/ui";
+import { damagedThaanStatus, type DamagedThaanStatus } from "@/lib/damaged-status";
 import { STAGES } from "@/lib/stages";
+import type { DamagedThaanRow } from "@/lib/thaan-damage";
 import type { VendorLedgerEntry, VendorRow } from "@/lib/vendors";
 import { vendorTransactionStatus, type VendorTransactionStatus } from "@/lib/vendor-status";
 
 import {
+  addressDamagedThaan,
   createVendor,
+  getDamagedThaans,
   getVendorLedger,
   recordVendorPayment,
   setVendorRate,
   updateVendor,
+  writeOffDamagedThaan,
   type ActionResult,
   type PaymentDraft,
   type VendorDraft,
@@ -379,6 +384,35 @@ function EditDrawer({
     };
   }, [vendor.id, ledgerVersion]);
 
+  const [damaged, setDamaged] = useState<DamagedThaanRow[] | null>(null);
+  const [damagedVersion, setDamagedVersion] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getDamagedThaans(vendor.id).then((rows) => {
+      if (!cancelled) setDamaged(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [vendor.id, damagedVersion]);
+
+  function addressOne(damageId: string) {
+    onRun(async () => {
+      const result = await addressDamagedThaan(damageId);
+      if (result.ok) setDamagedVersion((v) => v + 1);
+      return result;
+    });
+  }
+
+  function writeOffOne(damageId: string) {
+    onRun(async () => {
+      const result = await writeOffDamagedThaan(damageId);
+      if (result.ok) setDamagedVersion((v) => v + 1);
+      return result;
+    });
+  }
+
   function recordPayment() {
     // Left open on purpose — recording a payment shouldn't close the drawer
     // the way saving fields does, since the ledger below is the proof it
@@ -529,8 +563,82 @@ function EditDrawer({
             </ul>
           )}
         </section>
+
+        <section>
+          <h3 className="mb-1 text-[13px] font-semibold text-ink">
+            Damaged Thaans{damaged !== null && damaged.length > 0 ? ` (${damaged.length})` : ""}
+          </h3>
+          <p className="mb-3 text-[12px] leading-relaxed text-muted">
+            Flagged from a scan on mobile. Address one once you&rsquo;ve settled it with this
+            vendor, then write it off — a Thaan can only be written off after it&rsquo;s been
+            addressed.
+          </p>
+          {damaged === null ? (
+            <p className="text-[13px] text-muted">Loading…</p>
+          ) : damaged.length === 0 ? (
+            <p className="text-[13px] text-muted">Nothing flagged damaged for this vendor.</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {damaged.map((d) => {
+                const status = damagedThaanStatus(d);
+                return (
+                  <li key={d.id} className="rounded-lg border border-rule px-3 py-2 text-[13px]">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="min-w-0">
+                        <span className="font-mono font-medium text-ink">{d.thaanCode ?? "no code yet"}</span>{" "}
+                        <span className="text-muted">
+                          Bale {d.baleCode}
+                          {d.stage !== null && ` · ${d.stage}`}
+                        </span>
+                      </span>
+                      <DamagedStatusBadge status={status} />
+                    </div>
+                    <p className="mt-0.5 text-[11.5px] text-muted">
+                      Flagged {d.flaggedAt}
+                      {d.flaggedByName !== null && ` by ${d.flaggedByName}`}
+                    </p>
+                    {d.notes !== null && d.notes !== "" && (
+                      <p className="mt-1 text-[12.5px] text-ink-2">{d.notes}</p>
+                    )}
+                    {status !== "written_off" && (
+                      <div className="mt-2 flex gap-2">
+                        {status === "flagged" && (
+                          <Button onClick={() => addressOne(d.id)} disabled={pending}>
+                            Mark addressed
+                          </Button>
+                        )}
+                        {status === "addressed" && (
+                          <Button onClick={() => writeOffOne(d.id)} disabled={pending}>
+                            Write off
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
       </div>
     </Drawer>
+  );
+}
+
+function DamagedStatusBadge({ status }: { status: DamagedThaanStatus }) {
+  const styles: Record<DamagedThaanStatus, { bg: string; fg: string; label: string }> = {
+    flagged: { bg: "var(--brick-soft)", fg: "var(--brick)", label: "Flagged" },
+    addressed: { bg: "var(--warn-soft)", fg: "var(--warn)", label: "Addressed" },
+    written_off: { bg: "var(--surface-2)", fg: "var(--muted)", label: "Written off" },
+  };
+  const s = styles[status];
+  return (
+    <span
+      className="inline-block flex-none rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap"
+      style={{ backgroundColor: s.bg, color: s.fg }}
+    >
+      {s.label}
+    </span>
   );
 }
 

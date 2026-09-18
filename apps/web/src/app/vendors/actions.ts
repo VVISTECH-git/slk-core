@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { actingId, guardJobRole } from "@/lib/session";
 import { STAGES } from "@/lib/stages";
+import { loadDamagedThaansForVendor, type DamagedThaanRow } from "@/lib/thaan-damage";
 import {
   loadVendorLedger,
   loadVendorTransactionThaans,
@@ -208,6 +209,73 @@ export async function getVendorTransactionThaans(transactionId: string): Promise
   if (denied !== null) return [];
 
   return loadVendorTransactionThaans(transactionId);
+}
+
+export async function getDamagedThaans(vendorId: string): Promise<DamagedThaanRow[]> {
+  const denied = await guardJobRole(FINANCE_JOB_ROLES);
+  if (denied !== null) return [];
+
+  return loadDamagedThaansForVendor(vendorId);
+}
+
+/**
+ * Finance's review of one damaged Thaan, during that vendor's settlement —
+ * just a status and a timestamp for now. What this should actually do to
+ * the vendor's owed amount (deduct the piece from its transaction, or
+ * something else) is still an open question; this only records that
+ * Finance looked at it, which `writeOffDamagedThaan` then requires before
+ * retiring the Thaan for good.
+ */
+export async function addressDamagedThaan(damageId: string): Promise<ActionResult> {
+  const denied = await guardJobRole(FINANCE_JOB_ROLES);
+  if (denied !== null) return denied;
+
+  const actorId = await actingId();
+
+  const [row] = await db.execute<{ id: string }>(sql`
+    update thaan_damage
+    set addressed_at = now(), addressed_by_id = ${actorId}, updated_at = now()
+    where id = ${damageId} and addressed_at is null
+    returning id
+  `);
+
+  revalidatePath("/vendors");
+  revalidatePath("/vendor-ledger");
+
+  if (row === undefined) {
+    return { ok: false, message: "Already addressed, or that flag no longer exists." };
+  }
+
+  return { ok: true, message: "Marked addressed." };
+}
+
+/** Retires an addressed damaged Thaan for good — refused until it's been addressed first. */
+export async function writeOffDamagedThaan(damageId: string): Promise<ActionResult> {
+  const denied = await guardJobRole(FINANCE_JOB_ROLES);
+  if (denied !== null) return denied;
+
+  const actorId = await actingId();
+
+  const [row] = await db.execute<{ id: string; addressedAt: string | null }>(sql`
+    select id, addressed_at as "addressedAt" from thaan_damage where id = ${damageId} and written_off_at is null
+  `);
+  if (row === undefined) {
+    return { ok: false, message: "Already written off, or that flag no longer exists." };
+  }
+  if (row.addressedAt === null) {
+    return { ok: false, message: "Address it first, before writing it off." };
+  }
+
+  await db.execute(sql`
+    update thaan_damage
+    set written_off_at = now(), written_off_by_id = ${actorId}, updated_at = now()
+    where id = ${damageId}
+  `);
+
+  revalidatePath("/vendors");
+  revalidatePath("/vendor-ledger");
+
+  return { ok: true, message: "Written off." };
 }
 
 /** Finance's sign-off, before any of them can be paid. */

@@ -82,6 +82,9 @@ const NAV = [
     href: "/vendors",
     label: "Vendors",
     icon: "M7 17v-5a3 3 0 0 1 6 0v5 M5 17h10 M10 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
+    // Job-role gated, not Role gated — see vendors/page.tsx's own
+    // FINANCE_JOB_ROLES, which this must match.
+    jobRoles: ["Finance Manager"],
   },
   {
     // Every vendor's billing together, not one drawer at a time. Money
@@ -89,6 +92,9 @@ const NAV = [
     href: "/vendor-ledger",
     label: "Vendor Ledger",
     icon: "M4 4h12v12H4z M7 8h6 M7 11h6 M7 14h3",
+    // Job-role gated, not Role gated — see vendor-ledger/page.tsx's own
+    // FINANCE_JOB_ROLES, which this must match.
+    jobRoles: ["Finance Manager"],
   },
   {
     href: "/records",

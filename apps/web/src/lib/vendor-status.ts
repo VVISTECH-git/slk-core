@@ -6,10 +6,21 @@
  * connection code) into the browser bundle.
  */
 
-/** The three states a transaction moves through before it's settled. */
-export type VendorTransactionStatus = "unapproved" | "approved" | "paid";
+/**
+ * The states a transaction moves through before it's settled. "needs_pricing"
+ * comes before "unapproved" — a transaction created for a vendor with no
+ * rate set at receive time (see `receiveBatch`) has no amount yet, and
+ * approving or paying an unknown amount makes no sense, so it's checked
+ * first and blocks both until Finance fills it in.
+ */
+export type VendorTransactionStatus = "needs_pricing" | "unapproved" | "approved" | "paid";
 
-export function vendorTransactionStatus(e: { approvedAt: string | null; paidAt: string | null }): VendorTransactionStatus {
+export function vendorTransactionStatus(e: {
+  amount: number | null;
+  approvedAt: string | null;
+  paidAt: string | null;
+}): VendorTransactionStatus {
+  if (e.amount === null) return "needs_pricing";
   if (e.paidAt !== null) return "paid";
   if (e.approvedAt !== null) return "approved";
   return "unapproved";

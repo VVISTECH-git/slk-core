@@ -518,8 +518,10 @@ function EditDrawer({
                   </span>
                   <span className="flex flex-none items-center gap-2">
                     {e.kind === "transaction" && <LedgerStatusDot status={vendorTransactionStatus(e)} />}
-                    <span className={e.kind === "transaction" ? "text-brick" : "text-ok"}>
-                      {e.kind === "transaction" ? "+" : "−"}₹{e.amount.toLocaleString("en-IN")}
+                    <span className={e.amount === null ? "text-muted italic" : e.kind === "transaction" ? "text-brick" : "text-ok"}>
+                      {e.amount === null
+                        ? "Not priced"
+                        : `${e.kind === "transaction" ? "+" : "−"}₹${e.amount.toLocaleString("en-IN")}`}
                     </span>
                   </span>
                 </li>
@@ -534,9 +536,22 @@ function EditDrawer({
 
 /** A quiet dot rather than a full badge — this list is already dense, and the colour alone answers "does this still need finance's attention". The Vendor Ledger page has the full status and the approve/pay actions. */
 function LedgerStatusDot({ status }: { status: VendorTransactionStatus }) {
-  const color = status === "paid" ? "var(--ok)" : status === "approved" ? "var(--warn)" : "var(--muted)";
+  const color =
+    status === "paid"
+      ? "var(--ok)"
+      : status === "approved"
+        ? "var(--warn)"
+        : status === "needs_pricing"
+          ? "var(--brick)"
+          : "var(--muted)";
   const title =
-    status === "paid" ? "Paid" : status === "approved" ? "Approved · unpaid" : "Not yet approved";
+    status === "paid"
+      ? "Paid"
+      : status === "approved"
+        ? "Approved · unpaid"
+        : status === "needs_pricing"
+          ? "Needs pricing"
+          : "Not yet approved";
   return (
     <span
       title={title}

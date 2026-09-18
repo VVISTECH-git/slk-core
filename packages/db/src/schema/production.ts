@@ -441,6 +441,14 @@ export const thaan = pgTable(
  * in that batch. `unitPrice` and `amount` are captured here rather than
  * recomputed from `vendorRate` later, so a rate change afterwards does not
  * silently reprice work already billed.
+ *
+ * `unitPrice`/`amount` are nullable — null means "not priced yet," not
+ * zero. A group received before that vendor's rate for the stage was ever
+ * set still gets a row here (the work happened; losing the record because
+ * nobody had priced it yet would be worse), just with both left null until
+ * Finance fills them in by hand (`priceVendorTransactions`). Zero is a real,
+ * different fact — the vendor did this stage for free — and must never be
+ * used to mean "unknown."
  */
 export const vendorTransaction = pgTable(
   "vendor_transaction",
@@ -451,8 +459,8 @@ export const vendorTransaction = pgTable(
       .references(() => vendor.id, { onDelete: "restrict" }),
     stage: text("stage").notNull(),
     pieceCount: integer("piece_count").notNull(),
-    unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
-    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    unitPrice: numeric("unit_price", { precision: 10, scale: 2 }),
+    amount: numeric("amount", { precision: 12, scale: 2 }),
     transactionDate: date("transaction_date").notNull().default(sql`current_date`),
     notes: text("notes"),
     /** Who confirmed the receive batch that produced this. */

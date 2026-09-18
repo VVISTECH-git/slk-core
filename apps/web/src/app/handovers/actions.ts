@@ -142,10 +142,12 @@ export async function sendBatch(
 /**
  * Marks a scanned batch received, and bills whatever came back from a
  * vendor: one `vendor_transaction` per distinct (vendor, stage) group in
- * the batch, at that vendor's rate for that stage. A group with no rate set
- * still gets marked received — the alternative is refusing to record that
- * the cloth is back, over a missing price — but is left unbilled, named in
- * the result so it doesn't go unnoticed.
+ * the batch. A group whose vendor has no rate set for that stage still gets
+ * a transaction — the work happened, and losing the record because nobody
+ * had priced it yet would be worse than an unbilled gap — just with
+ * `unit_price`/`amount` left null until Finance prices it by hand
+ * (`priceVendorTransactions`). Named in the result so it doesn't go
+ * unnoticed.
  */
 export async function receiveBatch(thaanIds: string[]): Promise<ActionResult> {
   const denied = await guardJobRole(HANDOVER_JOB_ROLES);
@@ -180,7 +182,7 @@ export async function receiveBatch(thaanIds: string[]): Promise<ActionResult> {
     }
 
     const billed: string[] = [];
-    const unbilled: string[] = [];
+    const needsPricing: string[] = [];
 
     for (const group of groups.values()) {
       const [rate] = await tx.execute<{ unitPrice: string }>(sql`
@@ -188,15 +190,9 @@ export async function receiveBatch(thaanIds: string[]): Promise<ActionResult> {
         where vendor_id = ${group.vendorId} and stage = ${group.stage}
       `);
 
-      if (rate === undefined) {
-        const [v] = await tx.execute<{ name: string }>(sql`select name from vendor where id = ${group.vendorId}`);
-        unbilled.push(`${v?.name ?? "that vendor"} — ${group.stage}`);
-        continue;
-      }
-
-      const unitPrice = Number(rate.unitPrice);
       const pieceCount = group.handoverIds.length;
-      const amount = Math.round(unitPrice * pieceCount * 100) / 100;
+      const unitPrice = rate === undefined ? null : Number(rate.unitPrice);
+      const amount = unitPrice === null ? null : Math.round(unitPrice * pieceCount * 100) / 100;
 
       const [txn] = await tx.execute<{ id: string }>(sql`
         insert into vendor_transaction (vendor_id, stage, piece_count, unit_price, amount, recorded_by_id)
@@ -210,21 +206,30 @@ export async function receiveBatch(thaanIds: string[]): Promise<ActionResult> {
         where id in (${sql.join(group.handoverIds.map((id) => sql`${id}`), sql`, `)})
       `);
 
-      billed.push(`${group.stage}: ${pieceCount} pc${pieceCount === 1 ? "" : "s"}, ₹${amount.toLocaleString("en-IN")}`);
+      if (amount === null) {
+        const [v] = await tx.execute<{ name: string }>(sql`select name from vendor where id = ${group.vendorId}`);
+        needsPricing.push(`${v?.name ?? "that vendor"} — ${group.stage}: ${pieceCount} pc${pieceCount === 1 ? "" : "s"}`);
+      } else {
+        billed.push(`${group.stage}: ${pieceCount} pc${pieceCount === 1 ? "" : "s"}, ₹${amount.toLocaleString("en-IN")}`);
+      }
     }
 
-    return { received: closed.length, billed, unbilled };
+    return { received: closed.length, billed, needsPricing };
   });
 
   revalidatePath("/handovers");
   revalidatePath("/vendors");
+  revalidatePath("/vendor-ledger");
 
   if (result.received === 0) {
     return { ok: false, message: "None of those are currently out for a stage." };
   }
 
-  // Billing still happens above regardless — this message just doesn't
-  // repeat it. Scanning is floor work; what got billed and to whom is an
-  // office question, already answered on Vendors and Vendor Ledger.
-  return { ok: true, message: `Received ${result.received} Thaan${result.received === 1 ? "" : "s"}.` };
+  // Billing detail lives on Vendors and Vendor Ledger; this just flags it
+  // right away when something needs Finance's attention.
+  const base = `Received ${result.received} Thaan${result.received === 1 ? "" : "s"}.`;
+  if (result.needsPricing.length === 0) {
+    return { ok: true, message: base };
+  }
+  return { ok: true, message: `${base} Needs pricing: ${result.needsPricing.join("; ")}.` };
 }

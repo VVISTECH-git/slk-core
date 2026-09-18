@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/lib/db";
-import { actingId, guard } from "@/lib/session";
+import { actingId, guardJobRole } from "@/lib/session";
 import { STAGES } from "@/lib/stages";
 import {
   loadVendorLedger,
@@ -12,6 +12,15 @@ import {
   type VendorLedgerEntry,
   type VendorTransactionThaan,
 } from "@/lib/vendors";
+
+/**
+ * Every vendor-billing action, gated to this one job role (Admin always
+ * passes too, via hasAnyJobRole). Kept as a shared const so the page-level
+ * gate (vendors/page.tsx, vendor-ledger/page.tsx) and the sidebar entry
+ * (components/sidebar.tsx) can't quietly drift from what the actions
+ * themselves actually enforce.
+ */
+export const FINANCE_JOB_ROLES = ["Finance Manager"];
 
 export interface ActionResult {
   ok: boolean;
@@ -39,7 +48,7 @@ function pgTextArrayLiteral(values: string[]): string {
 }
 
 export async function createVendor(draft: VendorDraft): Promise<ActionResult> {
-  const denied = await guard("floor");
+  const denied = await guardJobRole(FINANCE_JOB_ROLES);
   if (denied !== null) return denied;
 
   const cleanName = draft.name.trim();
@@ -74,7 +83,7 @@ export async function createVendor(draft: VendorDraft): Promise<ActionResult> {
 
 /** Fixing what was entered. The name check excludes this row itself. */
 export async function updateVendor(vendorId: string, draft: VendorDraft): Promise<ActionResult> {
-  const denied = await guard("floor");
+  const denied = await guardJobRole(FINANCE_JOB_ROLES);
   if (denied !== null) return denied;
 
   const cleanName = draft.name.trim();
@@ -123,7 +132,7 @@ export async function setVendorRate(
   stage: string,
   unitPrice: number | null,
 ): Promise<ActionResult> {
-  const denied = await guard("office");
+  const denied = await guardJobRole(FINANCE_JOB_ROLES);
   if (denied !== null) return denied;
 
   if (!(STAGES as readonly string[]).includes(stage)) {
@@ -159,7 +168,7 @@ export interface PaymentDraft {
 
 /** Money actually paid to a vendor — settled against their running balance, not one bill. */
 export async function recordVendorPayment(vendorId: string, draft: PaymentDraft): Promise<ActionResult> {
-  const denied = await guard("office");
+  const denied = await guardJobRole(FINANCE_JOB_ROLES);
   if (denied !== null) return denied;
 
   const amount = Number(draft.amount);
@@ -188,14 +197,14 @@ export async function recordVendorPayment(vendorId: string, draft: PaymentDraft)
 }
 
 export async function getVendorLedger(vendorId: string): Promise<VendorLedgerEntry[]> {
-  const denied = await guard("office");
+  const denied = await guardJobRole(FINANCE_JOB_ROLES);
   if (denied !== null) return [];
 
   return loadVendorLedger(vendorId);
 }
 
 export async function getVendorTransactionThaans(transactionId: string): Promise<VendorTransactionThaan[]> {
-  const denied = await guard("office");
+  const denied = await guardJobRole(FINANCE_JOB_ROLES);
   if (denied !== null) return [];
 
   return loadVendorTransactionThaans(transactionId);
@@ -203,7 +212,7 @@ export async function getVendorTransactionThaans(transactionId: string): Promise
 
 /** Finance's sign-off, before any of them can be paid. */
 export async function approveVendorTransactions(transactionIds: string[]): Promise<ActionResult> {
-  const denied = await guard("office");
+  const denied = await guardJobRole(FINANCE_JOB_ROLES);
   if (denied !== null) return denied;
 
   if (transactionIds.length === 0) {
@@ -230,6 +239,66 @@ export async function approveVendorTransactions(transactionIds: string[]): Promi
   return { ok: true, message: `Approved ${rows.length} transaction${rows.length === 1 ? "" : "s"}.` };
 }
 
+/**
+ * Fills in the price for transactions that were created without one — work
+ * received before a vendor's rate for that stage existed yet (see
+ * `receiveBatch`). Requires every selected transaction to still be unpriced
+ * (`amount is null`) and to share the same vendor and stage, checked here
+ * rather than trusted from the client: a single per-piece rate only makes
+ * sense applied to one homogeneous group of work.
+ */
+export async function priceVendorTransactions(transactionIds: string[], unitPrice: number): Promise<ActionResult> {
+  const denied = await guardJobRole(FINANCE_JOB_ROLES);
+  if (denied !== null) return denied;
+
+  if (transactionIds.length === 0) {
+    return { ok: false, message: "Nothing selected." };
+  }
+  if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+    return { ok: false, message: "Enter a valid rate." };
+  }
+
+  const result = await db.transaction(async (tx) => {
+    const rows = await tx.execute<{ id: string; vendorId: string; stage: string; pieceCount: number }>(sql`
+      select id, vendor_id as "vendorId", stage, piece_count as "pieceCount"
+      from vendor_transaction
+      where id in (${sql.join(transactionIds.map((id) => sql`${id}`), sql`, `)})
+        and amount is null
+      for update
+    `);
+
+    if (rows.length === 0) return { kind: "none" as const };
+
+    const vendorId = rows[0]!.vendorId;
+    const stage = rows[0]!.stage;
+    if (rows.some((r) => r.vendorId !== vendorId || r.stage !== stage)) {
+      return { kind: "mixed" as const };
+    }
+
+    for (const row of rows) {
+      const amount = Math.round(unitPrice * row.pieceCount * 100) / 100;
+      await tx.execute(sql`
+        update vendor_transaction
+        set unit_price = ${unitPrice}, amount = ${amount}, updated_at = now()
+        where id = ${row.id}
+      `);
+    }
+
+    return { kind: "priced" as const, count: rows.length };
+  });
+
+  revalidatePath("/vendor-ledger");
+  revalidatePath("/vendors");
+
+  if (result.kind === "none") {
+    return { ok: false, message: "Already priced — nothing changed." };
+  }
+  if (result.kind === "mixed") {
+    return { ok: false, message: "Select transactions for one vendor and stage at a time." };
+  }
+  return { ok: true, message: `Priced ${result.count} transaction${result.count === 1 ? "" : "s"}.` };
+}
+
 export interface PayTransactionsDraft {
   paidOn: string;
   method: string;
@@ -248,7 +317,7 @@ export async function payVendorTransactions(
   transactionIds: string[],
   draft: PayTransactionsDraft,
 ): Promise<ActionResult> {
-  const denied = await guard("office");
+  const denied = await guardJobRole(FINANCE_JOB_ROLES);
   if (denied !== null) return denied;
 
   if (transactionIds.length === 0) {

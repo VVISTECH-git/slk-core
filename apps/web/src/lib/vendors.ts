@@ -90,7 +90,12 @@ export type VendorLedgerEntry = {
   stage: string | null;
   /** Piece count, for a transaction; null for a payment. */
   pieceCount: number | null;
-  amount: number;
+  /**
+   * Null for a transaction means "not priced yet" (see
+   * `vendorTransaction`'s own doc comment) — always a real number for a
+   * payment.
+   */
+  amount: number | null;
   notes: string | null;
   /**
    * Which bale(s) the Thaans behind a transaction actually came from —

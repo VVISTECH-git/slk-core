@@ -495,6 +495,14 @@ export const vendorTransaction = pgTable(
         'Label Stitching', 'Salava', 'Karakkaya', 'Print', 'Second Print', 'Nellateeta', 'Udukulu', 'Ironing'
       )`,
     ),
+    // `loadVendors`' own `totalEarned` sums every transaction for a vendor,
+    // unfiltered by `paidAt` — the live DB already has a *partial* index on
+    // `vendor_id` (`where paid_at is null`, predating this schema file and
+    // not declared here) that can't serve that unfiltered sum, so it was a
+    // full table scan per vendor row on the Vendors/Vendor Ledger list —
+    // exactly the pattern that made Print QR Labels slow earlier, just on
+    // the billing tables this time.
+    index("vendor_transaction_vendor_id_idx").on(t.vendorId),
   ],
 );
 
@@ -505,20 +513,29 @@ export const vendorTransaction = pgTable(
  * balance (everything billed, minus everything paid), not invoice by
  * invoice.
  */
-export const vendorPayment = pgTable("vendor_payment", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  vendorId: uuid("vendor_id")
-    .notNull()
-    .references(() => vendor.id, { onDelete: "restrict" }),
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
-  paidOn: date("paid_on").notNull().default(sql`current_date`),
-  /** Cash, bank transfer, whatever — free text, not a maintained list. */
-  method: text("method"),
-  notes: text("notes"),
-  recordedBy: uuid("recorded_by_id").references(() => actor.id, { onDelete: "restrict" }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const vendorPayment = pgTable(
+  "vendor_payment",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    vendorId: uuid("vendor_id")
+      .notNull()
+      .references(() => vendor.id, { onDelete: "restrict" }),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    paidOn: date("paid_on").notNull().default(sql`current_date`),
+    /** Cash, bank transfer, whatever — free text, not a maintained list. */
+    method: text("method"),
+    notes: text("notes"),
+    recordedBy: uuid("recorded_by_id").references(() => actor.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // `loadVendors`' own `totalPaid` sums every payment for a vendor — no
+    // index existed on this column at all, a full table scan per vendor
+    // row on the Vendors/Vendor Ledger list.
+    index("vendor_payment_vendor_id_idx").on(t.vendorId),
+  ],
+);
 
 /**
  * One Thaan's trip through one stage — sent to a vendor (or kept in-house,
@@ -592,6 +609,10 @@ export const handover = pgTable(
     // stage funnel, the bale heatmap, a Thaan's own pipeline status), needs
     // a plain index on the same column to avoid a full table scan instead.
     index("handover_thaan_id_idx").on(t.thaanId),
+    // `loadVendors`' own `currentlyHolding`/`holdingByStage` (and
+    // `loadOutstanding`) filter `handover` by `vendor_id` — no index
+    // existed on this column at all, a full table scan per vendor row.
+    index("handover_vendor_id_idx").on(t.vendorId),
     check(
       "handover_stage_known",
       sql`${t.stage} in (

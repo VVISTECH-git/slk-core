@@ -83,6 +83,59 @@ export async function loadThaans(): Promise<ThaanRow[]> {
   }));
 }
 
+/**
+ * One Thaan's full row, by its own code — what scanning a printed label
+ * hands back. Same shape and same query `loadThaans` uses, just narrowed to
+ * one `t.code =` instead of every row, so a scan-to-inspect lookup doesn't
+ * duplicate the join.
+ */
+export async function loadThaanByCode(code: string): Promise<ThaanRow | null> {
+  const rows = await db.execute<
+    Omit<ThaanRow, "pipelineStatus"> & {
+      openStage: string | null;
+      completedStages: number;
+      needsSecondPrint: boolean;
+    }
+  >(sql`
+    select
+      t.id,
+      t.code,
+      t.bale_id                                              as "baleId",
+      b.code                                                 as "baleCode",
+      s.name                                                  as "supplierName",
+      i.name                                                  as "itemName",
+      b.type                                                  as "baleType",
+      to_char(b.bill_entry_date, 'DD Mon YYYY')              as "billEntryDate",
+      round(b.metres_received / count(*) over (partition by t.bale_id), 2)::double precision
+                                                               as "perThaanMetres",
+      to_char(t.qr_generated_at, 'DD Mon YYYY, HH12:MI AM')  as "qrGeneratedAt",
+      qr_by.name                                              as "qrGeneratedByName",
+      to_char(t.created_at, 'DD Mon YYYY')                   as "createdAt",
+      to_char(t.voided_at, 'DD Mon YYYY, HH12:MI AM')        as "voidedAt",
+      void_by.name                                            as "voidedByName",
+      open_h.stage                                            as "openStage",
+      coalesce(done.n, 0)::int                                as "completedStages",
+      b.needs_second_print                                    as "needsSecondPrint"
+    from thaan t
+    join bale b on b.id = t.bale_id
+    join supplier s on s.id = b.supplier_id
+    join cloth_item i on i.id = b.item_id
+    left join actor qr_by on qr_by.id = t.qr_generated_by_id
+    left join actor void_by on void_by.id = t.voided_by_id
+    left join handover open_h on open_h.thaan_id = t.id and open_h.received_at is null
+    left join (
+      select thaan_id, count(*)::int as n from handover where received_at is not null group by thaan_id
+    ) done on done.thaan_id = t.id
+    where t.code = ${code}
+  `);
+
+  const [row] = rows;
+  if (row === undefined) return null;
+
+  const { openStage, completedStages, needsSecondPrint, ...rest } = row;
+  return { ...rest, pipelineStatus: pipelineStatus(rest.code, openStage, completedStages, needsSecondPrint) };
+}
+
 function pipelineStatus(
   code: string | null,
   openStage: string | null,

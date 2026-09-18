@@ -16,6 +16,28 @@ import { db } from "@/lib/db";
 const ADMIN_OVERRIDE_JOB_ROLE = "Admin";
 
 /**
+ * An actor with the job roles they hold attached — what every door into this
+ * app actually resolves a request to, `Actor` itself being just the DB row.
+ * Kept as a widening of `Actor` rather than a separate shape so the many
+ * call sites that only care about `id`/`role`/etc. keep working unchanged.
+ */
+export type AuthedActor = Actor & { jobRoles: string[] };
+
+/**
+ * Whether any of the given job roles would satisfy a job-role gate — Admin
+ * always does, since it means "everywhere," same reasoning as the Role
+ * override above. Pages/actions that are gated by job role rather than Role
+ * (Bale Intake, Handovers — see requireJobRole/guardJobRole in session.ts)
+ * call this instead of `allows`.
+ */
+export function hasAnyJobRole(who: AuthedActor, needed: string[]): boolean {
+  return (
+    who.jobRoles.includes(ADMIN_OVERRIDE_JOB_ROLE) ||
+    needed.some((role) => who.jobRoles.includes(role))
+  );
+}
+
+/**
  * Re-exported so callers in this app have one import for the whole of it.
  *
  * `pinProblem` and `MIN_PIN_LENGTH` live in @slk/domain rather than here
@@ -97,7 +119,7 @@ export async function revokeToken(token: string): Promise<void> {
  * revoked or expired token cannot be turned into an actor by a missing
  * `if`.
  */
-export async function actorFor(request: Request): Promise<Actor | null> {
+export async function actorFor(request: Request): Promise<AuthedActor | null> {
   const token = bearerFrom(request.headers.get("authorization"));
 
   return token === null ? null : actorForToken(token);
@@ -129,7 +151,7 @@ export function bearerFrom(header: string | null): string | null {
  * to revoke it. A second kind of session for the web would mean two expiries
  * to keep in step and two lists to revoke a lost device from.
  */
-export async function actorForToken(token: string): Promise<Actor | null> {
+export async function actorForToken(token: string): Promise<AuthedActor | null> {
   const hash = fingerprint(token);
 
   const rows = await db
@@ -145,14 +167,14 @@ export async function actorForToken(token: string): Promise<Actor | null> {
       updatedAt: actor.updatedAt,
       tokenId: actorToken.id,
       lastUsedAt: actorToken.lastUsedAt,
-      // A correlated EXISTS rather than a join: actor_job_role is a
+      // An array subquery rather than a join: actor_job_role is a
       // many-to-many, and joining it here would multiply this row once per
       // job role held, which is exactly the kind of bug a LIMIT 1 hides
       // until the wrong job role happens to sort last.
-      hasAdminOverride: sql<boolean>`exists (
-        select 1 from actor_job_role ajr
+      jobRoles: sql<string[]>`array(
+        select jr.name from actor_job_role ajr
         join job_role jr on jr.id = ajr.job_role_id
-        where ajr.actor_id = ${actor.id} and jr.name = ${ADMIN_OVERRIDE_JOB_ROLE}
+        where ajr.actor_id = ${actor.id}
       )`,
     })
     .from(actorToken)
@@ -176,7 +198,7 @@ export async function actorForToken(token: string): Promise<Actor | null> {
   // on ADMIN_OVERRIDE_JOB_ROLE. The actor row underneath is untouched; a
   // Staff-page listing that reads `role` straight from the table (not
   // through this function) still shows what was literally assigned.
-  if (row.hasAdminOverride) row.role = "owner";
+  if (row.jobRoles.includes(ADMIN_OVERRIDE_JOB_ROLE)) row.role = "owner";
 
   /*
     Touched at most once a day.
@@ -185,7 +207,7 @@ export async function actorForToken(token: string): Promise<Actor | null> {
     used four seconds ago is not, and doing it per request would turn every
     read of the catalogue into a write to this table.
   */
-  const { tokenId, lastUsedAt, hasAdminOverride: _hasAdminOverride, ...found } = row;
+  const { tokenId, lastUsedAt, ...found } = row;
   const stale =
     lastUsedAt === null || Date.now() - lastUsedAt.getTime() > 24 * 60 * 60 * 1000;
 

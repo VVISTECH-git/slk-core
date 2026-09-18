@@ -1,14 +1,14 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import type { Actor } from "@slk/db";
-
 import {
   actorForToken,
   allows,
   bearerFrom,
+  hasAnyJobRole,
   mintToken,
   revokeToken,
+  type AuthedActor,
   type Role,
 } from "@/lib/auth";
 
@@ -59,7 +59,7 @@ function cookieOptions() {
  * token and no cookie — so an action that only knew about cookies would refuse
  * the very caller the API just authenticated.
  */
-export async function currentActor(): Promise<Actor | null> {
+export async function currentActor(): Promise<AuthedActor | null> {
   const fromHeader = bearerFrom((await headers()).get("authorization"));
   if (fromHeader !== null) return actorForToken(fromHeader);
 
@@ -80,7 +80,7 @@ export async function currentActor(): Promise<Actor | null> {
  * a null carries on as though it were signed in; one that forgets to handle a
  * throw does not run.
  */
-export async function requireActor(needed: Role = "floor"): Promise<Actor> {
+export async function requireActor(needed: Role = "floor"): Promise<AuthedActor> {
   const who = await currentActor();
 
   if (who === null) throw new NotSignedIn();
@@ -106,13 +106,26 @@ export class NotAllowed extends Error {
 }
 
 /**
+ * Signed in, but holds none of the job roles a page/action gated this way
+ * needs — the job-role equivalent of [NotAllowed]. Named separately because
+ * "That needs office access" is wrong to say to someone who is already an
+ * Owner but not, say, a Handler.
+ */
+export class NotAllowedJobRole extends Error {
+  constructor(readonly needed: string[]) {
+    super(`That needs one of these job roles: ${needed.join(", ")}.`);
+    this.name = "NotAllowedJobRole";
+  }
+}
+
+/**
  * For a page: the actor, or off to the login screen.
  *
  * `redirect` throws, which is how a page stops rendering, and is why this is
  * separate from `requireActor` — an action must answer with a message the form
  * can show rather than a navigation the browser will not follow from a POST.
  */
-export async function requirePage(needed: Role = "floor"): Promise<Actor> {
+export async function requirePage(needed: Role = "floor"): Promise<AuthedActor> {
   const who = await currentActor();
 
   if (who === null) redirect("/login");
@@ -125,13 +138,46 @@ export async function requirePage(needed: Role = "floor"): Promise<Actor> {
 }
 
 /**
+ * Job-role equivalent of [requireActor] — for Bale Intake and Handovers,
+ * which the Role dropdown (Floor/Office/Owner) has no say over at all: an
+ * Owner with no relevant job role is refused here exactly as a Floor actor
+ * would be. Only a job role in `needed`, or the Admin override, gets through
+ * — see `hasAnyJobRole`.
+ */
+export async function requireJobRoleActor(needed: string[]): Promise<AuthedActor> {
+  const who = await currentActor();
+
+  if (who === null) throw new NotSignedIn();
+  if (!hasAnyJobRole(who, needed)) throw new NotAllowedJobRole(needed);
+
+  return who;
+}
+
+/** Job-role equivalent of [requirePage]. */
+export async function requireJobRolePage(needed: string[]): Promise<AuthedActor> {
+  const who = await currentActor();
+
+  if (who === null) redirect("/login");
+
+  if (!hasAnyJobRole(who, needed)) {
+    redirect(`/denied?needs=${needed.map(encodeURIComponent).join(",")}`);
+  }
+
+  return who;
+}
+
+/**
  * What an action should answer when the guard refuses.
  *
  * Every action in this app returns `{ ok, message }`, so a refusal is one of
  * those rather than an exception crossing the wire as a digest nobody can read.
  */
 export function refusal(error: unknown): { ok: false; message: string } | null {
-  if (error instanceof NotSignedIn || error instanceof NotAllowed) {
+  if (
+    error instanceof NotSignedIn ||
+    error instanceof NotAllowed ||
+    error instanceof NotAllowedJobRole
+  ) {
     return { ok: false, message: error.message };
   }
 
@@ -154,6 +200,20 @@ export async function guard(
 ): Promise<{ ok: false; message: string } | null> {
   try {
     await requireActor(needed);
+    return null;
+  } catch (error) {
+    const refused = refusal(error);
+    if (refused !== null) return refused;
+    throw error;
+  }
+}
+
+/** Job-role equivalent of [guard] — see [requireJobRoleActor]. */
+export async function guardJobRole(
+  needed: string[],
+): Promise<{ ok: false; message: string } | null> {
+  try {
+    await requireJobRoleActor(needed);
     return null;
   } catch (error) {
     const refused = refusal(error);

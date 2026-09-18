@@ -4,10 +4,13 @@ import { sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/lib/db";
-import { actingId, guard } from "@/lib/session";
+import { actingId, guardJobRole } from "@/lib/session";
 import { loadBaleCuttingHistory, type BaleCuttingEventRow } from "@/lib/bales";
 
 import { BALE_TYPES, UOMS } from "./constants";
+
+/** Who may receive, cut and track bales — see bales/page.tsx's own copy. */
+const BALE_JOB_ROLES = ["Bale Custodian"];
 
 /** What every action here answers with: did it work, and what to say. */
 export interface ActionResult {
@@ -133,7 +136,7 @@ function isFailure(x: ParsedBaleFields | ActionResult): x is ActionResult {
 }
 
 export async function createBale(draft: BaleDraft): Promise<ActionResult> {
-  const denied = await guard("floor");
+  const denied = await guardJobRole(BALE_JOB_ROLES);
   if (denied !== null) return denied;
 
   if (draft.supplierId.trim() === "") {
@@ -192,7 +195,7 @@ export async function createBale(draft: BaleDraft): Promise<ActionResult> {
  * code pointing at the wrong supplier.
  */
 export async function updateBale(baleId: string, draft: BaleEditDraft): Promise<ActionResult> {
-  const denied = await guard("floor");
+  const denied = await guardJobRole(BALE_JOB_ROLES);
   if (denied !== null) return denied;
 
   const parsed = parseBaleFields(draft);
@@ -235,7 +238,7 @@ export async function updateBale(baleId: string, draft: BaleEditDraft): Promise<
  * the same column `updateBale` writes, so a faster path isn't a laxer one.
  */
 export async function setBaleType(baleId: string, type: string): Promise<ActionResult> {
-  const denied = await guard("floor");
+  const denied = await guardJobRole(BALE_JOB_ROLES);
   if (denied !== null) return denied;
 
   if (!(BALE_TYPES as readonly string[]).includes(type)) {
@@ -261,7 +264,7 @@ export async function setBaleType(baleId: string, type: string): Promise<ActionR
  * pieces, and there is nothing whole left to send back.
  */
 export async function markBaleReturned(baleId: string): Promise<ActionResult> {
-  const denied = await guard("floor");
+  const denied = await guardJobRole(BALE_JOB_ROLES);
   if (denied !== null) return denied;
 
   const actorId = await actingId();
@@ -293,7 +296,7 @@ export async function markBaleReturned(baleId: string): Promise<ActionResult> {
  * either; that is `generateQrCodes`, a third.
  */
 export async function recordThaans(baleId: string, thaanCount: string): Promise<ActionResult> {
-  const denied = await guard("floor");
+  const denied = await guardJobRole(BALE_JOB_ROLES);
   if (denied !== null) return denied;
 
   const count = Number(thaanCount);
@@ -336,7 +339,7 @@ export async function recordThaans(baleId: string, thaanCount: string): Promise<
 }
 
 export async function getBaleCuttingHistory(baleId: string): Promise<BaleCuttingEventRow[]> {
-  const denied = await guard("floor");
+  const denied = await guardJobRole(BALE_JOB_ROLES);
   if (denied !== null) return [];
 
   return loadBaleCuttingHistory(baleId);
@@ -348,7 +351,7 @@ export async function getBaleCuttingHistory(baleId: string): Promise<BaleCutting
  * there is nothing to close out.
  */
 export async function markCuttingComplete(baleId: string): Promise<ActionResult> {
-  const denied = await guard("floor");
+  const denied = await guardJobRole(BALE_JOB_ROLES);
   if (denied !== null) return denied;
 
   const actorId = await actingId();
@@ -375,7 +378,7 @@ export async function markCuttingComplete(baleId: string): Promise<ActionResult>
  * left half-coded by something failing partway through.
  */
 export async function generateQrCodes(baleId: string): Promise<ActionResult> {
-  const denied = await guard("floor");
+  const denied = await guardJobRole(BALE_JOB_ROLES);
   if (denied !== null) return denied;
 
   const actorId = await actingId();

@@ -48,7 +48,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           <PreferencesProvider initial={parsePreferences(who.preferences)}>
             <div className="flex min-h-screen">
               <Sidebar
-                actor={{ name: who.name, code: who.code, role: who.role }}
+                actor={{
+                  name: who.name,
+                  code: who.code,
+                  role: who.role,
+                  jobRoles: who.jobRoles,
+                }}
               />
               <main className="min-w-0 flex-1">{children}</main>
             </div>

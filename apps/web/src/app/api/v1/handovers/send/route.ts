@@ -1,5 +1,5 @@
 import { sendBatch } from "@/app/handovers/actions";
-import { ApiError, body, guarded } from "@/lib/api";
+import { ApiError, body, guardedJobRole } from "@/lib/api";
 
 /**
  * Sends a scanned batch off for one stage, to one vendor (or in-house) —
@@ -7,8 +7,10 @@ import { ApiError, body, guarded } from "@/lib/api";
  * idempotency key: re-checked per Thaan inside the insert itself (see
  * `sendBatch`), so a retried request just finds fewer left to send rather
  * than sending anything twice.
+ *
+ * Gated by job role, not Role — see handovers/page.tsx's own HANDOVER_JOB_ROLES.
  */
-export const POST = guarded("floor", async (request) => {
+export const POST = guardedJobRole(["Bale Custodian", "Handler"], async (request) => {
   const raw = await body(request);
   const stage = typeof raw.stage === "string" ? raw.stage : "";
   const vendorId = typeof raw.vendorId === "string" ? raw.vendorId : null;

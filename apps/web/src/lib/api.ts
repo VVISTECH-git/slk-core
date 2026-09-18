@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 
-import type { Actor } from "@slk/db";
-
-import { actorFor, allows, type Role } from "@/lib/auth";
+import { actorFor, allows, hasAnyJobRole, type AuthedActor, type Role } from "@/lib/auth";
 
 /**
  * The shape every /api/v1 route answers in.
@@ -60,10 +58,10 @@ export class ApiError extends Error {
  */
 export function guarded<T>(
   needed: Role,
-  handler: (request: Request, actor: Actor) => Promise<T>,
+  handler: (request: Request, actor: AuthedActor) => Promise<T>,
 ): (request: Request) => Promise<NextResponse> {
   return async (request: Request) => {
-    let who: Actor | null;
+    let who: AuthedActor | null;
 
     try {
       who = await actorFor(request);
@@ -89,6 +87,44 @@ export function guarded<T>(
 
       // The message could name a column or carry a fragment of SQL, so it is
       // logged and not returned.
+      console.error("[api] handling", request.method, request.url, error);
+      return fail("Something went wrong. Please try again.", 500);
+    }
+  };
+}
+
+/**
+ * Job-role equivalent of [guarded] — for the Bale Intake and Handovers
+ * mobile routes, which Role (Floor/Office/Owner) has no say over. Otherwise
+ * identical: same envelope, same 401-vs-403 distinction, same error handling.
+ */
+export function guardedJobRole<T>(
+  needed: string[],
+  handler: (request: Request, actor: AuthedActor) => Promise<T>,
+): (request: Request) => Promise<NextResponse> {
+  return async (request: Request) => {
+    let who: AuthedActor | null;
+
+    try {
+      who = await actorFor(request);
+    } catch (error) {
+      console.error("[api] authenticating", error);
+      return fail("Cannot reach the database.", 503);
+    }
+
+    if (who === null) return fail("Please sign in again.", 401);
+
+    if (!hasAnyJobRole(who, needed)) {
+      return fail("Your account cannot do that.", 403);
+    }
+
+    try {
+      return ok(await handler(request, who));
+    } catch (error) {
+      if (error instanceof ApiError) {
+        return fail(error.message, error.status, error.errors);
+      }
+
       console.error("[api] handling", request.method, request.url, error);
       return fail("Something went wrong. Please try again.", 500);
     }

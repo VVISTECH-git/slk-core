@@ -31,6 +31,9 @@ const NAV = [
     href: "/bales",
     label: "Bale Intake",
     icon: "M4 5l6-2 6 2v10l-6 2-6-2z M10 3v14 M4 5l6 2 6-2",
+    // Job-role gated, not Role gated — see auth.ts's ADMIN_OVERRIDE_JOB_ROLE
+    // and bales/page.tsx's BALE_JOB_ROLES, which this must match.
+    jobRoles: ["Bale Custodian"],
   },
   {
     // What a bale becomes once cut. Kept right after Bale Intake since
@@ -46,6 +49,9 @@ const NAV = [
     href: "/handovers",
     label: "Handovers",
     icon: "M4 6h5v5H4z M11 9h5v5h-5z M9 8.5l2 1 M6.5 6V4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1",
+    // Job-role gated, not Role gated — see handovers/page.tsx's own
+    // HANDOVER_JOB_ROLES, which this must match.
+    jobRoles: ["Bale Custodian", "Handler"],
   },
   {
     // What Handovers used to carry alongside Send/Receive — its own page
@@ -164,6 +170,9 @@ const NAV = [
  * helpers that live beside the ranking. */
 const ROLE_RANK: Record<string, number> = { floor: 0, office: 1, owner: 2 };
 
+/** Matches ADMIN_OVERRIDE_JOB_ROLE in @/lib/auth — same reasoning as ROLE_RANK above. */
+const ADMIN_JOB_ROLE = "Admin";
+
 const RAIL_KEY = "slk.sidebar.rail";
 
 /** Wide enough for an icon and its padding; wide enough for the longest label. */
@@ -248,6 +257,7 @@ export interface SidebarActor {
   name: string;
   code: string;
   role: string;
+  jobRoles: string[];
 }
 
 export function Sidebar({ actor }: { actor: SidebarActor }) {
@@ -283,7 +293,14 @@ export function Sidebar({ actor }: { actor: SidebarActor }) {
       // Hidden rather than shown-and-refused: a link that always says no is
       // a worse way of saying "not for you" than not being there.
       (!("minRole" in item) ||
-        (ROLE_RANK[actor.role] ?? 0) >= ROLE_RANK[item.minRole]),
+        (ROLE_RANK[actor.role] ?? 0) >= ROLE_RANK[item.minRole]) &&
+      // Job-role gate is separate from, not layered on top of, minRole — a
+      // page carries one or the other (see bales/page.tsx and
+      // handovers/page.tsx), never both, so this only narrows the items that
+      // opted into it.
+      (!("jobRoles" in item) ||
+        actor.jobRoles.includes(ADMIN_JOB_ROLE) ||
+        item.jobRoles.some((role) => actor.jobRoles.includes(role))),
   );
 
   return (

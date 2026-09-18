@@ -5,8 +5,11 @@ import { revalidatePath } from "next/cache";
 
 import { db } from "@/lib/db";
 import { checkThaanForReceive, checkThaanForSend, type ThaanForReceive, type ThaanForSend } from "@/lib/handovers";
-import { actingId, guard } from "@/lib/session";
+import { actingId, guardJobRole } from "@/lib/session";
 import { STAGES, type Stage } from "@/lib/stages";
+
+/** Who may scan a Thaan out and back — see handovers/page.tsx's own copy. */
+const HANDOVER_JOB_ROLES = ["Bale Custodian", "Handler"];
 
 export interface ActionResult {
   ok: boolean;
@@ -27,7 +30,7 @@ export async function lookupForSend(
   code: string,
   stage: string | null,
 ): Promise<{ ok: true; thaan: ThaanForSend; stage: Stage } | { ok: false; message: string }> {
-  const denied = await guard("floor");
+  const denied = await guardJobRole(HANDOVER_JOB_ROLES);
   if (denied !== null) return denied;
 
   if (stage !== null && !(STAGES as readonly string[]).includes(stage)) {
@@ -40,7 +43,7 @@ export async function lookupForSend(
 export async function lookupForReceive(
   code: string,
 ): Promise<{ ok: true; thaan: ThaanForReceive } | { ok: false; message: string }> {
-  const denied = await guard("floor");
+  const denied = await guardJobRole(HANDOVER_JOB_ROLES);
   if (denied !== null) return denied;
 
   return checkThaanForReceive(code);
@@ -79,7 +82,7 @@ export async function sendBatch(
   vendorId: string | null,
   thaanIds: string[],
 ): Promise<ActionResult> {
-  const denied = await guard("floor");
+  const denied = await guardJobRole(HANDOVER_JOB_ROLES);
   if (denied !== null) return denied;
 
   if (!(STAGES as readonly string[]).includes(stage)) {
@@ -145,7 +148,7 @@ export async function sendBatch(
  * the result so it doesn't go unnoticed.
  */
 export async function receiveBatch(thaanIds: string[]): Promise<ActionResult> {
-  const denied = await guard("floor");
+  const denied = await guardJobRole(HANDOVER_JOB_ROLES);
   if (denied !== null) return denied;
 
   if (thaanIds.length === 0) {

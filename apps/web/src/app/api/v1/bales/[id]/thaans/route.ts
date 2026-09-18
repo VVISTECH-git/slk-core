@@ -1,5 +1,5 @@
 import { recordThaans } from "@/app/bales/actions";
-import { ApiError, body, guarded, idAfter } from "@/lib/api";
+import { ApiError, body, guardedJobRole, idAfter } from "@/lib/api";
 import { claim, complete, keyFrom, release } from "@/lib/idempotency";
 
 /**
@@ -8,8 +8,10 @@ import { claim, complete, keyFrom, release } from "@/lib/idempotency";
  * that runs twice on a retried request would mint real, physical Thaans
  * that were never actually cut, which a phone on a flaky warehouse
  * connection is exactly positioned to cause.
+ *
+ * Gated by job role, not Role — see bales/page.tsx's own BALE_JOB_ROLES.
  */
-export const POST = guarded("floor", async (request, actor) => {
+export const POST = guardedJobRole(["Bale Custodian"], async (request, actor) => {
   const id = idAfter(request.url, "bales");
 
   const key = keyFrom(request);

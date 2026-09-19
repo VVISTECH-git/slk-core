@@ -107,12 +107,12 @@ export function PrintView({
         <div className="roll bg-white shadow-[var(--shadow)]" style={{ width: "25mm" }}>
           {rows.map((row) => (
             <div key={row.id} className="code flex flex-col overflow-hidden" style={{ height: "35mm" }}>
-              <div className="flex flex-1 flex-col items-center justify-center gap-[1mm] px-[1mm] text-center">
+              <div className="flex flex-1 flex-col items-center justify-start gap-[0.6mm] px-[1mm] pt-[2mm] text-center">
                 <div className="text-[7px] leading-none font-medium tracking-wide text-black/60">
                   {batch.baleCode}
                 </div>
                 {/* eslint-disable-next-line @next/next/no-img-element -- a generated SVG data URI, not an app asset */}
-                <img src={row.qr} alt={`QR code ${row.code}`} style={{ width: "20mm", height: "20mm" }} />
+                <img src={row.qr} alt={`QR code ${row.code}`} style={{ width: "19mm", height: "19mm" }} />
                 <div className="font-mono text-[11px] leading-none font-semibold text-black">{row.code}</div>
               </div>
               <div className="border-t border-dashed border-black/50 py-[0.6mm] text-center text-[6px] tracking-wider text-black/50">

@@ -568,6 +568,17 @@ export const handover = pgTable(
     /** Null means this stage was done in-house, not sent to anyone. */
     vendorId: uuid("vendor_id").references(() => vendor.id, { onDelete: "restrict" }),
 
+    /**
+     * The last stage of a combined trip — one vendor doing this stage and
+     * the ones after it in a single visit (Salava then Karakkaya, say),
+     * scanned out once and back once. Null is the ordinary one-stage trip.
+     * Only the first stage's row exists while the Thaan is out (one open
+     * row per Thaan, see below); receiving it writes the rest as already
+     * received, one row per stage, so the stage history and each stage's
+     * bill are exactly what two separate trips would have left.
+     */
+    throughStage: text("through_stage"),
+
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
     receivedAt: timestamp("received_at", { withTimezone: true }),
 
@@ -616,6 +627,12 @@ export const handover = pgTable(
     check(
       "handover_stage_known",
       sql`${t.stage} in (
+        'Label Stitching', 'Salava', 'Karakkaya', 'Print', 'Second Print', 'Nellateeta', 'Udukulu', 'Ironing'
+      )`,
+    ),
+    check(
+      "handover_through_stage_known",
+      sql`${t.throughStage} is null or ${t.throughStage} in (
         'Label Stitching', 'Salava', 'Karakkaya', 'Print', 'Second Print', 'Nellateeta', 'Udukulu', 'Ironing'
       )`,
     ),

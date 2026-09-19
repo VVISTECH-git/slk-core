@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { checkThaanForReceive, checkThaanForSend, type ThaanForReceive, type ThaanForSend } from "@/lib/handovers";
 import { actingId, guardJobRole } from "@/lib/session";
-import { STAGES, type Stage } from "@/lib/stages";
+import { STAGES, stagesFor, type Stage } from "@/lib/stages";
 
 /** Who may scan a Thaan out and back — see handovers/page.tsx's own copy. */
 const HANDOVER_JOB_ROLES = ["Bale Custodian", "Handler"];
@@ -81,6 +81,12 @@ export async function sendBatch(
   stage: string,
   vendorId: string | null,
   thaanIds: string[],
+  /**
+   * The last stage of a combined trip — this vendor doing `stage` and every
+   * stage after it up to here in one visit, scanned out once and back once.
+   * Null (or the same as `stage`) is the ordinary one-stage trip.
+   */
+  throughStage: string | null = null,
 ): Promise<ActionResult> {
   const denied = await guardJobRole(HANDOVER_JOB_ROLES);
   if (denied !== null) return denied;
@@ -90,6 +96,16 @@ export async function sendBatch(
   }
   if (thaanIds.length === 0) {
     return { ok: false, message: "Nothing scanned yet." };
+  }
+
+  const through = throughStage === null || throughStage === stage ? null : throughStage;
+  if (through !== null) {
+    if (!(STAGES as readonly string[]).includes(through)) {
+      return { ok: false, message: "Unknown last stage." };
+    }
+    if (STAGES.indexOf(through as Stage) < STAGES.indexOf(stage as Stage)) {
+      return { ok: false, message: `${through} comes before ${stage} — pick a later stage to finish on.` };
+    }
   }
 
   if (vendorId !== null) {
@@ -103,10 +119,15 @@ export async function sendBatch(
     let count = 0;
     for (const thaanId of thaanIds) {
       const [row] = await tx.execute<{ id: string }>(sql`
-        insert into handover (thaan_id, stage, vendor_id, recorded_by_id)
-        select ${thaanId}, ${stage}, ${vendorId}, ${actorId}
+        insert into handover (thaan_id, stage, vendor_id, recorded_by_id, through_stage)
+        select ${thaanId}, ${stage}, ${vendorId}, ${actorId}, ${through}::text
         where not exists (
           select 1 from handover where thaan_id = ${thaanId} and received_at is null
+        )
+        and (
+          ${through}::text is null
+          or coalesce(array_position(${stageArraySql(thaanId)}, ${through}::text), 0)
+             > coalesce(array_position(${stageArraySql(thaanId)}, ${stage}::text), 0)
         )
         and coalesce(
           (${stageArraySql(thaanId)})[
@@ -126,7 +147,10 @@ export async function sendBatch(
   if (sent === 0) {
     return {
       ok: false,
-      message: "None of those could be sent — check they aren't already out, or aren't due for this stage.",
+      message:
+        through === null
+          ? "None of those could be sent — check they aren't already out, or aren't due for this stage."
+          : `None of those could be sent — check they aren't already out, are due for ${stage}, and go through ${through} (Second Print, for one, isn't done on every bale).`,
     };
   }
   if (sent < thaanIds.length) {
@@ -136,7 +160,11 @@ export async function sendBatch(
     };
   }
 
-  return { ok: true, message: `Sent ${sent} Thaan${sent === 1 ? "" : "s"} for ${stage}.` };
+  const trip =
+    through === null
+      ? stage
+      : STAGES.slice(STAGES.indexOf(stage as Stage), STAGES.indexOf(through as Stage) + 1).join(" + ");
+  return { ok: true, message: `Sent ${sent} Thaan${sent === 1 ? "" : "s"} for ${trip}.` };
 }
 
 /**
@@ -161,19 +189,49 @@ export async function receiveBatch(thaanIds: string[]): Promise<ActionResult> {
 
   const result = await db.transaction(async (tx) => {
     const closed: { id: string; stage: string; vendorId: string | null }[] = [];
+    // The stages a combined trip covers after its first — written here as
+    // already-received rows so they're billed exactly like the first.
+    const alsoDone: { id: string; stage: string; vendorId: string | null }[] = [];
 
     for (const thaanId of thaanIds) {
-      const [row] = await tx.execute<{ id: string; stage: string; vendorId: string | null }>(sql`
+      const [row] = await tx.execute<{
+        id: string;
+        stage: string;
+        vendorId: string | null;
+        throughStage: string | null;
+        sentAt: string | Date;
+        recordedBy: string | null;
+      }>(sql`
         update handover
         set received_at = now(), received_by_id = ${actorId}, updated_at = now()
         where thaan_id = ${thaanId} and received_at is null
-        returning id, stage, vendor_id as "vendorId"
+        returning id, stage, vendor_id as "vendorId", through_stage as "throughStage",
+                  sent_at as "sentAt", recorded_by_id as "recordedBy"
       `);
-      if (row !== undefined) closed.push(row);
+      if (row === undefined) continue;
+      closed.push({ id: row.id, stage: row.stage, vendorId: row.vendorId });
+
+      if (row.throughStage !== null) {
+        const [bale] = await tx.execute<{ needsSecondPrint: boolean }>(sql`
+          select b.needs_second_print as "needsSecondPrint"
+          from thaan t join bale b on b.id = t.bale_id where t.id = ${thaanId}
+        `);
+        const order = stagesFor(bale?.needsSecondPrint ?? true);
+        const first = order.indexOf(row.stage as Stage);
+        const last = order.indexOf(row.throughStage as Stage);
+        for (const s of last > first ? order.slice(first + 1, last + 1) : []) {
+          const [extra] = await tx.execute<{ id: string }>(sql`
+            insert into handover (thaan_id, stage, vendor_id, sent_at, received_at, recorded_by_id, received_by_id)
+            values (${thaanId}, ${s}, ${row.vendorId}, ${row.sentAt}, now(), ${row.recordedBy}, ${actorId})
+            returning id
+          `);
+          if (extra !== undefined) alsoDone.push({ id: extra.id, stage: s, vendorId: row.vendorId });
+        }
+      }
     }
 
     const groups = new Map<string, { vendorId: string; stage: string; handoverIds: string[] }>();
-    for (const c of closed) {
+    for (const c of [...closed, ...alsoDone]) {
       if (c.vendorId === null) continue; // In-house: nothing owed, nothing to bill.
       const key = `${c.vendorId}::${c.stage}`;
       const group = groups.get(key) ?? { vendorId: c.vendorId, stage: c.stage, handoverIds: [] };

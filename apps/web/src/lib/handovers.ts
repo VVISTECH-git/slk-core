@@ -22,7 +22,7 @@ export type OutstandingGroup = {
 export async function loadOutstanding(): Promise<OutstandingGroup[]> {
   return db.execute<OutstandingGroup>(sql`
     select
-      h.stage,
+      case when h.through_stage is null then h.stage else h.stage || ' + ' || h.through_stage end as "stage",
       h.vendor_id                                          as "vendorId",
       coalesce(v.name, 'In-house')                         as "vendorName",
       count(*)::int                                        as "count",
@@ -30,7 +30,7 @@ export async function loadOutstanding(): Promise<OutstandingGroup[]> {
     from handover h
     left join vendor v on v.id = h.vendor_id
     where h.received_at is null
-    group by h.stage, h.vendor_id, v.name
+    group by h.stage, h.through_stage, h.vendor_id, v.name
     order by min(h.sent_at)
   `);
 }
@@ -121,6 +121,8 @@ export async function checkThaanForSend(
 
 export type ThaanForReceive = ThaanForSend & {
   stage: string;
+  /** The last stage of a combined trip, or null for an ordinary one-stage trip. Receiving closes every stage up to it. */
+  throughStage: string | null;
   vendorId: string | null;
   vendorName: string;
 };
@@ -139,6 +141,7 @@ export async function checkThaanForReceive(
     baleType: string;
     itemName: string;
     stage: string | null;
+    throughStage: string | null;
     vendorId: string | null;
     vendorName: string | null;
   }>(sql`
@@ -148,6 +151,7 @@ export async function checkThaanForReceive(
       b.type                                              as "baleType",
       i.name                                               as "itemName",
       open_h.stage,
+      open_h.through_stage                                 as "throughStage",
       open_h.vendor_id                                     as "vendorId",
       v.name                                                as "vendorName"
     from thaan t
@@ -174,6 +178,7 @@ export async function checkThaanForReceive(
       baleType: thaan.baleType,
       itemName: thaan.itemName,
       stage: thaan.stage,
+      throughStage: thaan.throughStage,
       vendorId: thaan.vendorId,
       vendorName: thaan.vendorName ?? "In-house",
     },

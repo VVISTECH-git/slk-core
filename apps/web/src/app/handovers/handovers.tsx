@@ -18,6 +18,29 @@ import {
 
 const IN_HOUSE = "in-house";
 
+/** "Salava" → "Salava + Karakkaya" — a combined trip's name, for the stages it covers. */
+function tripLabel(stage: string, through: string): string {
+  const from = STAGES.indexOf(stage as (typeof STAGES)[number]);
+  const to = STAGES.indexOf(through as (typeof STAGES)[number]);
+  return through === "" || to <= from ? stage : STAGES.slice(from, to + 1).join(" + ");
+}
+
+/**
+ * The stages after `stage` this vendor also does, in unbroken order — what a
+ * single visit could cover. Stops at the first one they don't do, since the
+ * cloth can't skip a stage on its way through.
+ */
+function alsoStages(vendor: VendorRow | undefined, stage: string): string[] {
+  if (vendor === undefined || stage === "") return [];
+  const out: string[] = [];
+  for (let i = STAGES.indexOf(stage as (typeof STAGES)[number]) + 1; i < STAGES.length; i++) {
+    const s = STAGES[i]!;
+    if (!vendor.stages.includes(s)) break;
+    out.push(s);
+  }
+  return out;
+}
+
 /** One scan failure — a code and the message `lookupForSend`/`lookupForReceive` gave for it. */
 type ScanProblem = { code: string; message: string };
 
@@ -144,6 +167,8 @@ function SendPanel({
   // the same as sending to a vendor, not fallen into by never touching
   // the dropdown.
   const [vendorId, setVendorId] = useState<string>("");
+  // "" is the ordinary one-stage trip; otherwise the last stage of a combined one.
+  const [throughChoice, setThroughChoice] = useState<string>("");
   const [items, setItems] = useState<ThaanForSend[]>([]);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -216,6 +241,7 @@ function SendPanel({
         stage,
         vendorId === IN_HOUSE ? null : vendorId,
         items.map((t) => t.id),
+        through === "" ? null : through,
       );
       showToast(result);
       setConfirming(false);
@@ -225,6 +251,12 @@ function SendPanel({
       }
     });
   }
+
+  const chosenVendor = vendors.find((v) => v.id === vendorId);
+  const alsoOptions = alsoStages(chosenVendor, stage);
+  // A choice made for another vendor or stage doesn't carry over.
+  const through = alsoOptions.includes(throughChoice) ? throughChoice : "";
+  const trip = tripLabel(stage, through);
 
   const vendorLabel = vendorId === IN_HOUSE ? "in-house" : (vendors.find((v) => v.id === vendorId)?.name ?? "that vendor");
 
@@ -277,6 +309,20 @@ function SendPanel({
         </label>
       </div>
 
+      {alsoOptions.length > 0 && (
+        <label className="mb-4 block">
+          <span className="mb-1.5 block text-[12px] font-medium text-ink-2">Stages this trip</span>
+          <select className={inputClass} value={through} onChange={(e) => setThroughChoice(e.target.value)}>
+            <option value="">{stage} only</option>
+            {alsoOptions.map((s) => (
+              <option key={s} value={s}>
+                {tripLabel(stage, s)} — one trip, scanned out once and back once
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
       <ScanControls
         onCamera={() => setCameraOpen(true)}
         onManual={(code) => void scanMany(code)}
@@ -316,7 +362,7 @@ function SendPanel({
 
       {confirming && (
         <ConfirmDialog
-          title={`Send ${items.length} Thaan${items.length === 1 ? "" : "s"} for ${stage}?`}
+          title={`Send ${items.length} Thaan${items.length === 1 ? "" : "s"} for ${trip}?`}
           description={`Going to ${vendorLabel === "in-house" ? "in-house" : vendorLabel}. ${describeTally(items, (t) => t.baleType)}.`}
           confirmLabel="Send"
           pending={pending}
@@ -399,12 +445,12 @@ function ReceivePanel({
 
       <BatchList
         items={items}
-        renderMeta={(t) => `${t.baleCode} · ${t.vendorName} — ${t.stage}`}
+        renderMeta={(t) => `${t.baleCode} · ${t.vendorName} — ${tripLabel(t.stage, t.throughStage ?? "")}`}
         onRemove={removeItem}
       />
 
       <div className="mt-4 flex items-center justify-between">
-        <Tally items={items} keyFn={(t) => `${t.vendorName} — ${t.stage}`} />
+        <Tally items={items} keyFn={(t) => `${t.vendorName} — ${tripLabel(t.stage, t.throughStage ?? "")}`} />
         <Button
           tone="primary"
           disabled={items.length === 0 || pending}
@@ -424,7 +470,7 @@ function ReceivePanel({
       {confirming && (
         <ConfirmDialog
           title={`Receive ${items.length} Thaan${items.length === 1 ? "" : "s"}?`}
-          description={`${describeTally(items, (t) => `${t.vendorName} — ${t.stage}`)}.`}
+          description={`${describeTally(items, (t) => `${t.vendorName} — ${tripLabel(t.stage, t.throughStage ?? "")}`)}.`}
           confirmLabel="Receive"
           pending={pending}
           onConfirm={confirmReceive}

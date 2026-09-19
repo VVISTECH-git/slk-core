@@ -15,8 +15,10 @@ export const POST = guardedJobRole(["Bale Custodian", "Handler"], async (request
   const stage = typeof raw.stage === "string" ? raw.stage : "";
   const vendorId = typeof raw.vendorId === "string" ? raw.vendorId : null;
   const thaanIds = Array.isArray(raw.thaanIds) ? raw.thaanIds.map(String) : [];
+  // The last stage of a combined trip (this vendor doing several stages in one visit); absent for an ordinary one-stage trip.
+  const throughStage = typeof raw.throughStage === "string" && raw.throughStage !== "" ? raw.throughStage : null;
 
-  const result = await sendBatch(stage, vendorId, thaanIds);
+  const result = await sendBatch(stage, vendorId, thaanIds, throughStage);
   if (!result.ok) throw new ApiError(result.message, 422);
 
   return { message: result.message };

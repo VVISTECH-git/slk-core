@@ -89,7 +89,8 @@ export async function loadThaans(): Promise<ThaanRow[]> {
       to_char(t.created_at, 'DD Mon YYYY')                   as "createdAt",
       to_char(t.voided_at, 'DD Mon YYYY, HH12:MI AM')        as "voidedAt",
       void_by.name                                            as "voidedByName",
-      open_h.stage                                            as "openStage",
+      case when open_h.through_stage is null then open_h.stage
+           else open_h.stage || ' + ' || open_h.through_stage end as "openStage",
       coalesce(done.n, 0)::int                                as "completedStages",
       b.needs_second_print                                    as "needsSecondPrint"
     from thaan t
@@ -150,7 +151,8 @@ export async function loadThaanByCode(code: string): Promise<ThaanRow | null> {
       to_char(t.created_at, 'DD Mon YYYY')                   as "createdAt",
       to_char(t.voided_at, 'DD Mon YYYY, HH12:MI AM')        as "voidedAt",
       void_by.name                                            as "voidedByName",
-      open_h.stage                                            as "openStage",
+      case when open_h.through_stage is null then open_h.stage
+           else open_h.stage || ' + ' || open_h.through_stage end as "openStage",
       coalesce(done.n, 0)::int                                as "completedStages",
       b.needs_second_print                                    as "needsSecondPrint"
     from thaan t

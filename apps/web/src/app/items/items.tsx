@@ -6,12 +6,11 @@ import { useRouter } from "next/navigation";
 
 import { Pager } from "@/components/grid";
 import { Button, Drawer, Field, Header, ToastBar, inputClass, useToast } from "@/components/ui";
-import type { ClothItemRow, FibreTypeOption } from "@/lib/bales";
+import type { ClothItemOptions, ClothItemRow, LookupOption } from "@/lib/bales";
 
 import { CLOTH_TYPES } from "./constants";
 import { createClothItem, updateClothItem, type ActionResult, type ClothItemDraft } from "./actions";
 
-const BORDERS = ["Zari", "Plain", "Contrast", "Tasseled"] as const;
 const PALLUS = ["Same as body", "Contrast"] as const;
 
 /**
@@ -19,7 +18,7 @@ const PALLUS = ["Same as body", "Contrast"] as const;
  * screen, same reasoning as Suppliers: this belongs to Kora to Shelf, not
  * the catalogue's own vocabulary.
  */
-export function ClothItems({ rows, fibreTypes }: { rows: ClothItemRow[]; fibreTypes: FibreTypeOption[] }) {
+export function ClothItems({ rows, options }: { rows: ClothItemRow[]; options: ClothItemOptions }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [toast, showToast] = useToast();
@@ -59,7 +58,7 @@ export function ClothItems({ rows, fibreTypes }: { rows: ClothItemRow[]; fibreTy
       />
 
       <div className="flex-1 px-8 py-6">
-        <div className="mx-auto max-w-3xl">
+        <div className="mx-auto max-w-4xl">
           {rows.length === 0 ? (
             <p className="rounded-lg border border-dashed border-rule-2 px-4 py-10 text-center text-[13px] text-muted">
               No items yet. Add the first one — Bale Intake needs at least
@@ -104,7 +103,13 @@ export function ClothItems({ rows, fibreTypes }: { rows: ClothItemRow[]; fibreTy
                       <td className="px-3 text-ink-2">
                         {r.clothTypes.length === 0 ? "—" : r.clothTypes.join(", ")}
                       </td>
-                      <td className="px-3 text-ink-2">{r.fibreTypeLabel ?? "—"}</td>
+                      <td className="px-3 text-ink-2">
+                        {r.fibreTypeLabel === null
+                          ? "—"
+                          : r.textileMaterialLabel === null
+                            ? r.fibreTypeLabel
+                            : `${r.fibreTypeLabel} · ${r.textileMaterialLabel}`}
+                      </td>
                       <td className="px-3 text-right font-mono text-[12.5px] text-ink-2 tabular-nums">
                         {r.baleCount}
                       </td>
@@ -132,7 +137,7 @@ export function ClothItems({ rows, fibreTypes }: { rows: ClothItemRow[]; fibreTy
       </div>
 
       {adding && (
-        <AddDrawer pending={pending} onClose={() => setAdding(false)} onRun={run} fibreTypes={fibreTypes} />
+        <AddDrawer pending={pending} onClose={() => setAdding(false)} onRun={run} options={options} />
       )}
 
       {editing !== null && (
@@ -141,7 +146,7 @@ export function ClothItems({ rows, fibreTypes }: { rows: ClothItemRow[]; fibreTy
           pending={pending}
           onClose={() => setEditing(null)}
           onRun={run}
-          fibreTypes={fibreTypes}
+          options={options}
         />
       )}
 
@@ -150,22 +155,89 @@ export function ClothItems({ rows, fibreTypes }: { rows: ClothItemRow[]; fibreTy
   );
 }
 
+function Pick({
+  label,
+  hint,
+  value,
+  options,
+  onChange,
+  empty = "Not set",
+  disabled = false,
+}: {
+  label: string;
+  hint?: string;
+  value: string | null;
+  options: LookupOption[];
+  onChange: (id: string | null) => void;
+  empty?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <Field label={label} hint={hint}>
+      <select
+        className={inputClass}
+        value={value ?? ""}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value === "" ? null : e.target.value)}
+      >
+        <option value="">{empty}</option>
+        {options.map((o) => (
+          <option key={o.id} value={o.id}>{o.label}</option>
+        ))}
+      </select>
+    </Field>
+  );
+}
+
+/** A centimetre measurement box — empty means "not fixed". */
+function CmField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (v: number | null) => void;
+}) {
+  return (
+    <Field label={label}>
+      <input
+        className={inputClass}
+        type="number"
+        min={0}
+        step="0.1"
+        inputMode="decimal"
+        value={value ?? ""}
+        onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
+        placeholder="cm"
+      />
+    </Field>
+  );
+}
+
 /**
- * Cloth Type, and — only when "Sarees" is one of them — the saree-specific
- * facts about the raw cloth itself: whether it comes with a blouse piece,
- * its border, its pallu. Shared between Add and Edit so the two forms can't
- * quietly drift apart.
+ * Cloth Type, the facts every item can carry (fibre, textile material, weave,
+ * production method, audience — all from Product Management's own lists, so a
+ * Thaan cut from this item's bales carries them without anyone re-typing) and,
+ * only when "Sarees" is one of the types, the saree-specific facts about the
+ * raw cloth: border, pallu, sizes, and the blouse piece. Shared between Add
+ * and Edit so the two forms can't quietly drift apart.
  */
 function ClothItemFields({
   draft,
   set,
-  fibreTypes,
+  options,
 }: {
   draft: ClothItemDraft;
   set: <K extends keyof ClothItemDraft>(key: K, value: ClothItemDraft[K]) => void;
-  fibreTypes: FibreTypeOption[];
+  options: ClothItemOptions;
 }) {
   const isSaree = draft.clothTypes.includes("Sarees");
+
+  // A textile material sits under a fibre: show only that fibre's (plus any not tied to one).
+  const materials = options.textileMaterials.filter(
+    (m) => m.parentId === null || m.parentId === draft.fibreTypeId,
+  );
 
   function toggleType(type: string) {
     set(
@@ -174,6 +246,15 @@ function ClothItemFields({
         ? draft.clothTypes.filter((t) => t !== type)
         : [...draft.clothTypes, type],
     );
+  }
+
+  function pickFibre(id: string | null) {
+    set("fibreTypeId", id);
+    // Changing the fibre invalidates a material that belonged to the old one.
+    const current = options.textileMaterials.find((m) => m.id === draft.textileMaterialId);
+    if (current !== undefined && current.parentId !== null && current.parentId !== id) {
+      set("textileMaterialId", null);
+    }
   }
 
   return (
@@ -210,18 +291,41 @@ function ClothItemFields({
         </div>
       </Field>
 
-      <Field label="Material" hint="What the cloth itself is made of — the same Fibre Type list Product Management uses.">
-        <select
-          className={inputClass}
-          value={draft.fibreTypeId ?? ""}
-          onChange={(e) => set("fibreTypeId", e.target.value === "" ? null : e.target.value)}
-        >
-          <option value="">Not set</option>
-          {fibreTypes.map((f) => (
-            <option key={f.id} value={f.id}>{f.label}</option>
-          ))}
-        </select>
-      </Field>
+      <div className="grid grid-cols-2 gap-4">
+        <Pick
+          label="Fibre"
+          hint="Cotton, silk, linen…"
+          value={draft.fibreTypeId}
+          options={options.fibreTypes}
+          onChange={pickFibre}
+        />
+        <Pick
+          label="Textile material"
+          hint={draft.fibreTypeId === null ? "Pick the fibre first." : "Within that fibre."}
+          value={draft.textileMaterialId}
+          options={materials}
+          onChange={(id) => set("textileMaterialId", id)}
+          disabled={draft.fibreTypeId === null}
+        />
+        <Pick
+          label="Weave"
+          value={draft.weaveStructureId}
+          options={options.weaveStructures}
+          onChange={(id) => set("weaveStructureId", id)}
+        />
+        <Pick
+          label="Production method"
+          value={draft.productionMethodId}
+          options={options.productionMethods}
+          onChange={(id) => set("productionMethodId", id)}
+        />
+        <Pick
+          label="Audience"
+          value={draft.audienceId}
+          options={options.audiences}
+          onChange={(id) => set("audienceId", id)}
+        />
+      </div>
 
       {isSaree && (
         <div className="flex flex-col gap-4 rounded-lg border border-rule bg-surface-2 p-4">
@@ -229,29 +333,21 @@ function ClothItemFields({
             About the saree cloth itself — fixed the day the bale arrives, not a design choice made later.
           </p>
 
-          <label className="flex items-center gap-2 text-[13px] text-ink-2">
-            <input
-              type="checkbox"
-              checked={draft.hasBlouse === true}
-              onChange={(e) => set("hasBlouse", e.target.checked)}
-            />
-            Comes with a blouse piece
-          </label>
-
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Border">
-              <select
-                className={inputClass}
-                value={draft.border ?? ""}
-                onChange={(e) => set("border", e.target.value === "" ? null : e.target.value)}
-              >
-                <option value="">Not fixed</option>
-                {BORDERS.map((b) => (
-                  <option key={b} value={b}>{b}</option>
-                ))}
-              </select>
-            </Field>
-
+            <Pick
+              label="Border style"
+              value={draft.borderStyleId}
+              options={options.borderStyles}
+              onChange={(id) => set("borderStyleId", id)}
+              empty="Not fixed"
+            />
+            <Pick
+              label="Border height"
+              value={draft.borderHeightId}
+              options={options.borderHeights}
+              onChange={(id) => set("borderHeightId", id)}
+              empty="Not fixed"
+            />
             <Field label="Pallu">
               <select
                 className={inputClass}
@@ -265,33 +361,83 @@ function ClothItemFields({
               </select>
             </Field>
           </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <CmField label="Saree length" value={draft.sareeLengthCm} onChange={(v) => set("sareeLengthCm", v)} />
+            <CmField label="Saree width" value={draft.sareeWidthCm} onChange={(v) => set("sareeWidthCm", v)} />
+            <CmField label="Pallu length" value={draft.palluLengthCm} onChange={(v) => set("palluLengthCm", v)} />
+          </div>
+
+          <label className="flex items-center gap-2 text-[13px] text-ink-2">
+            <input
+              type="checkbox"
+              checked={draft.hasBlouse === true}
+              onChange={(e) => set("hasBlouse", e.target.checked)}
+            />
+            Comes with a blouse piece
+          </label>
+
+          {draft.hasBlouse === true && (
+            <div className="grid grid-cols-3 gap-4">
+              <Pick
+                label="Blouse style"
+                value={draft.blouseStyleId}
+                options={options.blouseStyles}
+                onChange={(id) => set("blouseStyleId", id)}
+                empty="Not fixed"
+              />
+              <Pick
+                label="Blouse material"
+                value={draft.blouseMaterialId}
+                options={options.blouseMaterials}
+                onChange={(id) => set("blouseMaterialId", id)}
+                empty="Not fixed"
+              />
+              <CmField label="Blouse length" value={draft.blouseLengthCm} onChange={(v) => set("blouseLengthCm", v)} />
+            </div>
+          )}
         </div>
       )}
     </>
   );
 }
 
-const EMPTY_DRAFT: ClothItemDraft = {
-  name: "",
-  clothTypes: [],
-  hasBlouse: null,
-  border: null,
-  pallu: null,
-  fibreTypeId: null,
-};
+/** A fresh item starts on Product Management's own defaults where a list has one (audience, production method). */
+function emptyDraft(options: ClothItemOptions): ClothItemDraft {
+  const dflt = (list: LookupOption[]) => list.find((o) => o.isDefault)?.id ?? null;
+  return {
+    name: "",
+    clothTypes: [],
+    hasBlouse: null,
+    pallu: null,
+    fibreTypeId: null,
+    weaveStructureId: null,
+    textileMaterialId: null,
+    productionMethodId: dflt(options.productionMethods),
+    audienceId: dflt(options.audiences),
+    borderStyleId: null,
+    borderHeightId: null,
+    blouseStyleId: null,
+    blouseMaterialId: null,
+    sareeLengthCm: null,
+    sareeWidthCm: null,
+    palluLengthCm: null,
+    blouseLengthCm: null,
+  };
+}
 
 function AddDrawer({
   pending,
   onClose,
   onRun,
-  fibreTypes,
+  options,
 }: {
   pending: boolean;
   onClose: () => void;
   onRun: (action: () => Promise<ActionResult>, onOk?: () => void) => void;
-  fibreTypes: FibreTypeOption[];
+  options: ClothItemOptions;
 }) {
-  const [draft, setDraft] = useState<ClothItemDraft>(EMPTY_DRAFT);
+  const [draft, setDraft] = useState<ClothItemDraft>(() => emptyDraft(options));
   const set = <K extends keyof ClothItemDraft>(key: K, value: ClothItemDraft[K]) =>
     setDraft((prev) => ({ ...prev, [key]: value }));
 
@@ -314,7 +460,7 @@ function AddDrawer({
       }
     >
       <div className="flex flex-col gap-5">
-        <ClothItemFields draft={draft} set={set} fibreTypes={fibreTypes} />
+        <ClothItemFields draft={draft} set={set} options={options} />
       </div>
     </Drawer>
   );
@@ -325,21 +471,32 @@ function EditDrawer({
   pending,
   onClose,
   onRun,
-  fibreTypes,
+  options,
 }: {
   item: ClothItemRow;
   pending: boolean;
   onClose: () => void;
   onRun: (action: () => Promise<ActionResult>, onOk?: () => void) => void;
-  fibreTypes: FibreTypeOption[];
+  options: ClothItemOptions;
 }) {
   const [draft, setDraft] = useState<ClothItemDraft>({
     name: item.name,
     clothTypes: item.clothTypes,
     hasBlouse: item.hasBlouse,
-    border: item.border,
     pallu: item.pallu,
     fibreTypeId: item.fibreTypeId,
+    weaveStructureId: item.weaveStructureId,
+    textileMaterialId: item.textileMaterialId,
+    productionMethodId: item.productionMethodId,
+    audienceId: item.audienceId,
+    borderStyleId: item.borderStyleId,
+    borderHeightId: item.borderHeightId,
+    blouseStyleId: item.blouseStyleId,
+    blouseMaterialId: item.blouseMaterialId,
+    sareeLengthCm: item.sareeLengthCm,
+    sareeWidthCm: item.sareeWidthCm,
+    palluLengthCm: item.palluLengthCm,
+    blouseLengthCm: item.blouseLengthCm,
   });
   const set = <K extends keyof ClothItemDraft>(key: K, value: ClothItemDraft[K]) =>
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -364,7 +521,7 @@ function EditDrawer({
       }
     >
       <div className="flex flex-col gap-5">
-        <ClothItemFields draft={draft} set={set} fibreTypes={fibreTypes} />
+        <ClothItemFields draft={draft} set={set} options={options} />
 
         <label className="flex items-center gap-2 text-[13px] text-ink-2">
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />

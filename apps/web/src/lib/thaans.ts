@@ -37,6 +37,27 @@ export type ThaanRow = {
   baleNotes: string | null;
   /** `awaiting_cutting`, `cutting_in_progress`, `cut` or `returned`. */
   baleStatus: string;
+  /**
+   * The cloth item's own properties (Product Management's lists), read live
+   * by join for the same reason as the bale's — fix them once on the Cloth
+   * Items page and every Thaan cut from that item shows the fix. Labels, not
+   * ids: these are for display; `null` means the item never fixed that fact.
+   */
+  fibre: string | null;
+  textileMaterial: string | null;
+  weave: string | null;
+  productionMethod: string | null;
+  audience: string | null;
+  borderStyle: string | null;
+  borderHeight: string | null;
+  pallu: string | null;
+  hasBlouse: boolean | null;
+  blouseStyle: string | null;
+  blouseMaterial: string | null;
+  sareeLengthCm: number | null;
+  sareeWidthCm: number | null;
+  palluLengthCm: number | null;
+  blouseLengthCm: number | null;
   /** Metres received ÷ Thaans cut from that bale — this Thaan's own share. */
   perThaanMetres: number | null;
   qrGeneratedAt: string | null;
@@ -55,6 +76,35 @@ export type ThaanRow = {
    */
   pipelineStatus: string;
 };
+
+/** The item-property columns of a Thaan read — shared so the list and the scan lookup can't drift. */
+const ITEM_COLUMNS = sql`,
+      fibre.label                                             as "fibre",
+      material.label                                          as "textileMaterial",
+      weave.label                                             as "weave",
+      method.label                                            as "productionMethod",
+      audience.label                                          as "audience",
+      border_style.label                                      as "borderStyle",
+      border_height.label                                     as "borderHeight",
+      i.pallu                                                 as "pallu",
+      i.has_blouse                                            as "hasBlouse",
+      blouse_style.label                                      as "blouseStyle",
+      blouse_material.label                                   as "blouseMaterial",
+      i.saree_length_cm::double precision                     as "sareeLengthCm",
+      i.saree_width_cm::double precision                      as "sareeWidthCm",
+      i.pallu_length_cm::double precision                     as "palluLengthCm",
+      i.blouse_length_cm::double precision                    as "blouseLengthCm"`;
+
+const ITEM_JOINS = sql`
+    left join lookup_value fibre on fibre.id = i.fibre_type_id
+    left join lookup_value material on material.id = i.textile_material_id
+    left join lookup_value weave on weave.id = i.weave_structure_id
+    left join lookup_value method on method.id = i.production_method_id
+    left join lookup_value audience on audience.id = i.audience_id
+    left join lookup_value border_style on border_style.id = i.border_style_id
+    left join lookup_value border_height on border_height.id = i.border_height_id
+    left join lookup_value blouse_style on blouse_style.id = i.blouse_style_id
+    left join lookup_value blouse_material on blouse_material.id = i.blouse_material_id`;
 
 export async function loadThaans(): Promise<ThaanRow[]> {
   const rows = await db.execute<
@@ -92,11 +142,11 @@ export async function loadThaans(): Promise<ThaanRow[]> {
       case when open_h.through_stage is null then open_h.stage
            else open_h.stage || ' + ' || open_h.through_stage end as "openStage",
       coalesce(done.n, 0)::int                                as "completedStages",
-      b.needs_second_print                                    as "needsSecondPrint"
+      b.needs_second_print                                    as "needsSecondPrint"${ITEM_COLUMNS}
     from thaan t
     join bale b on b.id = t.bale_id
     join supplier s on s.id = b.supplier_id
-    join cloth_item i on i.id = b.item_id
+    join cloth_item i on i.id = b.item_id${ITEM_JOINS}
     left join actor qr_by on qr_by.id = t.qr_generated_by_id
     left join actor void_by on void_by.id = t.voided_by_id
     left join handover open_h on open_h.thaan_id = t.id and open_h.received_at is null
@@ -154,11 +204,11 @@ export async function loadThaanByCode(code: string): Promise<ThaanRow | null> {
       case when open_h.through_stage is null then open_h.stage
            else open_h.stage || ' + ' || open_h.through_stage end as "openStage",
       coalesce(done.n, 0)::int                                as "completedStages",
-      b.needs_second_print                                    as "needsSecondPrint"
+      b.needs_second_print                                    as "needsSecondPrint"${ITEM_COLUMNS}
     from thaan t
     join bale b on b.id = t.bale_id
     join supplier s on s.id = b.supplier_id
-    join cloth_item i on i.id = b.item_id
+    join cloth_item i on i.id = b.item_id${ITEM_JOINS}
     left join actor qr_by on qr_by.id = t.qr_generated_by_id
     left join actor void_by on void_by.id = t.voided_by_id
     left join handover open_h on open_h.thaan_id = t.id and open_h.received_at is null

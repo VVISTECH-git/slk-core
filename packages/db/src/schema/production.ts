@@ -122,8 +122,54 @@ export const clothItem = pgTable(
      * and null on a saree cloth until someone sets it.
      */
     hasBlouse: boolean("has_blouse"),
+    /**
+     * Unused — superseded by `borderStyleId` below, which uses Product
+     * Management's own vocabulary. Kept for one release only so the code
+     * that read it can be deployed before the column is dropped.
+     */
     border: text("border"),
     pallu: text("pallu"),
+
+    /**
+     * Border style and height, from Product Management's own lists
+     * (`border_style`, `border_height`) — the same values a finished saree
+     * is filed under, so nothing is re-typed or translated between the two.
+     * Replaces an older four-value `border` text column that used a
+     * different vocabulary ("Zari / Plain / Contrast / Tasseled") and had
+     * never been filled in. Saree-only, like `hasBlouse` and `pallu`.
+     */
+    borderStyleId: uuid("border_style_id").references(() => lookupValue.id, { onDelete: "restrict" }),
+    borderHeightId: uuid("border_height_id").references(() => lookupValue.id, { onDelete: "restrict" }),
+
+    /**
+     * Blouse style and material — only meaningful when `hasBlouse` is true,
+     * and cleared otherwise. Product Management's `blouse_style` and
+     * `blouse_material` lists.
+     */
+    blouseStyleId: uuid("blouse_style_id").references(() => lookupValue.id, { onDelete: "restrict" }),
+    blouseMaterialId: uuid("blouse_material_id").references(() => lookupValue.id, { onDelete: "restrict" }),
+
+    /**
+     * Raw-cloth facts every item can carry, whatever it becomes: how it is
+     * woven, what it is made of within its fibre (a Cotton item's
+     * "Mul Mul", a Silk item's "Kanchipuram" — the list narrows by fibre,
+     * enforced in the save action), how it is made, and who it is for. All
+     * from Product Management's own lists, so a Thaan cut from a bale of
+     * this item already carries them when it reaches the far end.
+     */
+    weaveStructureId: uuid("weave_structure_id").references(() => lookupValue.id, { onDelete: "restrict" }),
+    textileMaterialId: uuid("textile_material_id").references(() => lookupValue.id, { onDelete: "restrict" }),
+    productionMethodId: uuid("production_method_id").references(() => lookupValue.id, { onDelete: "restrict" }),
+    audienceId: uuid("audience_id").references(() => lookupValue.id, { onDelete: "restrict" }),
+
+    /**
+     * The raw cloth's own measurements, in centimetres — saree cloth only,
+     * fixed the day it arrives. Blouse length only when there is a blouse.
+     */
+    sareeLengthCm: numeric("saree_length_cm", { precision: 7, scale: 1 }),
+    sareeWidthCm: numeric("saree_width_cm", { precision: 7, scale: 1 }),
+    palluLengthCm: numeric("pallu_length_cm", { precision: 7, scale: 1 }),
+    blouseLengthCm: numeric("blouse_length_cm", { precision: 7, scale: 1 }),
 
     /**
      * What the cloth itself is made of — Cotton, Silk. Also a raw-cloth

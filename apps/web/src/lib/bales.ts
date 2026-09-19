@@ -248,10 +248,22 @@ export type ClothItemRow = {
   name: string;
   clothTypes: string[];
   hasBlouse: boolean | null;
-  border: string | null;
   pallu: string | null;
   fibreTypeId: string | null;
   fibreTypeLabel: string | null;
+  weaveStructureId: string | null;
+  textileMaterialId: string | null;
+  textileMaterialLabel: string | null;
+  productionMethodId: string | null;
+  audienceId: string | null;
+  borderStyleId: string | null;
+  borderHeightId: string | null;
+  blouseStyleId: string | null;
+  blouseMaterialId: string | null;
+  sareeLengthCm: number | null;
+  sareeWidthCm: number | null;
+  palluLengthCm: number | null;
+  blouseLengthCm: number | null;
   status: "active" | "inactive";
   baleCount: number;
 };
@@ -264,29 +276,83 @@ export async function loadClothItems(): Promise<ClothItemRow[]> {
       i.name,
       i.cloth_types                        as "clothTypes",
       i.has_blouse                         as "hasBlouse",
-      i.border,
       i.pallu,
       i.fibre_type_id                      as "fibreTypeId",
       fibre.label                          as "fibreTypeLabel",
+      i.weave_structure_id                 as "weaveStructureId",
+      i.textile_material_id                as "textileMaterialId",
+      material.label                       as "textileMaterialLabel",
+      i.production_method_id               as "productionMethodId",
+      i.audience_id                        as "audienceId",
+      i.border_style_id                    as "borderStyleId",
+      i.border_height_id                   as "borderHeightId",
+      i.blouse_style_id                    as "blouseStyleId",
+      i.blouse_material_id                 as "blouseMaterialId",
+      i.saree_length_cm::double precision  as "sareeLengthCm",
+      i.saree_width_cm::double precision   as "sareeWidthCm",
+      i.pallu_length_cm::double precision  as "palluLengthCm",
+      i.blouse_length_cm::double precision as "blouseLengthCm",
       i.status,
       count(b.id)::int                     as "baleCount"
     from cloth_item i
     left join bale b on b.item_id = i.id
     left join lookup_value fibre on fibre.id = i.fibre_type_id
-    group by i.id, fibre.label
+    left join lookup_value material on material.id = i.textile_material_id
+    group by i.id, fibre.label, material.label
     order by (i.status = 'active') desc, i.name
   `);
 }
 
-export type FibreTypeOption = { id: string; label: string };
+/** One value of a Product Management list. `parentId` narrows it (a textile material sits under a fibre). */
+export type LookupOption = { id: string; label: string; parentId: string | null; isDefault: boolean };
 
-/** Product Management's own "Fibre Type" list — reused rather than duplicated. */
-export async function loadFibreTypes(): Promise<FibreTypeOption[]> {
-  return db.execute<FibreTypeOption>(sql`
-    select lv.id, lv.label
+export type ClothItemOptions = {
+  fibreTypes: LookupOption[];
+  weaveStructures: LookupOption[];
+  textileMaterials: LookupOption[];
+  productionMethods: LookupOption[];
+  audiences: LookupOption[];
+  borderStyles: LookupOption[];
+  borderHeights: LookupOption[];
+  blouseStyles: LookupOption[];
+  blouseMaterials: LookupOption[];
+};
+
+/**
+ * Every Product Management list a cloth item draws on — reused, not copied,
+ * so an item and the finished product filed from it can never disagree about
+ * what "Kanchi (6-8 Inch)" or "Mul Mul" means.
+ */
+export async function loadClothItemOptions(): Promise<ClothItemOptions> {
+  const rows = await db.execute<LookupOption & { listCode: string }>(sql`
+    select
+      ll.code                 as "listCode",
+      lv.id,
+      lv.label,
+      lv.parent_value_id      as "parentId",
+      lv.is_default           as "isDefault"
     from lookup_value lv
     join lookup_list ll on ll.id = lv.list_id
-    where ll.code = 'fibre_type' and lv.status = 'active' and ll.is_enabled = true
+    where ll.code in (
+      'fibre_type', 'weave_structure', 'textile_material', 'production_method',
+      'audience_type', 'border_style', 'border_height', 'blouse_style', 'blouse_material'
+    )
+      and lv.status = 'active' and ll.is_enabled = true
     order by lv.label
   `);
+
+  const of = (code: string): LookupOption[] =>
+    rows.filter((r) => r.listCode === code).map(({ listCode: _l, ...o }) => o);
+
+  return {
+    fibreTypes: of("fibre_type"),
+    weaveStructures: of("weave_structure"),
+    textileMaterials: of("textile_material"),
+    productionMethods: of("production_method"),
+    audiences: of("audience_type"),
+    borderStyles: of("border_style"),
+    borderHeights: of("border_height"),
+    blouseStyles: of("blouse_style"),
+    blouseMaterials: of("blouse_material"),
+  };
 }

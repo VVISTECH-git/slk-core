@@ -12,6 +12,29 @@ import type { StageFunnelRow, ThaanRow } from "@/lib/thaans";
 import { restoreThaan, voidThaan, type ActionResult } from "./actions";
 
 /** Matched by prefix, not exact value — "Out for X"/"Ready for X" name a different X per row. */
+/** Every property the cloth item fixed, one line each — the hover text of the Cloth column. */
+function clothDetail(r: ThaanRow): string {
+  const cm = (v: number | null) => (v === null ? null : `${v} cm`);
+  const lines: [string, string | null][] = [
+    ["Fibre", r.fibre],
+    ["Textile material", r.textileMaterial],
+    ["Weave", r.weave],
+    ["Production method", r.productionMethod],
+    ["Audience", r.audience],
+    ["Border", [r.borderStyle, r.borderHeight].filter((v) => v !== null).join(", ") || null],
+    ["Pallu", r.pallu],
+    ["Blouse", r.hasBlouse === null ? null : r.hasBlouse ? ([r.blouseStyle, r.blouseMaterial].filter((v) => v !== null).join(", ") || "Yes") : "No"],
+    ["Saree length", cm(r.sareeLengthCm)],
+    ["Saree width", cm(r.sareeWidthCm)],
+    ["Pallu length", cm(r.palluLengthCm)],
+    ["Blouse length", cm(r.blouseLengthCm)],
+  ];
+  return lines
+    .filter((l): l is [string, string] => l[1] !== null)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join("\n");
+}
+
 function pipelineStatusStyle(status: string): { background: string; color: string } {
   if (status === "Finished") return { background: "var(--ok-soft)", color: "var(--ok)" };
   if (status.startsWith("Out for ")) return { background: "var(--off-soft)", color: "var(--off)" };
@@ -67,6 +90,8 @@ export function Thaans({
               (r.code ?? "").toLowerCase().startsWith(term) ||
               r.supplierName.toLowerCase().includes(term) ||
               r.itemName.toLowerCase().includes(term) ||
+              (r.fibre ?? "").toLowerCase().includes(term) ||
+              (r.textileMaterial ?? "").toLowerCase().includes(term) ||
               r.baleType.toLowerCase().includes(term) ||
               (r.gradeCode ?? "").toLowerCase().includes(term) ||
               (r.invoiceNumber ?? "").toLowerCase().includes(term),
@@ -148,6 +173,7 @@ export function Thaans({
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Bale</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Supplier</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Item</th>
+                      <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Cloth</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Type</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Grade</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Bill entry date</th>
@@ -185,6 +211,13 @@ export function Thaans({
                         </td>
                         <td className="px-3 text-ink-2">{r.supplierName}</td>
                         <td className="px-3 text-ink-2">{r.itemName}</td>
+                        <td className="px-3 text-ink-2" title={clothDetail(r)}>
+                          {r.fibre === null
+                            ? "—"
+                            : r.textileMaterial === null
+                              ? r.fibre
+                              : `${r.fibre} · ${r.textileMaterial}`}
+                        </td>
                         <td className="px-3 text-ink-2">{r.baleType}</td>
                         <td className="px-3 text-ink-2">{r.gradeCode ?? "—"}</td>
                         <td className="px-3 text-ink-2">{r.billEntryDate}</td>

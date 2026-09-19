@@ -18,6 +18,25 @@ export type ThaanRow = {
   /** Cascaded from the bale — the same "Sarees, Fabric, Chunnies..." set. */
   baleType: string;
   billEntryDate: string;
+  /**
+   * Everything else the bale carries, read live off it by join rather than
+   * copied onto the Thaan — a Thaan is a piece of its bale, so a correction
+   * to the bale (a fixed invoice number, a regraded batch) has to show up on
+   * every Thaan cut from it, not sit stale on rows written before the fix.
+   */
+  transporter: string | null;
+  invoiceNumber: string | null;
+  invoiceDate: string | null;
+  invoiceAmount: number | null;
+  /** Total metres the whole bale came in at — `perThaanMetres` is this Thaan's share of it. */
+  metresReceived: number;
+  uom: string;
+  gradeCode: string | null;
+  needsSecondPrint: boolean;
+  baleCount: number;
+  baleNotes: string | null;
+  /** `awaiting_cutting`, `cutting_in_progress`, `cut` or `returned`. */
+  baleStatus: string;
   /** Metres received ÷ Thaans cut from that bale — this Thaan's own share. */
   perThaanMetres: number | null;
   qrGeneratedAt: string | null;
@@ -42,7 +61,6 @@ export async function loadThaans(): Promise<ThaanRow[]> {
     Omit<ThaanRow, "pipelineStatus"> & {
       openStage: string | null;
       completedStages: number;
-      needsSecondPrint: boolean;
     }
   >(sql`
     select
@@ -54,6 +72,16 @@ export async function loadThaans(): Promise<ThaanRow[]> {
       i.name                                                  as "itemName",
       b.type                                                  as "baleType",
       to_char(b.bill_entry_date, 'DD Mon YYYY')              as "billEntryDate",
+      b.transporter                                           as "transporter",
+      b.invoice_number                                        as "invoiceNumber",
+      to_char(b.invoice_date, 'DD Mon YYYY')                 as "invoiceDate",
+      b.invoice_amount::double precision                      as "invoiceAmount",
+      b.metres_received::double precision                     as "metresReceived",
+      b.uom                                                   as "uom",
+      b.grade_code                                            as "gradeCode",
+      b.bale_count                                            as "baleCount",
+      b.notes                                                 as "baleNotes",
+      b.status                                                as "baleStatus",
       round(b.metres_received / count(*) over (partition by t.bale_id), 2)::double precision
                                                                as "perThaanMetres",
       to_char(t.qr_generated_at, 'DD Mon YYYY, HH12:MI AM')  as "qrGeneratedAt",
@@ -77,9 +105,9 @@ export async function loadThaans(): Promise<ThaanRow[]> {
     order by t.created_at desc, t.code
   `);
 
-  return rows.map(({ openStage, completedStages, needsSecondPrint, ...row }) => ({
+  return rows.map(({ openStage, completedStages, ...row }) => ({
     ...row,
-    pipelineStatus: pipelineStatus(row.code, openStage, completedStages, needsSecondPrint),
+    pipelineStatus: pipelineStatus(row.code, openStage, completedStages, row.needsSecondPrint),
   }));
 }
 
@@ -94,7 +122,6 @@ export async function loadThaanByCode(code: string): Promise<ThaanRow | null> {
     Omit<ThaanRow, "pipelineStatus"> & {
       openStage: string | null;
       completedStages: number;
-      needsSecondPrint: boolean;
     }
   >(sql`
     select
@@ -106,6 +133,16 @@ export async function loadThaanByCode(code: string): Promise<ThaanRow | null> {
       i.name                                                  as "itemName",
       b.type                                                  as "baleType",
       to_char(b.bill_entry_date, 'DD Mon YYYY')              as "billEntryDate",
+      b.transporter                                           as "transporter",
+      b.invoice_number                                        as "invoiceNumber",
+      to_char(b.invoice_date, 'DD Mon YYYY')                 as "invoiceDate",
+      b.invoice_amount::double precision                      as "invoiceAmount",
+      b.metres_received::double precision                     as "metresReceived",
+      b.uom                                                   as "uom",
+      b.grade_code                                            as "gradeCode",
+      b.bale_count                                            as "baleCount",
+      b.notes                                                 as "baleNotes",
+      b.status                                                as "baleStatus",
       round(b.metres_received / count(*) over (partition by t.bale_id), 2)::double precision
                                                                as "perThaanMetres",
       to_char(t.qr_generated_at, 'DD Mon YYYY, HH12:MI AM')  as "qrGeneratedAt",
@@ -132,8 +169,8 @@ export async function loadThaanByCode(code: string): Promise<ThaanRow | null> {
   const [row] = rows;
   if (row === undefined) return null;
 
-  const { openStage, completedStages, needsSecondPrint, ...rest } = row;
-  return { ...rest, pipelineStatus: pipelineStatus(rest.code, openStage, completedStages, needsSecondPrint) };
+  const { openStage, completedStages, ...rest } = row;
+  return { ...rest, pipelineStatus: pipelineStatus(rest.code, openStage, completedStages, rest.needsSecondPrint) };
 }
 
 function pipelineStatus(

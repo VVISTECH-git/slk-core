@@ -7,7 +7,7 @@ import { Button, Field, inputClass } from "@/components/ui";
 import type { ThaanPrintBatch } from "@/lib/thaans";
 
 /**
- * The Thaan QR codes laid out as one continuous roll, each code followed by a
+ * The Thaan QR codes laid out as one continuous 2-inch (50mm) roll, each code followed by a
  * dashed "tear here" line — the person tears or cuts the strip apart by hand.
  * The `@page` rule below is what makes that real: without it, a browser
  * prints this at A4 with margins, and the roll printer either wastes most
@@ -43,7 +43,7 @@ export function PrintView({
     <div className="print-root min-h-screen bg-surface-2">
       <style>{`
         @media print {
-          @page { size: 80mm auto; margin: 0; }
+          @page { size: 50mm auto; margin: 0; }
           body { margin: 0; }
           .no-print { display: none !important; }
           .roll { width: 100% !important; box-shadow: none !important; }
@@ -100,15 +100,15 @@ export function PrintView({
       </div>
 
       <div className="print-wrap flex justify-center py-8">
-        <div className="roll bg-white shadow-[var(--shadow)]" style={{ width: "80mm" }}>
+        <div className="roll bg-white shadow-[var(--shadow)]" style={{ width: "50mm" }}>
           {rows.map((row) => (
             <div key={row.id}>
-              <div className="flex flex-col items-center gap-1 px-3 py-4 text-center">
+              <div className="flex flex-col items-center gap-1 px-2 py-3 text-center">
                 <div className="text-[10px] font-medium tracking-wide text-black/60">
                   {batch.baleCode}
                 </div>
                 {/* eslint-disable-next-line @next/next/no-img-element -- a generated SVG data URI, not an app asset */}
-                <img src={row.qr} alt={`QR code ${row.code}`} width={160} height={160} />
+                <img src={row.qr} alt={`QR code ${row.code}`} width={140} height={140} />
                 <div className="font-mono text-[13px] font-semibold text-black">{row.code}</div>
               </div>
               <div className="border-t border-dashed border-black/50 py-1 text-center text-[8px] tracking-widest text-black/50">

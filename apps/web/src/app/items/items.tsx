@@ -13,6 +13,29 @@ import { createClothItem, updateClothItem, type ActionResult, type ClothItemDraf
 
 const PALLUS = ["Same as body", "Contrast"] as const;
 
+const COLUMNS: { label: string; right?: boolean }[] = [
+  { label: "Code" },
+  { label: "Item" },
+  { label: "Cloth Type" },
+  { label: "Fibre" },
+  { label: "Textile material" },
+  { label: "Weave" },
+  { label: "Production" },
+  { label: "Audience" },
+  { label: "Border" },
+  { label: "Pallu" },
+  { label: "Blouse" },
+  { label: "Saree size" },
+  { label: "Bales", right: true },
+  { label: "Status" },
+];
+
+/** Joins whichever parts are set with ", " — "—" when none are. */
+function join(...parts: (string | null)[]): string {
+  const set = parts.filter((p): p is string => p !== null);
+  return set.length === 0 ? "—" : set.join(", ");
+}
+
 /**
  * The specific cloth names a bale's contents are picked from. Its own
  * screen, same reasoning as Suppliers: this belongs to Kora to Shelf, not
@@ -28,6 +51,13 @@ export function ClothItems({ rows, options }: { rows: ClothItemRow[]; options: C
 
   const { preferences } = usePreferences();
   const PER_PAGE = preferences.pageSize;
+
+  const labels = new Map(
+    Object.values(options)
+      .flat()
+      .map((o) => [o.id, o.label] as const),
+  );
+  const label = (id: string | null) => (id === null ? null : (labels.get(id) ?? null));
 
   const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
   const currentPage = Math.min(page, pages);
@@ -58,7 +88,7 @@ export function ClothItems({ rows, options }: { rows: ClothItemRow[]; options: C
       />
 
       <div className="flex-1 px-8 py-6">
-        <div className="mx-auto max-w-4xl">
+        <div>
           {rows.length === 0 ? (
             <p className="rounded-lg border border-dashed border-rule-2 px-4 py-10 text-center text-[13px] text-muted">
               No items yet. Add the first one — Bale Intake needs at least
@@ -66,27 +96,19 @@ export function ClothItems({ rows, options }: { rows: ClothItemRow[]; options: C
             </p>
           ) : (
             <div className="overflow-hidden rounded-lg border border-rule bg-surface">
-              <table className="w-full border-collapse text-[13px]">
+              <div className="overflow-x-auto">
+              <table className="w-full border-collapse whitespace-nowrap text-[13px]">
                 <thead>
                   <tr className="border-b border-rule bg-surface-2 text-left">
-                    <th scope="col" className="w-20 px-4 py-2 text-[11.5px] font-medium text-muted">
-                      Code
-                    </th>
-                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
-                      Item
-                    </th>
-                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
-                      Cloth Type
-                    </th>
-                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">
-                      Material
-                    </th>
-                    <th scope="col" className="w-28 px-3 py-2 text-right text-[11.5px] font-medium text-muted">
-                      Bales
-                    </th>
-                    <th scope="col" className="w-24 px-3 py-2 text-[11.5px] font-medium text-muted">
-                      Status
-                    </th>
+                    {COLUMNS.map((c) => (
+                      <th
+                        key={c.label}
+                        scope="col"
+                        className={`px-3 py-2 text-[11.5px] font-medium text-muted ${c.right ? "text-right" : ""}`}
+                      >
+                        {c.label}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -98,17 +120,27 @@ export function ClothItems({ rows, options }: { rows: ClothItemRow[]; options: C
                         r.status === "inactive" ? "opacity-60" : ""
                       }`}
                     >
-                      <td className="px-4 font-mono text-[12.5px] text-ink-2">{r.code}</td>
+                      <td className="px-3 font-mono text-[12.5px] text-ink-2">{r.code}</td>
                       <td className="px-3 text-ink">{r.name}</td>
+                      <td className="px-3 text-ink-2">{r.clothTypes.length === 0 ? "—" : r.clothTypes.join(", ")}</td>
+                      <td className="px-3 text-ink-2">{r.fibreTypeLabel ?? "—"}</td>
+                      <td className="px-3 text-ink-2">{r.textileMaterialLabel ?? "—"}</td>
+                      <td className="px-3 text-ink-2">{label(r.weaveStructureId)}</td>
+                      <td className="px-3 text-ink-2">{label(r.productionMethodId)}</td>
+                      <td className="px-3 text-ink-2">{label(r.audienceId)}</td>
+                      <td className="px-3 text-ink-2">{join(label(r.borderStyleId), label(r.borderHeightId))}</td>
+                      <td className="px-3 text-ink-2">{r.pallu ?? "—"}</td>
                       <td className="px-3 text-ink-2">
-                        {r.clothTypes.length === 0 ? "—" : r.clothTypes.join(", ")}
-                      </td>
-                      <td className="px-3 text-ink-2">
-                        {r.fibreTypeLabel === null
+                        {r.hasBlouse === null
                           ? "—"
-                          : r.textileMaterialLabel === null
-                            ? r.fibreTypeLabel
-                            : `${r.fibreTypeLabel} · ${r.textileMaterialLabel}`}
+                          : r.hasBlouse
+                            ? join(label(r.blouseStyleId), label(r.blouseMaterialId)).replace(/^—$/, "Yes")
+                            : "No"}
+                      </td>
+                      <td className="px-3 font-mono text-[12.5px] text-ink-2 tabular-nums">
+                        {r.sareeLengthCm === null && r.sareeWidthCm === null
+                          ? "—"
+                          : `${r.sareeLengthCm ?? "?"} × ${r.sareeWidthCm ?? "?"} cm`}
                       </td>
                       <td className="px-3 text-right font-mono text-[12.5px] text-ink-2 tabular-nums">
                         {r.baleCount}
@@ -129,6 +161,7 @@ export function ClothItems({ rows, options }: { rows: ClothItemRow[]; options: C
                   ))}
                 </tbody>
               </table>
+              </div>
 
               <Pager total={rows.length} page={currentPage} perPage={PER_PAGE} onPage={setPage} />
             </div>
@@ -157,24 +190,25 @@ export function ClothItems({ rows, options }: { rows: ClothItemRow[]; options: C
 
 function Pick({
   label,
-  hint,
   value,
   options,
   onChange,
   empty = "Not set",
   disabled = false,
+  title,
 }: {
   label: string;
-  hint?: string;
   value: string | null;
   options: LookupOption[];
   onChange: (id: string | null) => void;
   empty?: string;
   disabled?: boolean;
+  title?: string;
 }) {
   return (
-    <Field label={label} hint={hint}>
+    <Field label={label}>
       <select
+        title={disabled ? title : undefined}
         className={inputClass}
         value={value ?? ""}
         disabled={disabled}
@@ -259,7 +293,7 @@ function ClothItemFields({
 
   return (
     <>
-      <Field label="Name" hint="A specific cloth name, the way the old sheet named it — 'Cotton Fabric A40s', not just 'Fabric'.">
+      <Field label="Name">
         <input
           className={inputClass}
           value={draft.name}
@@ -269,7 +303,7 @@ function ClothItemFields({
         />
       </Field>
 
-      <Field label="Cloth Type" hint="What this cloth is suited to. Not exclusive — plain fabric might become either Sarees or Chunnies.">
+      <Field label="Cloth Type">
         <div className="flex flex-wrap gap-1.5">
           {CLOTH_TYPES.map((type) => {
             const selected = draft.clothTypes.includes(type);
@@ -291,21 +325,20 @@ function ClothItemFields({
         </div>
       </Field>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-3">
         <Pick
           label="Fibre"
-          hint="Cotton, silk, linen…"
           value={draft.fibreTypeId}
           options={options.fibreTypes}
           onChange={pickFibre}
         />
         <Pick
           label="Textile material"
-          hint={draft.fibreTypeId === null ? "Pick the fibre first." : "Within that fibre."}
           value={draft.textileMaterialId}
           options={materials}
           onChange={(id) => set("textileMaterialId", id)}
           disabled={draft.fibreTypeId === null}
+          title="Pick the fibre first"
         />
         <Pick
           label="Weave"
@@ -328,12 +361,8 @@ function ClothItemFields({
       </div>
 
       {isSaree && (
-        <div className="flex flex-col gap-4 rounded-lg border border-rule bg-surface-2 p-4">
-          <p className="text-[12px] text-muted">
-            About the saree cloth itself — fixed the day the bale arrives, not a design choice made later.
-          </p>
-
-          <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-3 rounded-lg border border-rule bg-surface-2 p-3">
+          <div className="grid grid-cols-3 gap-3">
             <Pick
               label="Border style"
               value={draft.borderStyleId}
@@ -362,7 +391,7 @@ function ClothItemFields({
             </Field>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-3">
             <CmField label="Saree length" value={draft.sareeLengthCm} onChange={(v) => set("sareeLengthCm", v)} />
             <CmField label="Saree width" value={draft.sareeWidthCm} onChange={(v) => set("sareeWidthCm", v)} />
             <CmField label="Pallu length" value={draft.palluLengthCm} onChange={(v) => set("palluLengthCm", v)} />
@@ -378,7 +407,7 @@ function ClothItemFields({
           </label>
 
           {draft.hasBlouse === true && (
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-3">
               <Pick
                 label="Blouse style"
                 value={draft.blouseStyleId}
@@ -459,7 +488,7 @@ function AddDrawer({
         </>
       }
     >
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-3.5">
         <ClothItemFields draft={draft} set={set} options={options} />
       </div>
     </Drawer>
@@ -520,7 +549,7 @@ function EditDrawer({
         </>
       }
     >
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-3.5">
         <ClothItemFields draft={draft} set={set} options={options} />
 
         <label className="flex items-center gap-2 text-[13px] text-ink-2">

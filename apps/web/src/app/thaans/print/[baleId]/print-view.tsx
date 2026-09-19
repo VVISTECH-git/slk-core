@@ -7,9 +7,9 @@ import { Button, Field, inputClass } from "@/components/ui";
 import type { ThaanPrintBatch } from "@/lib/thaans";
 
 /**
- * The Thaan QR codes for a 2-inch (50mm) roll, each code followed by a dashed
+ * The Thaan QR codes for a 25mm-wide roll, each code followed by a dashed
  * "tear here" line — the person tears the strip apart by hand. Each code is one
- * fixed 50 × 60 mm page: the `@page` rule carries that size to the browser, and
+ * fixed 25 × 35 mm page: the `@page` rule carries that size to the browser, and
  * the driver then feeds exactly that much stock per code. Without it a browser
  * prints at the driver's default sheet (often 4 × 6 in), which fits two or three
  * codes on a page and wastes the roll.
@@ -44,12 +44,12 @@ export function PrintView({
     <div className="print-root min-h-screen bg-surface-2">
       <style>{`
         @media print {
-          @page { size: 50mm 60mm; margin: 0; }
+          @page { size: 25mm 35mm; margin: 0; }
           body { margin: 0; }
           .no-print { display: none !important; }
           .roll { width: 100% !important; box-shadow: none !important; }
           /* One code + its tear line per fixed-length page, so the driver feeds exactly that much. */
-          .code { break-after: page; height: 59.5mm !important; }
+          .code { break-after: page; height: 34.5mm !important; }
           .code:last-child { break-after: auto; }
           /* The screen preview's padding would push the first code down the roll. */
           .print-root { min-height: 0 !important; background: white !important; }
@@ -104,18 +104,18 @@ export function PrintView({
       </div>
 
       <div className="print-wrap flex justify-center py-8">
-        <div className="roll bg-white shadow-[var(--shadow)]" style={{ width: "50mm" }}>
+        <div className="roll bg-white shadow-[var(--shadow)]" style={{ width: "25mm" }}>
           {rows.map((row) => (
-            <div key={row.id} className="code flex flex-col overflow-hidden" style={{ height: "60mm" }}>
-              <div className="flex flex-1 flex-col items-center justify-center gap-1 px-2 text-center">
-                <div className="text-[10px] font-medium tracking-wide text-black/60">
+            <div key={row.id} className="code flex flex-col overflow-hidden" style={{ height: "35mm" }}>
+              <div className="flex flex-1 flex-col items-center justify-center gap-[1mm] px-[1mm] text-center">
+                <div className="text-[7px] leading-none font-medium tracking-wide text-black/60">
                   {batch.baleCode}
                 </div>
                 {/* eslint-disable-next-line @next/next/no-img-element -- a generated SVG data URI, not an app asset */}
-                <img src={row.qr} alt={`QR code ${row.code}`} style={{ width: "25.4mm", height: "25.4mm" }} />
-                <div className="font-mono text-[13px] font-semibold text-black">{row.code}</div>
+                <img src={row.qr} alt={`QR code ${row.code}`} style={{ width: "20mm", height: "20mm" }} />
+                <div className="font-mono text-[11px] leading-none font-semibold text-black">{row.code}</div>
               </div>
-              <div className="border-t border-dashed border-black/50 py-1 text-center text-[8px] tracking-widest text-black/50">
+              <div className="border-t border-dashed border-black/50 py-[0.6mm] text-center text-[6px] tracking-wider text-black/50">
                 ✂ TEAR HERE
               </div>
             </div>

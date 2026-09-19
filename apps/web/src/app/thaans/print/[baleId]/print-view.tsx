@@ -7,11 +7,12 @@ import { Button, Field, inputClass } from "@/components/ui";
 import type { ThaanPrintBatch } from "@/lib/thaans";
 
 /**
- * The Thaan QR codes laid out as one continuous 2-inch (50mm) roll, each code followed by a
- * dashed "tear here" line — the person tears or cuts the strip apart by hand.
- * The `@page` rule below is what makes that real: without it, a browser
- * prints this at A4 with margins, and the roll printer either wastes most
- * of its paper or refuses the job.
+ * The Thaan QR codes for a 2-inch (50mm) roll, each code followed by a dashed
+ * "tear here" line — the person tears the strip apart by hand. Each code is one
+ * fixed 50 × 60 mm page: the `@page` rule carries that size to the browser, and
+ * the driver then feeds exactly that much stock per code. Without it a browser
+ * prints at the driver's default sheet (often 4 × 6 in), which fits two or three
+ * codes on a page and wastes the roll.
  */
 export function PrintView({
   batch,
@@ -43,10 +44,13 @@ export function PrintView({
     <div className="print-root min-h-screen bg-surface-2">
       <style>{`
         @media print {
-          @page { size: 50mm auto; margin: 0; }
+          @page { size: 50mm 60mm; margin: 0; }
           body { margin: 0; }
           .no-print { display: none !important; }
           .roll { width: 100% !important; box-shadow: none !important; }
+          /* One code + its tear line per fixed-length page, so the driver feeds exactly that much. */
+          .code { break-after: page; height: 59.5mm !important; }
+          .code:last-child { break-after: auto; }
           /* The screen preview's padding would push the first code down the roll. */
           .print-root { min-height: 0 !important; background: white !important; }
           .print-wrap { padding: 0 !important; display: block !important; }
@@ -102,8 +106,8 @@ export function PrintView({
       <div className="print-wrap flex justify-center py-8">
         <div className="roll bg-white shadow-[var(--shadow)]" style={{ width: "50mm" }}>
           {rows.map((row) => (
-            <div key={row.id}>
-              <div className="flex flex-col items-center gap-1 px-2 py-3 text-center">
+            <div key={row.id} className="code flex flex-col overflow-hidden" style={{ height: "60mm" }}>
+              <div className="flex flex-1 flex-col items-center justify-center gap-1 px-2 text-center">
                 <div className="text-[10px] font-medium tracking-wide text-black/60">
                   {batch.baleCode}
                 </div>

@@ -1,17 +1,35 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button, Field, inputClass } from "@/components/ui";
 import type { ThaanPrintBatch } from "@/lib/thaans";
 
+const SIZE_KEY = "slk.labelSize";
+const DEFAULT_SIZE = { w: 50, h: 50 };
+
+/** A saved label size, or the default — storage can be blocked or hold junk. */
+function readSize(): { w: number; h: number } {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(SIZE_KEY) ?? "null") as { w?: unknown; h?: unknown } | null;
+    if (raw !== null && typeof raw.w === "number" && typeof raw.h === "number" && raw.w > 0 && raw.h > 0) {
+      return { w: raw.w, h: raw.h };
+    }
+  } catch {
+    // fall through to the default
+  }
+  return DEFAULT_SIZE;
+}
+
 /**
- * One Thaan's QR code, laid out for a thermal receipt roll — the kind a
- * shop's bill printer uses — rather than a grid of labels on an A4 sheet.
- * The `@page` rule below is what makes that real: without it, a browser
- * prints this at A4 with margins, and the roll printer either wastes most
- * of its paper or refuses the job.
+ * One Thaan's QR code per label, for a thermal label printer (a TSC TTP-244
+ * Pro and the like): each Thaan is its own page, exactly the size of the
+ * label stock, so the printer feeds one die-cut label per code. The `@page`
+ * rule below carries that size to the browser — without it a browser prints
+ * this at A4 with margins and the label printer either wastes the roll or
+ * refuses the job. The size is typed in here (labels come in many sizes) and
+ * remembered on this computer.
  */
 export function PrintView({
   batch,
@@ -21,6 +39,22 @@ export function PrintView({
   back: { href: string; label: string };
 }) {
   const router = useRouter();
+
+  const [size, setSize] = useState(DEFAULT_SIZE);
+  // Read after mount: the server render has no localStorage, so starting from it would mismatch.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time load of a saved preference
+  useEffect(() => setSize(readSize()), []);
+  function changeSize(next: { w: number; h: number }) {
+    setSize(next);
+    try {
+      window.localStorage.setItem(SIZE_KEY, JSON.stringify(next));
+    } catch {
+      // still prints at this size; just not remembered
+    }
+  }
+  const sizeValid = size.w >= 10 && size.h >= 10;
+  // QR fills the label less a margin, leaving a strip for the two lines of text.
+  const qrMm = Math.max(5, Math.min(size.w - 6, size.h - 14));
 
   // Ink or paper running out partway through a long roll is a printer
   // failure, not a data problem — there's no signal from the printer to
@@ -43,10 +77,12 @@ export function PrintView({
     <div className="min-h-screen bg-surface-2">
       <style>{`
         @media print {
-          @page { size: 80mm auto; margin: 0; }
+          @page { size: ${size.w}mm ${size.h}mm; margin: 0; }
           body { margin: 0; }
           .no-print { display: none !important; }
-          .roll { width: 100% !important; box-shadow: none !important; }
+          .roll { width: auto !important; box-shadow: none !important; gap: 0 !important; }
+          .label { break-after: page; border: 0 !important; box-shadow: none !important; }
+          .label:last-child { break-after: auto; }
           /* The app's sidebar, from the shared layout this page still renders inside. */
           nav[aria-label="Main"] { display: none !important; }
         }
@@ -61,15 +97,38 @@ export function PrintView({
               : rows.length === batch.rows.length
                 ? `${batch.rows.length} Thaan${batch.rows.length === 1 ? "" : "s"}.`
                 : `Printing ${rows.length} of ${batch.rows.length}.`}{" "}
-            Laid out for an 80mm receipt roll — check the first printout against your printer before
-            running the rest.
+            One label per page — check the first printout before running the rest.
           </p>
         </div>
         <div className="flex items-end gap-3">
+          <div className="flex gap-2">
+            <div className="w-20">
+              <Field label="Label W (mm)">
+                <input
+                  className={inputClass}
+                  type="number"
+                  min={10}
+                  value={size.w}
+                  onChange={(e) => changeSize({ ...size, w: Number(e.target.value) })}
+                />
+              </Field>
+            </div>
+            <div className="w-20">
+              <Field label="Label H (mm)">
+                <input
+                  className={inputClass}
+                  type="number"
+                  min={10}
+                  value={size.h}
+                  onChange={(e) => changeSize({ ...size, h: Number(e.target.value) })}
+                />
+              </Field>
+            </div>
+          </div>
           {batch.rows.length > 1 && (
             <div className="flex gap-2">
               <div className="w-36">
-                <Field label="From code" hint="Printer ran out partway? Set this to the last label that actually printed.">
+                <Field label="From code">
                   <input
                     className={inputClass}
                     value={from}
@@ -90,7 +149,7 @@ export function PrintView({
           )}
           <div className="flex gap-2">
             <Button onClick={() => router.push(back.href)}>{back.label}</Button>
-            <Button tone="primary" onClick={() => window.print()} disabled={!rangeValid}>
+            <Button tone="primary" onClick={() => window.print()} disabled={!rangeValid || !sizeValid}>
               Print
             </Button>
           </div>
@@ -98,20 +157,21 @@ export function PrintView({
       </div>
 
       <div className="flex justify-center py-8">
-        <div className="roll w-[80mm] bg-white shadow-[var(--shadow)]">
-          {rows.map((row, i) => (
+        <div className="roll flex flex-col gap-3">
+          {rows.map((row) => (
             <div
               key={row.id}
-              className={`flex flex-col items-center gap-1 px-3 py-4 text-center ${
-                i > 0 ? "border-t border-dashed border-black/30" : ""
-              }`}
+              className="label flex flex-col items-center justify-center overflow-hidden bg-white text-center shadow-[var(--shadow)]"
+              style={{ width: `${size.w}mm`, height: `${size.h}mm` }}
             >
-              <div className="text-[10px] font-medium tracking-wide text-black/60">
-                {batch.baleCode}
-              </div>
+              <div className="text-[7pt] font-medium leading-none tracking-wide text-black/70">{batch.baleCode}</div>
               {/* eslint-disable-next-line @next/next/no-img-element -- a generated SVG data URI, not an app asset */}
-              <img src={row.qr} alt={`QR code ${row.code}`} width={160} height={160} />
-              <div className="font-mono text-[13px] font-semibold text-black">{row.code}</div>
+              <img
+                src={row.qr}
+                alt={`QR code ${row.code}`}
+                style={{ width: `${qrMm}mm`, height: `${qrMm}mm`, margin: "1mm 0" }}
+              />
+              <div className="font-mono text-[9pt] font-semibold leading-none text-black">{row.code}</div>
             </div>
           ))}
         </div>

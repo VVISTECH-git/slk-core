@@ -12,27 +12,10 @@ import type { StageFunnelRow, ThaanRow } from "@/lib/thaans";
 import { restoreThaan, voidThaan, type ActionResult } from "./actions";
 
 /** Matched by prefix, not exact value — "Out for X"/"Ready for X" name a different X per row. */
-/** Every property the cloth item fixed, one line each — the hover text of the Cloth column. */
-function clothDetail(r: ThaanRow): string {
-  const cm = (v: number | null) => (v === null ? null : `${v} cm`);
-  const lines: [string, string | null][] = [
-    ["Fibre", r.fibre],
-    ["Textile material", r.textileMaterial],
-    ["Weave", r.weave],
-    ["Production method", r.productionMethod],
-    ["Audience", r.audience],
-    ["Border", [r.borderStyle, r.borderHeight].filter((v) => v !== null).join(", ") || null],
-    ["Pallu", r.pallu],
-    ["Blouse", r.hasBlouse === null ? null : r.hasBlouse ? ([r.blouseStyle, r.blouseMaterial].filter((v) => v !== null).join(", ") || "Yes") : "No"],
-    ["Saree length", cm(r.sareeLengthCm)],
-    ["Saree width", cm(r.sareeWidthCm)],
-    ["Pallu length", cm(r.palluLengthCm)],
-    ["Blouse length", cm(r.blouseLengthCm)],
-  ];
-  return lines
-    .filter((l): l is [string, string] => l[1] !== null)
-    .map(([k, v]) => `${k}: ${v}`)
-    .join("\n");
+/** Joins whichever parts are set with ", " — "—" when none are. */
+function joinSet(...parts: (string | null)[]): string {
+  const set = parts.filter((p): p is string => p !== null);
+  return set.length === 0 ? "—" : set.join(", ");
 }
 
 function pipelineStatusStyle(status: string): { background: string; color: string } {
@@ -165,7 +148,7 @@ export function Thaans({
           ) : (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-rule bg-surface">
               <div className="flex-1 overflow-auto">
-                <table className="w-full border-collapse text-[13px]">
+                <table className="w-full border-collapse whitespace-nowrap text-[13px]">
                   <thead className="sticky top-0 bg-surface-2">
                     <tr className="border-b border-rule text-left">
                       <th scope="col" className="px-4 py-2 text-[11.5px] font-medium text-muted">Code</th>
@@ -173,7 +156,15 @@ export function Thaans({
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Bale</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Supplier</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Item</th>
-                      <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Cloth</th>
+                      <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Fibre</th>
+                      <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Textile material</th>
+                      <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Weave</th>
+                      <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Production</th>
+                      <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Audience</th>
+                      <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Border</th>
+                      <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Pallu</th>
+                      <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Blouse</th>
+                      <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Saree size</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Type</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Grade</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Bill entry date</th>
@@ -211,12 +202,24 @@ export function Thaans({
                         </td>
                         <td className="px-3 text-ink-2">{r.supplierName}</td>
                         <td className="px-3 text-ink-2">{r.itemName}</td>
-                        <td className="px-3 text-ink-2" title={clothDetail(r)}>
-                          {r.fibre === null
+                        <td className="px-3 text-ink-2">{r.fibre ?? "—"}</td>
+                        <td className="px-3 text-ink-2">{r.textileMaterial ?? "—"}</td>
+                        <td className="px-3 text-ink-2">{r.weave ?? "—"}</td>
+                        <td className="px-3 text-ink-2">{r.productionMethod ?? "—"}</td>
+                        <td className="px-3 text-ink-2">{r.audience ?? "—"}</td>
+                        <td className="px-3 text-ink-2">{joinSet(r.borderStyle, r.borderHeight)}</td>
+                        <td className="px-3 text-ink-2">{r.pallu ?? "—"}</td>
+                        <td className="px-3 text-ink-2">
+                          {r.hasBlouse === null
                             ? "—"
-                            : r.textileMaterial === null
-                              ? r.fibre
-                              : `${r.fibre} · ${r.textileMaterial}`}
+                            : r.hasBlouse
+                              ? joinSet(r.blouseStyle, r.blouseMaterial).replace(/^—$/, "Yes")
+                              : "No"}
+                        </td>
+                        <td className="px-3 font-mono text-[12.5px] text-ink-2 tabular-nums">
+                          {r.sareeLengthCm === null && r.sareeWidthCm === null
+                            ? "—"
+                            : `${r.sareeLengthCm ?? "?"} × ${r.sareeWidthCm ?? "?"} cm`}
                         </td>
                         <td className="px-3 text-ink-2">{r.baleType}</td>
                         <td className="px-3 text-ink-2">{r.gradeCode ?? "—"}</td>

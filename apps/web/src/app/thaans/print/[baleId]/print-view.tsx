@@ -112,7 +112,7 @@ export function PrintView({
                   {batch.baleCode}
                 </div>
                 {/* eslint-disable-next-line @next/next/no-img-element -- a generated SVG data URI, not an app asset */}
-                <img src={row.qr} alt={`QR code ${row.code}`} width={140} height={140} />
+                <img src={row.qr} alt={`QR code ${row.code}`} style={{ width: "25.4mm", height: "25.4mm" }} />
                 <div className="font-mono text-[13px] font-semibold text-black">{row.code}</div>
               </div>
               <div className="border-t border-dashed border-black/50 py-1 text-center text-[8px] tracking-widest text-black/50">

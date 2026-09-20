@@ -670,6 +670,16 @@ export const handover = pgTable(
     // `loadOutstanding`) filter `handover` by `vendor_id` — no index
     // existed on this column at all, a full table scan per vendor row.
     index("handover_vendor_id_idx").on(t.vendorId),
+    // Vendor Finance counts what each vendor still holds, by stage — only
+    // over the few open rows, not their whole handover history.
+    index("handover_vendor_open_idx")
+      .on(t.vendorId, t.stage)
+      .where(sql`${t.receivedAt} is null`),
+    // Vendor Ledger asks "which Thaans did this transaction bill?" once per
+    // ledger row; without this each of those is a scan of every handover.
+    index("handover_vendor_transaction_idx")
+      .on(t.vendorTransactionId)
+      .where(sql`${t.vendorTransactionId} is not null`),
     check(
       "handover_stage_known",
       sql`${t.stage} in (

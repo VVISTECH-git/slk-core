@@ -85,9 +85,9 @@ export async function checkThaanForSend(
     join bale b on b.id = t.bale_id
     join cloth_item i on i.id = b.item_id
     left join handover open_h on open_h.thaan_id = t.id and open_h.received_at is null
-    left join (
-      select thaan_id, count(*) as n from handover where received_at is not null group by thaan_id
-    ) done on done.thaan_id = t.id
+    left join lateral (
+      select count(*) as n from handover h where h.thaan_id = t.id and h.received_at is not null
+    ) done on true
     where t.code = ${trimmed}
   `);
 

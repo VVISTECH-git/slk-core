@@ -166,7 +166,10 @@ export async function loadThaans(): Promise<ThaanRow[]> {
  * One Thaan's full row, by its own code — what scanning a printed label
  * hands back. Same shape and same query `loadThaans` uses, just narrowed to
  * one `t.code =` instead of every row, so a scan-to-inspect lookup doesn't
- * duplicate the join.
+ * duplicate the join. Two things are counted per Thaan rather than over the
+ * whole table: a window `count(*) over (partition by bale_id)` would only see
+ * the one row that `where t.code =` leaves (making a Thaan's share the whole
+ * bale), and a grouped "done" subquery would total every handover ever made.
  */
 export async function loadThaanByCode(code: string): Promise<ThaanRow | null> {
   const rows = await db.execute<
@@ -194,7 +197,7 @@ export async function loadThaanByCode(code: string): Promise<ThaanRow | null> {
       b.bale_count                                            as "baleCount",
       b.notes                                                 as "baleNotes",
       b.status                                                as "baleStatus",
-      round(b.metres_received / count(*) over (partition by t.bale_id), 2)::double precision
+      round(b.metres_received / (select count(*) from thaan sib where sib.bale_id = t.bale_id), 2)::double precision
                                                                as "perThaanMetres",
       to_char(t.qr_generated_at, 'DD Mon YYYY, HH12:MI AM')  as "qrGeneratedAt",
       qr_by.name                                              as "qrGeneratedByName",
@@ -212,9 +215,9 @@ export async function loadThaanByCode(code: string): Promise<ThaanRow | null> {
     left join actor qr_by on qr_by.id = t.qr_generated_by_id
     left join actor void_by on void_by.id = t.voided_by_id
     left join handover open_h on open_h.thaan_id = t.id and open_h.received_at is null
-    left join (
-      select thaan_id, count(*)::int as n from handover where received_at is not null group by thaan_id
-    ) done on done.thaan_id = t.id
+    left join lateral (
+      select count(*)::int as n from handover h where h.thaan_id = t.id and h.received_at is not null
+    ) done on true
     where t.code = ${code}
   `);
 

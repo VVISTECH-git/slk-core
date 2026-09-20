@@ -726,6 +726,10 @@ export const movement = pgTable(
     uniqueIndex("movement_idempotency_key").on(t.idempotencyKey),
     index("movement_colourway_idx").on(t.colourwayId, t.occurredAt),
     index("movement_piece_idx").on(t.pieceId),
+    // Packing a metre-tracked batch sums its movements by batch.
+    index("movement_batch_idx")
+      .on(t.batchId)
+      .where(sql`${t.batchId} is not null`),
     // Asked as "what has this person been doing", never as a filter on a
     // scan, so it reads by actor and then by time.
     index("movement_actor_idx").on(t.actorId, t.occurredAt),

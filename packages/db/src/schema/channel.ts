@@ -267,6 +267,10 @@ export const reservation = pgTable(
       t.batchId,
     ),
     index("reservation_batch_status_idx").on(t.batchId, t.status),
+    // The picking list is "everything still held, oldest first".
+    index("reservation_held_idx")
+      .on(t.createdAt)
+      .where(sql`${t.status} = 'held'`),
     check("reservation_qty_positive", sql`${t.qty} > 0`),
     check(
       "reservation_status_known",

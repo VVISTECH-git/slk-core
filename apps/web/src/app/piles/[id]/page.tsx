@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 
 import { hasAnyJobRole } from "@/lib/auth";
+import { loadOptions } from "@/lib/editor";
+import { loadPileDraft } from "@/lib/pile-draft";
 import { loadPile, loadPileColours, loadPiles } from "@/lib/piles";
 import { requireJobRolePage } from "@/lib/session";
 
@@ -17,7 +19,9 @@ const PILE_EDIT_JOB_ROLES = ["Bale Custodian", "Handler"];
 /**
  * One pile: its photo, its name and colour (the two things fixed at the
  * door that can be wrong), every Thaan in it and where each is now, and
- * everything that ever happened to it. Its own page rather than a drawer
+ * everything that ever happened to it — and, between the two, the details
+ * its stages so far have asked for (the Phase 2 "complete a pile" form),
+ * with the Master List values to pick them from. Its own page rather than a drawer
  * because the Thaans and the history are read on the server, and a page
  * gets both back for free on every `router.refresh()`.
  */
@@ -25,12 +29,20 @@ export default async function PilePage({ params }: { params: Promise<{ id: strin
   const who = await requireJobRolePage(PILE_JOB_ROLES);
 
   const { id } = await params;
-  const [pile, colours, piles] = await Promise.all([loadPile(id), loadPileColours(), loadPiles()]);
-  if (pile === null) notFound();
+  const [pile, draft, options, colours, piles] = await Promise.all([
+    loadPile(id),
+    loadPileDraft(id),
+    loadOptions(),
+    loadPileColours(),
+    loadPiles(),
+  ]);
+  if (pile === null || draft === null) notFound();
 
   return (
     <Pile
       pile={pile}
+      draft={draft}
+      options={options}
       colours={colours}
       others={piles.filter((p) => p.id !== pile.id)}
       canEdit={hasAnyJobRole(who, PILE_EDIT_JOB_ROLES)}

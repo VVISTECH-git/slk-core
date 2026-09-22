@@ -96,6 +96,10 @@ const PILE_COLUMNS = sql`
       d.craft_technique_id                          as "craftTechniqueId",
       d.motif_id                                    as "motifId",
       d.border_style_id                             as "borderStyleId",
+      coalesce(d.fibre_type_id, (
+        select i.fibre_type_id from thaan t join bale b on b.id = t.bale_id join cloth_item i on i.id = b.item_id
+        where t.pile_id = p.id group by i.fibre_type_id order by count(*) desc limit 1
+      ))                                            as "fibreTypeId",
       coalesce((
         select max(array_position(${STAGE_ARRAY}, s.stage))
         from (
@@ -116,6 +120,8 @@ type PileRaw = Omit<PileRow, "photoUrl" | "stage" | "needs"> & {
   craftTechniqueId: string | null;
   motifId: string | null;
   borderStyleId: string | null;
+  /** The design's fibre, or failing that the cloth item's — a record can't be made without one. */
+  fibreTypeId: string | null;
   stageIndex: number | null;
 };
 
@@ -126,7 +132,7 @@ type PileRaw = Omit<PileRow, "photoUrl" | "stage" | "needs"> & {
  * everything its stage requires.
  */
 function shape(row: PileRaw): PileRow {
-  const { photoKey, craftTechniqueId, motifId, borderStyleId, stageIndex, ...rest } = row;
+  const { photoKey, craftTechniqueId, motifId, borderStyleId, fibreTypeId, stageIndex, ...rest } = row;
   const stage = STAGES[Math.max(0, (stageIndex ?? 1) - 1)] ?? "Print";
   const have: Partial<Record<AttributeKey, string | null>> = {
     craftTechnique: craftTechniqueId,
@@ -136,6 +142,7 @@ function shape(row: PileRaw): PileRow {
   const needs = requiredThrough(stage)
     .filter((key) => rest.colourwayId === null || !have[key])
     .map((key) => FIELD_SHORT[key] ?? key);
+  if (fibreTypeId === null) needs.push(FIELD_SHORT.fibreType ?? "fibre");
   return {
     ...rest,
     photoUrl: photoKey !== null && storageConfigured() ? publicUrl(photoKey) : null,

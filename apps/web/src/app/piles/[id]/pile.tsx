@@ -5,10 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { Button, Field, Header, ToastBar, inputClass, useToast } from "@/components/ui";
+import { ATTRIBUTES, type AttributeKey, type Options } from "@/lib/attributes";
+import type { PileDraft } from "@/lib/pile-draft";
 import type { ColourOption, PileEventRow, PileRow, PileThaan } from "@/lib/piles";
 
 import { PilePhoto, pileStatusLabel, pileStatusStyle } from "../piles";
-import { assignThaansToPile, createPile, updatePile, type ActionResult } from "../actions";
+import { assignThaansToPile, completePile, createPile, updatePile, type ActionResult } from "../actions";
 
 /** The "Move ticked to…" choice that means a pile that doesn't exist yet. */
 const NEW_PILE = "__new__";
@@ -23,6 +25,22 @@ function whereNow(t: PileThaan): string {
 function str(detail: Record<string, unknown>, key: string): string | null {
   const v = detail[key];
   return typeof v === "string" && v !== "" ? v : null;
+}
+
+/** The attribute keys a `detail_set` event names, read out as their labels. */
+function fieldLabels(detail: Record<string, unknown>): string[] {
+  const v = detail["fields"];
+  if (!Array.isArray(v)) return [];
+  return v.filter((k): k is AttributeKey => typeof k === "string" && k in ATTRIBUTES).map((k) => ATTRIBUTES[k].label);
+}
+
+/** "Length 550 cm · Width 112 cm" — whichever of the two sizes is known. */
+function sizes(extra: PileDraft["extra"]): string | null {
+  const parts = [
+    extra.lengthCm === null ? null : `Length ${extra.lengthCm} cm`,
+    extra.widthCm === null ? null : `Width ${extra.widthCm} cm`,
+  ].filter((p): p is string => p !== null);
+  return parts.length === 0 ? null : parts.join(" · ");
 }
 
 /**
@@ -45,9 +63,11 @@ function describe(e: PileEventRow, colourLabel: (id: string | null) => string | 
     case "detail_set": {
       const name = str(e.detail, "name");
       const colour = colourLabel(str(e.detail, "mainColourId"));
-      const parts = [name === null ? null : `name “${name}”`, colour === null ? null : `colour ${colour}`].filter(
-        (p): p is string => p !== null,
-      );
+      const parts = [
+        name === null ? null : `name “${name}”`,
+        colour === null ? null : `colour ${colour}`,
+        ...fieldLabels(e.detail),
+      ].filter((p): p is string => p !== null);
       return parts.length === 0 ? "Details changed" : `Details set: ${parts.join(", ")}`;
     }
     case "photo_set":
@@ -63,16 +83,25 @@ function describe(e: PileEventRow, colourLabel: (id: string | null) => string | 
  * One pile, and the two ways it gets put right after the door: its name or
  * colour corrected, or a Thaan that was sorted into the wrong pile ticked
  * and moved to the right one (or to a fresh pile, when the right one
- * doesn't exist yet). Everything else about a pile — the motif, the
- * border, the price — is Phase 2's, and filled in stage by stage.
+ * doesn't exist yet). Between those sits Details: what the cloth item
+ * already told us, and the questions the pile's stages so far have asked
+ * — the motif at Print, the border at Nellateeta — answered here and saved
+ * onto the pile's Product Management record. Prices and photos come after
+ * Ironing, in Phase 3.
  */
 export function Pile({
   pile,
+  draft,
+  options,
   colours,
   others,
   canEdit,
 }: {
   pile: PileRow & { thaans: PileThaan[]; events: PileEventRow[] };
+  /** The read-only and editable facts for this pile at its current stage. */
+  draft: PileDraft;
+  /** Every active Master List value, by list code — what the details are picked from. */
+  options: Options;
   colours: ColourOption[];
   /** Every other pile, for the move target list. */
   others: PileRow[];
@@ -86,6 +115,18 @@ export function Pile({
   const [name, setName] = useState(pile.name);
   const [mainColourId, setMainColourId] = useState(pile.mainColourId);
   const dirty = name.trim() !== pile.name || mainColourId !== pile.mainColourId;
+
+  // The stage questions, keyed by attribute; "" is "Not set".
+  const [answers, setAnswers] = useState<Record<string, string>>(() =>
+    Object.fromEntries(draft.fields.map((f) => [f.key, f.valueId ?? ""])),
+  );
+  const [colourId, setColourId] = useState(draft.colourId ?? "");
+  const [secondaryColourId, setSecondaryColourId] = useState(draft.secondaryColourId ?? "");
+  const detailsDirty =
+    draft.fields.some((f) => (answers[f.key] ?? "") !== (f.valueId ?? "")) ||
+    colourId !== (draft.colourId ?? "") ||
+    secondaryColourId !== (draft.secondaryColourId ?? "");
+  const colourOptions = options["colour"] ?? colours;
 
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [target, setTarget] = useState("");
@@ -154,6 +195,22 @@ export function Pile({
     });
   }
 
+  /** Every question's current answer goes, not just the changed ones — the action treats the patch as the whole form. */
+  function saveDetails() {
+    const attributes: Partial<Record<AttributeKey, string | null>> = {};
+    for (const f of draft.fields) {
+      const v = answers[f.key];
+      attributes[f.key] = v === undefined || v === "" ? null : v;
+    }
+    run(() =>
+      completePile(pile.id, {
+        attributes,
+        colourId: colourId === "" ? null : colourId,
+        secondaryColourId: secondaryColourId === "" ? null : secondaryColourId,
+      }),
+    );
+  }
+
   const canMove =
     ticked.size > 0 && (target === NEW_PILE ? newName.trim() !== "" : target !== "");
 
@@ -220,6 +277,122 @@ export function Pile({
                   </Button>
                 </div>
               )}
+            </div>
+          </section>
+
+          {/* What's known about the cloth, and what this stage is asked to decide. */}
+          <section className="rounded-lg border border-rule bg-surface">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-rule bg-surface-2 px-4 py-2.5">
+              <h2 className="text-[13px] font-medium text-ink">Details</h2>
+              {draft.needs.length > 0 ? (
+                <span className="text-[12px] text-warn">Still needs: {draft.needs.join(", ")}</span>
+              ) : (
+                <span className="text-[12px] text-ok">Complete for {draft.stage}</span>
+              )}
+              {draft.colourwayId !== null && draft.designCode !== null && (
+                <span className="ml-auto text-[12px] text-muted">
+                  Record{" "}
+                  <Link href="/records" className="font-mono text-brick underline">{draft.designCode}</Link>
+                  {draft.recordName !== null && ` · ${draft.recordName}`}
+                </span>
+              )}
+            </div>
+
+            <div className="grid gap-6 p-5 md:grid-cols-2">
+              <div>
+                <h3 className="mb-2.5 text-[12px] font-medium text-ink-2">Already known from the cloth item</h3>
+                {draft.inherited.length === 0 && sizes(draft.extra) === null ? (
+                  <p className="text-[13px] text-muted">Nothing carried over — the bale&apos;s cloth item has no details yet.</p>
+                ) : (
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13px]">
+                    {draft.inherited.map((f) => (
+                      <div key={f.key} className="contents">
+                        <dt className="text-muted">{f.label}</dt>
+                        <dd className="text-ink">{f.valueLabel === "" ? "—" : f.valueLabel}</dd>
+                      </div>
+                    ))}
+                    {sizes(draft.extra) !== null && (
+                      <div className="contents">
+                        <dt className="text-muted">Size</dt>
+                        <dd className="text-ink">{sizes(draft.extra)}</dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-3.5">
+                <h3 className="text-[12px] font-medium text-ink-2">Decided at {draft.stage}</h3>
+                {canEdit ? (
+                  <>
+                    {draft.fields.map((f) => (
+                      <Field key={f.key} label={f.required ? `${f.label} *` : f.label}>
+                        <select
+                          className={inputClass}
+                          value={answers[f.key] ?? ""}
+                          disabled={pending}
+                          onChange={(e) => setAnswers((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                        >
+                          <option value="">Not set</option>
+                          {(options[f.list] ?? []).map((o) => (
+                            <option key={o.id} value={o.id}>{o.label}</option>
+                          ))}
+                        </select>
+                      </Field>
+                    ))}
+                    <Field label="Colour" hint="The colourway's colour — the pile's main colour, unless told otherwise here.">
+                      <select
+                        className={inputClass}
+                        value={colourId}
+                        disabled={pending}
+                        onChange={(e) => setColourId(e.target.value)}
+                      >
+                        <option value="">Not set</option>
+                        {colourOptions.map((c) => (
+                          <option key={c.id} value={c.id}>{c.label}</option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Secondary colour">
+                      <select
+                        className={inputClass}
+                        value={secondaryColourId}
+                        disabled={pending}
+                        onChange={(e) => setSecondaryColourId(e.target.value)}
+                      >
+                        <option value="">Not set</option>
+                        {colourOptions.map((c) => (
+                          <option key={c.id} value={c.id}>{c.label}</option>
+                        ))}
+                      </select>
+                    </Field>
+                    <div className="flex justify-end">
+                      <Button tone="primary" disabled={!detailsDirty || pending} onClick={saveDetails}>
+                        Save details
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13px]">
+                    {draft.fields.map((f) => (
+                      <div key={f.key} className="contents">
+                        <dt className="text-muted">{f.required ? `${f.label} *` : f.label}</dt>
+                        <dd className={f.valueLabel === null ? "text-faint" : "text-ink"}>{f.valueLabel ?? "Not set"}</dd>
+                      </div>
+                    ))}
+                    <div className="contents">
+                      <dt className="text-muted">Colour</dt>
+                      <dd className={draft.colourLabel === null ? "text-faint" : "text-ink"}>{draft.colourLabel ?? "Not set"}</dd>
+                    </div>
+                    <div className="contents">
+                      <dt className="text-muted">Secondary colour</dt>
+                      <dd className={draft.secondaryColourLabel === null ? "text-faint" : "text-ink"}>
+                        {draft.secondaryColourLabel ?? "Not set"}
+                      </dd>
+                    </div>
+                  </dl>
+                )}
+              </div>
             </div>
           </section>
 

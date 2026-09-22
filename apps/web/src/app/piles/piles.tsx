@@ -8,8 +8,12 @@ import { Pager } from "@/components/grid";
 import { Header } from "@/components/ui";
 import type { PileRow } from "@/lib/piles";
 
+/** "To complete" isn't a status — it's every pile with a required detail still empty, whatever its status. */
+const TO_COMPLETE = "to-complete";
+
 const STATUSES = [
   { value: "", label: "All" },
+  { value: TO_COMPLETE, label: "To complete" },
   { value: "draft", label: "Draft" },
   { value: "ready", label: "Ready" },
   { value: "live", label: "Live" },
@@ -63,7 +67,7 @@ export function Piles({ rows }: { rows: PileRow[] }) {
     .filter((t) => t !== "");
   const filtered = rows.filter(
     (r) =>
-      (status === "" || r.status === status) &&
+      (status === "" || (status === TO_COMPLETE ? r.needs.length > 0 : r.status === status)) &&
       (terms.length === 0 ||
         terms.some(
           (term) =>
@@ -144,7 +148,7 @@ export function Piles({ rows }: { rows: PileRow[] }) {
           ) : filtered.length === 0 ? (
             <p className="rounded-lg border border-dashed border-rule-2 px-4 py-10 text-center text-[13px] text-muted">
               No piles match{terms.length > 0 ? ` “${query.trim()}”` : ""}
-              {status !== "" ? ` in ${pileStatusLabel(status as PileRow["status"])}` : ""}.
+              {status === TO_COMPLETE ? " still to complete" : status !== "" ? ` in ${pileStatusLabel(status as PileRow["status"])}` : ""}.
             </p>
           ) : (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-rule bg-surface">
@@ -159,8 +163,8 @@ export function Piles({ rows }: { rows: PileRow[] }) {
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Name</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Main colour</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Made at</th>
+                      <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Stage</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Status</th>
-                      <th scope="col" className="px-3 py-2 text-right text-[11.5px] font-medium text-muted">Thaans</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Bales</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Made by</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Made on</th>
@@ -180,16 +184,29 @@ export function Piles({ rows }: { rows: PileRow[] }) {
                         <td className="px-3 text-ink">{r.name}</td>
                         <td className="px-3 text-ink-2">{r.mainColour ?? "—"}</td>
                         <td className="px-3 text-ink-2">{r.createdStage}</td>
-                        <td className="px-3">
-                          <span
-                            className="rounded px-1.5 py-0.5 text-[11px] font-medium"
-                            style={pileStatusStyle(r.status)}
-                          >
-                            {pileStatusLabel(r.status)}
-                          </span>
+                        <td className="px-3 text-ink-2">
+                          {r.stage} · {r.thaanCount} Thaan{r.thaanCount === 1 ? "" : "s"}
                         </td>
-                        <td className="px-3 text-right font-mono text-[12.5px] text-ink-2 tabular-nums">
-                          {r.thaanCount}
+                        <td className="px-3">
+                          <span className="flex items-center gap-1.5">
+                            <span
+                              className="rounded px-1.5 py-0.5 text-[11px] font-medium"
+                              style={pileStatusStyle(r.status)}
+                            >
+                              {pileStatusLabel(r.status)}
+                            </span>
+                            {/* What's still to be filled in — the reason a draft is a draft. */}
+                            {r.needs.length > 0 && (
+                              <span className="rounded border border-rule-2 px-1.5 py-0.5 text-[11px] text-muted">
+                                Needs {r.needs.join(", ")}
+                              </span>
+                            )}
+                            {r.designCode !== null && (
+                              <span className="font-mono text-[11.5px] text-muted" title={r.recordName ?? undefined}>
+                                {r.designCode}
+                              </span>
+                            )}
+                          </span>
                         </td>
                         <td className="px-3 font-mono text-[12.5px] text-ink-2">
                           {r.baleCodes.length === 0 ? "—" : r.baleCodes.join(", ")}

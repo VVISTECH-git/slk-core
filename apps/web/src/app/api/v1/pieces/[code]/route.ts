@@ -22,15 +22,16 @@ export const GET = guardedSignedIn(async (request) => {
   ).trim();
 
   /*
-    Digits only, and short.
-
-    These codes are minted from sequences — 500001 and up, 300001 and up — so
-    anything else is a QR from somewhere other than a label on our stock. Said
-    plainly rather than passed to Postgres to come back empty, because "that is
-    not one of our codes" and "we have no such piece" are different answers and
-    a person scanning wants to know which.
+    Digits only, and short — item and product codes, minted from sequences
+    (500001 and up, 300001 and up) — or a Thaan code (T00002001): a pile
+    shelved through Kora to Shelf keeps the label stitched on at cutting as
+    the piece's own code, so that label is still a valid scan at the till.
+    Anything else is a QR from somewhere other than a label on our stock.
+    Said plainly rather than passed to Postgres to come back empty, because
+    "that is not one of our codes" and "we have no such piece" are different
+    answers and a person scanning wants to know which.
   */
-  if (!/^\d{1,12}$/.test(code)) {
+  if (!/^\d{1,12}$/.test(code) && !/^T\d{8}$/.test(code)) {
     throw new ApiError("That is not an SLK label.", 400);
   }
 

@@ -1,7 +1,7 @@
 "use server";
 
 import { allows } from "@/lib/roles";
-import { actingId, currentActor, guard, guardJobRole } from "@/lib/session";
+import { actingId, currentActor, guard } from "@/lib/session";
 import { eq, sql, type SQL } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
@@ -23,6 +23,11 @@ import {
   type DesignExtra,
 } from "@/lib/attributes";
 import { MOVEMENT_KINDS, type MovementDraft } from "@/lib/movements";
+import {
+  isSerialised as isSerialisedIn,
+  labelsFor as labelsForIn,
+  resolveUom as resolveUomIn,
+} from "@/lib/record-write";
 
 export interface ActionResult {
   ok: boolean;
@@ -265,10 +270,7 @@ function toMinor(value: string): number | null {
   return Math.round(amount * 100);
 }
 
-async function validate(
-  draft: RecordDraft,
-  opts: { allowUnpriced?: boolean } = {},
-): Promise<Record<string, string>> {
+async function validate(draft: RecordDraft): Promise<Record<string, string>> {
   const errors: Record<string, string> = {};
 
   for (const { key, label } of REQUIRED) {
@@ -312,7 +314,7 @@ async function validate(
     }
   }
 
-  if (draft.prices.retail.trim() === "" && opts.allowUnpriced !== true) {
+  if (draft.prices.retail.trim() === "") {
     errors["retail"] = "A selling price is needed";
   }
 
@@ -353,14 +355,7 @@ function summarizeErrors(errors: Record<string, string>): string {
  * a separate question; see resolveUom below.
  */
 async function isSerialised(productTypeId: string | null): Promise<boolean> {
-  if (productTypeId === null || productTypeId === "") return false;
-
-  const [row] = await db.execute<{ serialised: boolean }>(sql`
-    select coalesce((meta ->> 'serialised')::boolean, false) as serialised
-    from lookup_value where id = ${productTypeId}
-  `);
-
-  return row?.serialised ?? false;
+  return isSerialisedIn(db, productTypeId);
 }
 
 /**
@@ -384,42 +379,14 @@ export async function resolveUom(
   productTypeId: string | null,
   garmentTypeId: string | null,
 ): Promise<string | null> {
-  if (productTypeId === null || productTypeId === "") return null;
-
-  const [productType] = await db.execute<{ soldById: string | null }>(sql`
-    select sold_by_id as "soldById" from lookup_value where id = ${productTypeId}
-  `);
-  if (productType === undefined) return null;
-
-  if (garmentTypeId !== null && garmentTypeId !== "") {
-    const [isMatchedSet] = await db.execute<{ pieces: boolean }>(sql`
-      select true as pieces from lookup_value where id = ${garmentTypeId} and meta ? 'pieces'
-    `);
-    if (isMatchedSet !== undefined) {
-      const [pieceUom] = await db.execute<{ id: string }>(sql`
-        select lv.id from lookup_value lv join lookup_list ll on ll.id = lv.list_id
-        where ll.code = 'uom' and lv.code = 'piece'
-      `);
-      return pieceUom?.id ?? productType.soldById;
-    }
-  }
-
-  return productType.soldById;
+  return resolveUomIn(db, productTypeId, garmentTypeId);
 }
 
 /** Labels for the values an id points at, so a name can be composed. */
 async function labelsFor(
   ids: (string | null | undefined)[],
 ): Promise<Map<string, string>> {
-  const present = ids.filter((id): id is string => typeof id === "string" && id !== "");
-  if (present.length === 0) return new Map();
-
-  const rows = await db.execute<{ id: string; label: string }>(sql`
-    select id, label from lookup_value
-    where id in (${sql.join(present.map((id) => sql`${id}`), sql`, `)})
-  `);
-
-  return new Map(rows.map((r) => [r.id, r.label]));
+  return labelsForIn(db, ids);
 }
 
 export async function saveRecord(draft: RecordDraft): Promise<ActionResult> {
@@ -771,7 +738,7 @@ export async function deleteRecord(colourwayId: string): Promise<ActionResult> {
   }
 
   revalidatePath("/records");
-  revalidatePath("/stock");
+  revalidatePath("/thaans");
   revalidatePath("/locations");
 
   const what = found.others === 0 ? found.code : `${found.colour ?? "the colour"} of ${found.code}`;
@@ -801,26 +768,17 @@ export async function deleteRecord(colourwayId: string): Promise<ActionResult> {
   };
 }
 
-/** A brand-new design, minted with the next sequence number. */
 /**
- * `fromPileId`: this record is a pile coming off the print table, not a
- * consignment arriving at the shop — it has no price and no stock yet, and
- * both are allowed to be blank. The colourway is linked to the pile so
- * "Piles to complete" and the record are the same thing from then on.
- * Gated on the pile roles as well as the floor: whoever receives a
- * delivery is who fills these in.
+ * A brand-new design, minted with the next sequence number — a consignment
+ * arriving at the shop, priced, with its opening stock. (A record made at
+ * the door as Thaans come back from Print takes the other route:
+ * `createPipelineRecordInTx` in lib/pipeline-records.ts, inside the receive.)
  */
-export async function createRecord(
-  draft: RecordDraft,
-  opts: { fromPileId?: string } = {},
-): Promise<ActionResult> {
-  const fromPile = opts.fromPileId !== undefined;
-  const denied = fromPile
-    ? await guardJobRole(["Bale Custodian", "Handler"])
-    : await guard("floor");
+export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
+  const denied = await guard("floor");
   if (denied !== null) return denied;
 
-  const errors = await validate(draft, { allowUnpriced: fromPile });
+  const errors = await validate(draft);
 
   /*
     recordOpeningStock silently drops a blank, zero or negative line rather
@@ -834,7 +792,7 @@ export async function createRecord(
   const hasOpeningQuantity = draft.openingStock.some(
     (line) => line.locationId !== "" && Number(line.qty) > 0,
   );
-  if (!hasOpeningQuantity && !fromPile) {
+  if (!hasOpeningQuantity) {
     errors["openingStock"] =
       "At least one location needs a quantity greater than zero.";
   }
@@ -1056,17 +1014,6 @@ export async function createRecord(
   if (cw !== undefined) {
     await setImageSlots(cw.id, draft.imageSlots);
     await upsertStoryAndCare(db, cw.id, draft, actorId);
-    if (opts.fromPileId !== undefined) {
-      await db.execute(sql`
-        update pile set colourway_id = ${cw.id}, updated_at = now()
-        where id = ${opts.fromPileId} and colourway_id is null
-      `);
-      await db.execute(sql`
-        insert into pile_event (pile_id, kind, actor_id, detail, at)
-        values (${opts.fromPileId}, 'detail_set', ${actorId}, ${JSON.stringify({ record: code })}::jsonb, clock_timestamp())
-      `);
-      revalidatePath("/piles");
-    }
   }
 
   const opening =
@@ -1094,8 +1041,8 @@ export async function createRecord(
 
 /**
  * Changes several lookup-backed fields on a design at once, plus the
- * colourway's colours — what "Complete a pile" saves once the record
- * exists. Same rules as setRecordField, one write: each value must be an
+ * colourway's colours — what "Fill in details" saves on a record made at
+ * the door. Same rules as setRecordField, one write: each value must be an
  * active member of that field's own list, and the composed name is rebuilt
  * unless someone typed over it.
  */
@@ -1104,7 +1051,7 @@ export async function applyDesignPatch(
   attributes: Partial<Record<AttributeKey, string | null>>,
   colours: { colourId?: string | null; secondaryColourId?: string | null },
 ): Promise<ActionResult> {
-  const denied = await guardJobRole(["Bale Custodian", "Handler"]);
+  const denied = await guard("floor");
   if (denied !== null) return denied;
 
   const [cw] = await db.execute<{ designId: string; nameIsCustom: boolean }>(sql`

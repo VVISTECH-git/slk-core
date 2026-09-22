@@ -58,10 +58,21 @@ export type ThaanRow = {
   sareeWidthCm: number | null;
   palluLengthCm: number | null;
   blouseLengthCm: number | null;
-  /** The pile it was sorted into after Print, if any. */
-  pileId: string | null;
-  pileCode: string | null;
-  pileName: string | null;
+  /**
+   * The Product Management record it was sorted into at receipt from
+   * Print, if any — and, once that record went on the shelf, the piece it
+   * became (its own code), where the ledger says it is, and its price.
+   */
+  colourwayId: string | null;
+  recordCode: string | null;
+  recordName: string | null;
+  recordColour: string | null;
+  pieceCode: string | null;
+  productCode: string | null;
+  locationName: string | null;
+  /** Null until shelved; then whether the ledger still holds it. */
+  isHeld: boolean | null;
+  priceMinor: number | null;
   /** Metres received ÷ Thaans cut from that bale — this Thaan's own share. */
   perThaanMetres: number | null;
   qrGeneratedAt: string | null;
@@ -79,6 +90,8 @@ export type ThaanRow = {
    * through every stage ("Finished").
    */
   pipelineStatus: string;
+  /** In plain terms, as stock: "In pipeline", "On shelf", "Gone", "Voided". */
+  stockStatus: string;
 };
 
 /** The item-property columns of a Thaan read — shared so the list and the scan lookup can't drift. */
@@ -98,9 +111,15 @@ const ITEM_COLUMNS = sql`,
       i.saree_width_cm::double precision                      as "sareeWidthCm",
       i.pallu_length_cm::double precision                     as "palluLengthCm",
       i.blouse_length_cm::double precision                    as "blouseLengthCm",
-      t.pile_id                                               as "pileId",
-      pile.code                                               as "pileCode",
-      pile.name                                               as "pileName"`;
+      t.colourway_id                                          as "colourwayId",
+      rec_d.code                                              as "recordCode",
+      rec_d.name                                              as "recordName",
+      rec_colour.label                                        as "recordColour",
+      pc.code                                                 as "pieceCode",
+      bt.code                                                 as "productCode",
+      here.name                                               as "locationName",
+      pos.is_held                                             as "isHeld",
+      rec_cw.retail_minor::double precision                   as "priceMinor"`;
 
 const ITEM_JOINS = sql`
     left join lookup_value fibre on fibre.id = i.fibre_type_id
@@ -112,16 +131,15 @@ const ITEM_JOINS = sql`
     left join lookup_value border_height on border_height.id = i.border_height_id
     left join lookup_value blouse_style on blouse_style.id = i.blouse_style_id
     left join lookup_value blouse_material on blouse_material.id = i.blouse_material_id
-    left join pile on pile.id = t.pile_id`;
+    left join colourway rec_cw on rec_cw.id = t.colourway_id
+    left join design rec_d on rec_d.id = rec_cw.design_id
+    left join lookup_value rec_colour on rec_colour.id = rec_cw.colour_id
+    left join piece pc on pc.id = t.piece_id
+    left join batch bt on bt.id = pc.batch_id
+    left join piece_position pos on pos.piece_id = pc.id
+    left join location here on here.id = pos.location_id`;
 
-export async function loadThaans(): Promise<ThaanRow[]> {
-  const rows = await db.execute<
-    Omit<ThaanRow, "pipelineStatus"> & {
-      openStage: string | null;
-      completedStages: number;
-    }
-  >(sql`
-    select
+const THAAN_COLUMNS = sql`
       t.id,
       t.code,
       t.bale_id                                              as "baleId",
@@ -140,7 +158,7 @@ export async function loadThaans(): Promise<ThaanRow[]> {
       b.bale_count                                            as "baleCount",
       b.notes                                                 as "baleNotes",
       b.status                                                as "baleStatus",
-      round(b.metres_received / count(*) over (partition by t.bale_id), 2)::double precision
+      round(b.metres_received / (select count(*) from thaan sib where sib.bale_id = t.bale_id), 2)::double precision
                                                                as "perThaanMetres",
       to_char(t.qr_generated_at, 'DD Mon YYYY, HH12:MI AM')  as "qrGeneratedAt",
       qr_by.name                                              as "qrGeneratedByName",
@@ -150,7 +168,9 @@ export async function loadThaans(): Promise<ThaanRow[]> {
       case when open_h.through_stage is null then open_h.stage
            else open_h.stage || ' + ' || open_h.through_stage end as "openStage",
       coalesce(done.n, 0)::int                                as "completedStages",
-      b.needs_second_print                                    as "needsSecondPrint"${ITEM_COLUMNS}
+      b.needs_second_print                                    as "needsSecondPrint"${ITEM_COLUMNS}`;
+
+const THAAN_FROM = sql`
     from thaan t
     join bale b on b.id = t.bale_id
     join supplier s on s.id = b.supplier_id
@@ -158,16 +178,33 @@ export async function loadThaans(): Promise<ThaanRow[]> {
     left join actor qr_by on qr_by.id = t.qr_generated_by_id
     left join actor void_by on void_by.id = t.voided_by_id
     left join handover open_h on open_h.thaan_id = t.id and open_h.received_at is null
-    left join (
-      select thaan_id, count(*)::int as n from handover where received_at is not null group by thaan_id
-    ) done on done.thaan_id = t.id
+    left join lateral (
+      select count(*)::int as n from handover h where h.thaan_id = t.id and h.received_at is not null
+    ) done on true`;
+
+export async function loadThaans(): Promise<ThaanRow[]> {
+  const rows = await db.execute<ThaanRaw>(sql`
+    select ${THAAN_COLUMNS}
+    ${THAAN_FROM}
     order by t.created_at desc, t.code
   `);
+  return rows.map(shapeThaan);
+}
 
-  return rows.map(({ openStage, completedStages, ...row }) => ({
+type ThaanRaw = Omit<ThaanRow, "pipelineStatus" | "stockStatus"> & { openStage: string | null; completedStages: number };
+
+function shapeThaan({ openStage, completedStages, ...row }: ThaanRaw): ThaanRow {
+  return {
     ...row,
     pipelineStatus: pipelineStatus(row.code, openStage, completedStages, row.needsSecondPrint),
-  }));
+    stockStatus: stockStatus(row),
+  };
+}
+
+function stockStatus(row: Pick<ThaanRaw, "voidedAt" | "pieceCode" | "isHeld">): string {
+  if (row.voidedAt !== null) return "Voided";
+  if (row.pieceCode === null) return "In pipeline";
+  return row.isHeld === true ? "On shelf" : "Gone";
 }
 
 /**
@@ -180,12 +217,7 @@ export async function loadThaans(): Promise<ThaanRow[]> {
  * bale), and a grouped "done" subquery would total every handover ever made.
  */
 export async function loadThaanByCode(code: string): Promise<ThaanRow | null> {
-  const rows = await db.execute<
-    Omit<ThaanRow, "pipelineStatus"> & {
-      openStage: string | null;
-      completedStages: number;
-    }
-  >(sql`
+  const rows = await db.execute<ThaanRaw>(sql`
     select
       t.id,
       t.code,
@@ -226,14 +258,105 @@ export async function loadThaanByCode(code: string): Promise<ThaanRow | null> {
     left join lateral (
       select count(*)::int as n from handover h where h.thaan_id = t.id and h.received_at is not null
     ) done on true
-    where t.code = ${code}
+    where t.code = ${code} or pc.code = ${code}
+    limit 1
   `);
 
   const [row] = rows;
   if (row === undefined) return null;
 
-  const { openStage, completedStages, ...rest } = row;
-  return { ...rest, pipelineStatus: pipelineStatus(rest.code, openStage, completedStages, rest.needsSecondPrint) };
+  return shapeThaan(row);
+}
+
+/** What the Stock Records page is asking for. */
+export interface ThaanQuery {
+  /** A code or a word: Thaan, bale, item, supplier, record, piece, product code, location. */
+  q?: string;
+  /** Where it is as stock — everything by default. */
+  status?: "in_pipeline" | "on_shelf" | "gone" | "voided" | "all";
+  /** A location name, as the dropdown shows it. */
+  location?: string;
+  /** "Sarees", "Fabric"... — the bale's type. */
+  baleType?: string;
+}
+
+export interface ThaanPage {
+  rows: ThaanRow[];
+  /** How many Thaans match, beyond the page fetched. */
+  total: number;
+  limit: number;
+}
+
+/** How many rows a visit fetches — the search goes to the database, so a code finds its row wherever it is. */
+export const THAAN_LIMIT = 100;
+
+function like(term: string): string {
+  return `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
+/**
+ * The Stock Records page: every Thaan from cutting onwards, newest first,
+ * with the record it was sorted into and — once shelved — the piece it
+ * became and where the ledger says it is.
+ */
+export async function loadThaanPage(query: ThaanQuery = {}): Promise<ThaanPage> {
+  const q = (query.q ?? "").trim();
+  const status = query.status ?? "all";
+  const location = (query.location ?? "").trim();
+  const baleType = (query.baleType ?? "").trim();
+
+  const conditions = [sql`true`];
+  if (q !== "") {
+    const pattern = like(q);
+    conditions.push(sql`(
+      t.code ilike ${pattern}
+      or b.code ilike ${pattern}
+      or i.name ilike ${pattern}
+      or s.name ilike ${pattern}
+      or rec_d.code ilike ${pattern}
+      or rec_d.name ilike ${pattern}
+      or rec_colour.label ilike ${pattern}
+      or pc.code ilike ${pattern}
+      or bt.code ilike ${pattern}
+      or here.name ilike ${pattern}
+    )`);
+  }
+  if (status === "voided") conditions.push(sql`t.voided_at is not null`);
+  else if (status === "in_pipeline") conditions.push(sql`t.voided_at is null and t.piece_id is null`);
+  else if (status === "on_shelf") conditions.push(sql`pc.id is not null and coalesce(pos.is_held, false)`);
+  else if (status === "gone") conditions.push(sql`pc.id is not null and not coalesce(pos.is_held, false)`);
+  if (location !== "") conditions.push(sql`here.name = ${location}`);
+  if (baleType !== "") conditions.push(sql`b.type = ${baleType}`);
+  const where = sql.join(conditions, sql` and `);
+
+  const [rows, counts] = await Promise.all([
+    db.execute<ThaanRaw>(sql`
+      select ${THAAN_COLUMNS}
+      ${THAAN_FROM}
+      where ${where}
+      order by t.created_at desc, t.code
+      limit ${THAAN_LIMIT}
+    `),
+    db.execute<{ total: number }>(sql`
+      select count(*)::int as total
+      ${THAAN_FROM}
+      where ${where}
+    `),
+  ]);
+  return { rows: rows.map(shapeThaan), total: counts[0]?.total ?? 0, limit: THAAN_LIMIT };
+}
+
+/** The locations shelved Thaans are actually in — for the page's dropdown. */
+export async function loadThaanLocations(): Promise<string[]> {
+  const rows = await db.execute<{ name: string }>(sql`
+    select distinct l.name
+    from thaan t
+    join piece_position pos on pos.piece_id = t.piece_id
+    join location l on l.id = pos.location_id
+    where pos.is_held
+    order by 1
+  `);
+  return rows.map((r) => r.name);
 }
 
 function pipelineStatus(

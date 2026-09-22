@@ -1,3 +1,5 @@
+import type { PipelineSummary } from "@/lib/pipeline-fields";
+
 /**
  * The attribute map and the shapes built on it.
  *
@@ -223,6 +225,8 @@ export interface RecordDetail {
   id: string;
   designId: string;
   code: string;
+  /** The production side, for a record made at the door — zero Thaans otherwise. */
+  pipeline: PipelineSummary;
   name: string;
   nameIsCustom: boolean;
   /** A short, customer-facing label — distinct from `name`, which composes from the taxonomy. */

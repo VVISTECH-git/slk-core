@@ -6,8 +6,13 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { checkThaanForReceive, checkThaanForSend, type ThaanForReceive, type ThaanForSend } from "@/lib/handovers";
 import { actingId, guardJobRole } from "@/lib/session";
-import { assignThaansInTx, createPileInTx, type NewPile } from "@/lib/pile-write";
-import { laterStage } from "@/lib/piles";
+import {
+  assignThaansToRecordInTx,
+  createPipelineRecordInTx,
+  isPipelineStage,
+  laterStage,
+  type NewPipelineRecord,
+} from "@/lib/pipeline-records";
 import { STAGES, stagesFor, type Stage } from "@/lib/stages";
 
 /** Who may scan a Thaan out and back — see handovers/page.tsx's own copy. */
@@ -185,18 +190,19 @@ export async function sendBatch(
  * unnoticed.
  */
 /**
- * A pile a delivery is sorted into as it is received: an existing one, or a
- * new one made right here (name, main colour, the photo already uploaded),
- * and the Thaans that go in it. Only Thaans coming back from Print or later
- * qualify; the rest are received but left un-piled and named in the message.
+ * One group of Thaans coming back printed alike: sorted into a record that
+ * already exists (`colourwayId`), or into a new one made now from the
+ * colour and motif chosen at the door (`newRecord`). Only Thaans coming
+ * back from Print or later qualify; the rest are received but left
+ * unsorted and named in the message.
  */
-export interface ReceivePile {
-  pileId: string | null;
-  newPile: NewPile | null;
+export interface ReceiveRecord {
+  colourwayId: string | null;
+  newRecord: Omit<NewPipelineRecord, "thaanIds"> | null;
   thaanIds: string[];
 }
 
-export async function receiveBatch(thaanIds: string[], piles: ReceivePile[] = []): Promise<ActionResult> {
+export async function receiveBatch(thaanIds: string[], records: ReceiveRecord[] = []): Promise<ActionResult> {
   const denied = await guardJobRole(HANDOVER_JOB_ROLES);
   if (denied !== null) return denied;
 
@@ -209,7 +215,7 @@ export async function receiveBatch(thaanIds: string[], piles: ReceivePile[] = []
   const result = await db.transaction(async (tx) => {
     const closed: { id: string; stage: string; vendorId: string | null }[] = [];
     // The stage each Thaan is coming back from (the last of a combined trip)
-    // — a pile made now is stamped with it, and only Print onward qualifies.
+    // — only Print onward may be sorted into a record.
     const stageOf = new Map<string, string>();
     // The stages a combined trip covers after its first — written here as
     // already-received rows so they're billed exactly like the first.
@@ -302,39 +308,44 @@ export async function receiveBatch(thaanIds: string[], piles: ReceivePile[] = []
       }
     }
 
-    // Piles, in the same transaction as the receive that made them.
-    const piled: string[] = [];
-    const unpiled: string[] = [];
-    for (const spec of piles) {
-      const ids = spec.thaanIds.filter((id) => stageOf.has(id));
+    // Records, in the same transaction as the receive that made them — a
+    // bad colour or motif rolls the whole receive back rather than leaving
+    // it half done.
+    const sorted: string[] = [];
+    const unsorted: string[] = [];
+    for (const spec of records) {
+      const ids = spec.thaanIds.filter((id) => stageOf.has(id) && isPipelineStage(stageOf.get(id)!));
+      unsorted.push(...spec.thaanIds.filter((id) => stageOf.has(id) && !isPipelineStage(stageOf.get(id)!)));
       if (ids.length === 0) continue;
       const stage = ids.map((id) => stageOf.get(id)!).reduce((a, b) => laterStage(a, b));
-      let pileId = spec.pileId;
+      let colourwayId = spec.colourwayId;
       let code: string;
-      if (pileId === null) {
-        if (spec.newPile === null) continue;
-        const made = await createPileInTx(tx, spec.newPile, stage, actorId);
+      if (colourwayId === null) {
+        if (spec.newRecord === null) continue;
+        const made = await createPipelineRecordInTx(tx, { ...spec.newRecord, thaanIds: ids }, stage, actorId);
         if (!made.ok) throw new Error(made.message);
-        pileId = made.id;
+        colourwayId = made.id;
         code = made.code;
       } else {
-        const [p] = await tx.execute<{ code: string }>(sql`select code from pile where id = ${pileId}`);
-        if (p === undefined) throw new Error("That pile no longer exists.");
-        code = p.code;
+        const [r] = await tx.execute<{ code: string }>(sql`
+          select d.code from colourway cw join design d on d.id = cw.design_id where cw.id = ${colourwayId}
+        `);
+        if (r === undefined) throw new Error("That record no longer exists.");
+        code = r.code;
       }
-      const outcome = await assignThaansInTx(tx, pileId, ids, stage, actorId);
+      const outcome = await assignThaansToRecordInTx(tx, colourwayId, ids);
       const n = outcome.added + outcome.moved;
-      if (n > 0) piled.push(`${code}: ${n}`);
-      unpiled.push(...outcome.refused.map((r) => r.code));
+      if (n > 0) sorted.push(`${code}: ${n}`);
+      unsorted.push(...outcome.refused.map((r) => r.code));
     }
 
-    return { received: closed.length, billed, needsPricing, piled, unpiled };
+    return { received: closed.length, billed, needsPricing, sorted, unsorted };
   });
 
   revalidatePath("/handovers");
   revalidatePath("/vendors");
   revalidatePath("/vendor-ledger");
-  revalidatePath("/piles");
+  revalidatePath("/records");
   revalidatePath("/thaans");
 
   if (result.received === 0) {
@@ -343,10 +354,11 @@ export async function receiveBatch(thaanIds: string[], piles: ReceivePile[] = []
 
   // Billing detail lives on Vendors and Vendor Ledger; this just flags it
   // right away when something needs Finance's attention.
-  const pileNote =
-    (result.piled.length > 0 ? ` Piles — ${result.piled.join(", ")}.` : "") +
-    (result.unpiled.length > 0 ? ` Not piled (not back from Print yet): ${result.unpiled.join(", ")}.` : "");
-  const base = `Received ${result.received} Thaan${result.received === 1 ? "" : "s"}.${pileNote}`;
+  const unsorted = [...new Set(result.unsorted)];
+  const recordNote =
+    (result.sorted.length > 0 ? ` Records — ${result.sorted.join(", ")}.` : "") +
+    (unsorted.length > 0 ? ` Not sorted (not back from Print yet): ${unsorted.join(", ")}.` : "");
+  const base = `Received ${result.received} Thaan${result.received === 1 ? "" : "s"}.${recordNote}`;
   if (result.needsPricing.length === 0) {
     return { ok: true, message: base };
   }

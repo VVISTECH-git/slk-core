@@ -36,22 +36,12 @@ const NAV = [
     jobRoles: ["Bale Custodian"],
   },
   {
-    // What a bale becomes once cut. Kept right after Bale Intake since
-    // cutting is the next step in the same pipeline.
+    // Stock Records: one row per Thaan from the moment a bale is cut, with
+    // its shelf state once it becomes a piece. Kept right after Bale Intake
+    // since cutting is the next step in the same pipeline.
     href: "/thaans",
-    label: "Thaans",
-    icon: "M4 4h5v12H4z M11 4h5v12h-5z M4 4l5 12 M16 4l-5 12",
-  },
-  {
-    // What Thaans become once Print has done its work: the ones that came
-    // back printed the same way, grouped as the floor already groups them.
-    // Kept right after Thaans since that is what a pile is made of.
-    href: "/piles",
-    label: "Piles",
-    icon: "M4 14h12v3H4z M5 10h10v3H5z M6 6h8v3H6z M7 3h6v2H7z",
-    // Job-role gated, not Role gated — see piles/page.tsx's own
-    // PILE_JOB_ROLES, which this must match.
-    jobRoles: ["Bale Custodian", "Handler", "Production Manager", "Operations Manager"],
+    label: "Stock Records",
+    icon: "M3 6l7-3 7 3v8l-7 3-7-3z M3 6l7 3 7-3 M10 9v8",
   },
   {
     // A Thaan's trip through the stage pipeline, tracked by scanning its
@@ -111,11 +101,6 @@ const NAV = [
     href: "/records",
     label: "Product Management",
     icon: "M3 4h14v12H3z M3 8h14 M8 8v8",
-  },
-  {
-    href: "/stock",
-    label: "Stock Records",
-    icon: "M3 6l7-3 7 3v8l-7 3-7-3z M3 6l7 3 7-3 M10 9v8",
   },
   {
     // What a channel's order already booked, waiting for someone to

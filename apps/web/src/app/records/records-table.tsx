@@ -57,7 +57,7 @@ const COLUMNS = [
   { key: "code", label: "Design Code", width: 150 },
   { key: "audienceType", label: "Audience", width: 96 },
   { key: "colour", label: "Colour", width: 150 },
-  { key: "reviewStatus", label: "Status", width: 130 },
+  { key: "reviewStatus", label: "Status", width: 250 },
 
   // Everything else the design carries. Available in the Columns menu rather
   // than shown by default — eighteen columns at once is not a table anyone
@@ -72,6 +72,13 @@ const COLUMNS = [
   { key: "palluDesign", label: "Pallu Design", width: 126 },
   { key: "blouseAvailable", label: "Blouse Availability", width: 148 },
   { key: "descriptor", label: "Descriptor", width: 168 },
+
+  // Production: how far a record made at the door has come. Off by default
+  // — most records never had Thaans, and the Status cell already wears a
+  // chip for the ones that do.
+  { key: "thaanCount", label: "Thaans", width: 84 },
+  { key: "stage", label: "Stage", width: 120 },
+  { key: "needs", label: "Needs", width: 160 },
 
   { key: "quantity", label: "Quantity", width: 88 },
   { key: "price", label: "Price per Qty", width: 128 },
@@ -103,13 +110,16 @@ const OFF_BY_DEFAULT = new Set<ColumnKey>([
   "blouseAvailable",
   "descriptor",
   "motifCode",
+  "thaanCount",
+  "stage",
+  "needs",
 ]);
 
 const DEFAULT_VISIBLE: readonly string[] = COLUMN_KEYS.filter(
   (k) => !OFF_BY_DEFAULT.has(k as ColumnKey),
 );
 
-const NUMERIC = new Set<ColumnKey>(["quantity", "price"]);
+const NUMERIC = new Set<ColumnKey>(["quantity", "price", "thaanCount"]);
 
 /**
  * Columns that can be changed in place, and the Master List each draws from.
@@ -160,6 +170,12 @@ function cell(row: RecordRow, key: ColumnKey): string {
       return String(row.quantity);
     case "colour":
       return row.colour ?? "";
+    case "thaanCount":
+      return String(row.thaanCount);
+    case "stage":
+      return row.stage ?? "";
+    case "needs":
+      return row.needs.join(", ");
     default:
       return row[key] ?? "";
   }
@@ -168,11 +184,48 @@ function cell(row: RecordRow, key: ColumnKey): string {
 function sortValue(row: RecordRow, key: ColumnKey): string | number {
   if (key === "quantity") return row.quantity;
   if (key === "price") return row.priceMinor ?? -1;
+  if (key === "thaanCount") return row.thaanCount;
+  if (key === "needs" || key === "stage") return cell(row, key).toLowerCase();
   return (row[key] ?? "").toLowerCase();
 }
 
 /** Re-exported so the modules that already import it from here still can. */
 export const money = rupees;
+
+/**
+ * The production side of a row, worn beside the review badge: where its
+ * Thaans are, how many are back from Ironing, and what the record still
+ * needs before it can go on the shelf. Nothing for a record that never had
+ * Thaans — most of the catalogue.
+ */
+function PipelineChips({ row }: { row: RecordRow }) {
+  if (row.thaanCount <= 0) return null;
+  const chip = "rounded-full border px-1.5 py-0.5 text-[10.5px] font-medium whitespace-nowrap";
+  return (
+    <>
+      <span className={`${chip} border-rule-2 bg-surface-2 text-ink-2`}>
+        {row.stage ?? "In pipeline"} · {row.thaanCount} Thaan{row.thaanCount === 1 ? "" : "s"}
+      </span>
+      {row.finishedCount > 0 && (
+        <span className={`${chip} border-ok bg-ok-soft text-ok`}>Ready for shelf · {row.finishedCount}</span>
+      )}
+      {row.needs.length > 0 && (
+        <span className={`${chip} border-warn bg-warn-soft text-warn`}>Needs {row.needs.join(", ")}</span>
+      )}
+    </>
+  );
+}
+
+/** The Status cell's hover text, so a truncated chip can still be read. */
+function pipelineTitle(row: RecordRow, status: string): string {
+  const parts = [status || "Not set"];
+  if (row.thaanCount > 0) {
+    parts.push(`${row.stage ?? "In pipeline"} · ${row.thaanCount} Thaan${row.thaanCount === 1 ? "" : "s"}`);
+    if (row.finishedCount > 0) parts.push(`Ready for shelf · ${row.finishedCount}`);
+    if (row.needs.length > 0) parts.push(`Needs ${row.needs.join(", ")}`);
+  }
+  return parts.join(" — ");
+}
 
 /** The tabs the editor can be opened straight onto from a row action. */
 type EditorTab = "basic" | "craft" | "prices" | "images" | "stock";
@@ -402,6 +455,8 @@ export function RecordsTable({
   const [showArchived, setShowArchived] = useState(initial.archived);
   /** The approval workflow's own status — "" means every status. */
   const [status, setStatus] = useState(initial.status);
+  /** Where in production the record's Thaans are — "" means every record, made at the door or not. */
+  const [pipeline, setPipeline] = useState<Required<RecordQuery>["pipeline"]>(initial.pipeline);
 
   /*
     Typing waits a beat before asking the server; the dropdown and the
@@ -416,12 +471,14 @@ export function RecordsTable({
     if (industry !== "") wanted.set("industry", industry);
     if (showArchived) wanted.set("archived", "1");
     if (status !== "") wanted.set("status", status);
+    if (pipeline !== "") wanted.set("pipeline", pipeline);
 
     const current = new URLSearchParams();
     if (initial.q !== "") current.set("q", initial.q);
     if (initial.industry !== "") current.set("industry", initial.industry);
     if (initial.archived) current.set("archived", "1");
     if (initial.status !== "") current.set("status", initial.status);
+    if (initial.pipeline !== "") current.set("pipeline", initial.pipeline);
 
     if (wanted.toString() === current.toString()) return;
 
@@ -433,7 +490,7 @@ export function RecordsTable({
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [query, industry, showArchived, status, initial, pathname, router]);
+  }, [query, industry, showArchived, status, pipeline, initial, pathname, router]);
   /**
    * Chosen values per column, rather than one value per column.
    *
@@ -600,6 +657,21 @@ export function RecordsTable({
           <option value="submitted">Submitted for Review</option>
           <option value="needs_changes">Needs Changes</option>
           <option value="approved">Approved</option>
+        </select>
+
+        <select
+          value={pipeline}
+          onChange={(e) => {
+            setPipeline(e.target.value as Required<RecordQuery>["pipeline"]);
+            setPage(1);
+          }}
+          aria-label="Filter by production"
+          className="rounded-lg border border-rule-2 bg-surface px-3 py-2 text-[13.5px] text-ink"
+        >
+          <option value="">All Production</option>
+          <option value="in_pipeline">In Pipeline</option>
+          <option value="ready">Ready for Shelf</option>
+          <option value="shelved">On Shelf</option>
         </select>
 
         <input
@@ -879,12 +951,10 @@ export function RecordsTable({
 
                       if (c.key === "reviewStatus") {
                         return (
-                          <Cell key={c.key} title={row.pileCode === null ? value || "Not set" : `From pile ${row.pileCode}`}>
-                            <span className="inline-flex items-center gap-1.5">
+                          <Cell key={c.key} title={pipelineTitle(row, value)}>
+                            <span className="inline-flex items-center gap-1">
                               <ReviewStatusBadge status={row.reviewStatus} />
-                              {row.pileCode !== null && (
-                                <span className="font-mono text-[11px] text-muted">{row.pileCode}</span>
-                              )}
+                              <PipelineChips row={row} />
                             </span>
                           </Cell>
                         );

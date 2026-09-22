@@ -23,7 +23,7 @@ export const GET = guardedSignedIn(async (request) => {
 
   /*
     Digits only, and short — item and product codes, minted from sequences
-    (500001 and up, 300001 and up) — or a Thaan code (T00002001): a pile
+    (500001 and up, 300001 and up) — or a Thaan code (T00002001): a record
     shelved through Kora to Shelf keeps the label stitched on at cutting as
     the piece's own code, so that label is still a valid scan at the till.
     Anything else is a QR from somewhere other than a label on our stock.

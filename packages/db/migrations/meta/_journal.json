@@ -666,6 +666,13 @@
       "when": 1790087550323,
       "tag": "0094_damp_hellion",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1790091440773,
+      "tag": "0095_majestic_thor_girl",
+      "breakpoints": true
     }
   ]
 }

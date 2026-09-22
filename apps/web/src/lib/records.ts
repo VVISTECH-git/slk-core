@@ -1,6 +1,8 @@
 import { sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
+import { needsFor, stageAt, type PipelineSummary } from "@/lib/pipeline-fields";
+import { STAGE_ARRAY } from "@/lib/pipeline-records";
 
 /**
  * One row per colourway — the sellable line — with its design's attributes
@@ -85,9 +87,42 @@ export type RecordRow = {
 
   /** "draft" | "submitted" | "needs_changes" | "approved" — see the approval workflow. */
   reviewStatus: string;
-  /** The pile this record was made from, when it came off the print table rather than arriving as a consignment. */
-  pileCode: string | null;
+} & PipelineSummary;
+
+/** What the query returns before the production summary is shaped — the counts and the columns `needs` is judged from. */
+type RecordRaw = Omit<RecordRow, keyof PipelineSummary> & {
+  thaanCount: number;
+  finishedCount: number;
+  shelvedCount: number;
+  stageIndex: number | null;
+  motifId: string | null;
+  craftTechniqueId: string | null;
+  fibreTypeId: string | null;
+  productTypeId: string | null;
+  homeProductTypeId: string | null;
 };
+
+/**
+ * The production side of a row: a record made at the door has Thaans, and
+ * what it still needs is judged from the same columns the list already
+ * reads, so a list of a hundred records is still one query.
+ */
+function shape(raw: RecordRaw): RecordRow {
+  const { stageIndex, motifId, craftTechniqueId, fibreTypeId, productTypeId, homeProductTypeId, ...rest } = raw;
+  if (rest.thaanCount === 0) return { ...rest, stage: null, needs: [] };
+  const stage = stageAt(stageIndex);
+  return {
+    ...rest,
+    stage,
+    needs: needsFor(stage, {
+      motif: motifId,
+      craftTechnique: craftTechniqueId,
+      fibreType: fibreTypeId,
+      productType: productTypeId,
+      homeProductType: homeProductTypeId,
+    }),
+  };
+}
 
 /**
  * @param includeArchived
@@ -101,7 +136,7 @@ export type RecordRow = {
 export async function loadRecords(
   { includeArchived = false }: { includeArchived?: boolean } = {},
 ): Promise<RecordRow[]> {
-  return db.execute<RecordRow>(sql`
+  const rows = await db.execute<RecordRaw>(sql`
     ${SELECT}
     ${FROM}
     -- Both, not just the design: archiving one colour of a design that still
@@ -109,6 +144,7 @@ export async function loadRecords(
     where ${includeArchived} or (d.status <> 'archived' and cw.is_active)
     order by d.seq, colour.sort_order
   `);
+  return rows.map(shape);
 }
 
 /** What the Product Management grid is asking for. */
@@ -121,6 +157,12 @@ export interface RecordQuery {
   archived?: boolean;
   /** "draft" | "submitted" | "needs_changes" | "approved" — the approval workflow's own status, not Shopify's. */
   status?: string;
+  /**
+   * Where a record made at the door is in production: still has Thaans not
+   * yet on the shelf, has some back from Ironing waiting to be shelved, or
+   * has some on the shelf already.
+   */
+  pipeline?: "" | "in_pipeline" | "ready" | "shelved";
 }
 
 export interface RecordPage {
@@ -154,6 +196,7 @@ export async function loadRecordPage(query: RecordQuery = {}): Promise<RecordPag
   const industry = (query.industry ?? "").trim();
   const archived = query.archived ?? false;
   const status = (query.status ?? "").trim();
+  const pipeline = query.pipeline;
 
   const conditions = [sql`true`];
 
@@ -180,6 +223,7 @@ export async function loadRecordPage(query: RecordQuery = {}): Promise<RecordPag
       or pallu.label ilike ${pattern}
       or blouse.label ilike ${pattern}
       or uom.label ilike ${pattern}
+      or exists (select 1 from thaan t where t.colourway_id = cw.id and t.code ilike ${pattern})
     )`);
   }
 
@@ -191,12 +235,20 @@ export async function loadRecordPage(query: RecordQuery = {}): Promise<RecordPag
     conditions.push(sql`cw.review_status = ${status}`);
   }
 
+  if (pipeline === "in_pipeline") {
+    conditions.push(sql`coalesce(pl.thaan_count, 0) > coalesce(pl.shelved_count, 0)`);
+  } else if (pipeline === "ready") {
+    conditions.push(sql`coalesce(pl.finished_count, 0) > 0`);
+  } else if (pipeline === "shelved") {
+    conditions.push(sql`coalesce(pl.shelved_count, 0) > 0`);
+  }
+
   const shared = sql.join(conditions, sql` and `);
   const live = sql`(d.status <> 'archived' and cw.is_active)`;
   const wanted = archived ? sql`true` : live;
 
   const [rows, counts] = await Promise.all([
-    db.execute<RecordRow>(sql`
+    db.execute<RecordRaw>(sql`
       ${SELECT}
       ${FROM}
       where ${shared} and ${wanted}
@@ -216,7 +268,7 @@ export async function loadRecordPage(query: RecordQuery = {}): Promise<RecordPag
   ]);
 
   return {
-    rows,
+    rows: rows.map(shape),
     total: counts[0]?.total ?? 0,
     archived: {
       count: counts[0]?.archivedCount ?? 0,
@@ -319,13 +371,40 @@ const SELECT = sql`
       ), 'none')                                        as "syncStatus",
       (d.status = 'archived' or not cw.is_active)       as "isArchived",
       cw.review_status                                  as "reviewStatus",
-      from_pile.code                                    as "pileCode"
+      coalesce(pl.thaan_count, 0)::int                  as "thaanCount",
+      coalesce(pl.finished_count, 0)::int               as "finishedCount",
+      coalesce(pl.shelved_count, 0)::int                as "shelvedCount",
+      pl.stage_index                                    as "stageIndex",
+      d.motif_id                                        as "motifId",
+      d.craft_technique_id                              as "craftTechniqueId",
+      d.fibre_type_id                                   as "fibreTypeId",
+      d.product_type_id                                 as "productTypeId",
+      d.home_product_type_id                            as "homeProductTypeId"
 `;
 
 const FROM = sql`
     from colourway cw
     join design d                     on d.id = cw.design_id
-    left join pile from_pile          on from_pile.colourway_id = cw.id
+    -- The production side of a record made at the door: its Thaans, how
+    -- many are back from Ironing, how many are on the shelf, how far along
+    -- the furthest has come. Nothing for a record that arrived as a
+    -- consignment.
+    left join lateral (
+      select
+        count(*) filter (where t.voided_at is null)::int      as thaan_count,
+        count(*) filter (where t.piece_id is not null)::int  as shelved_count,
+        count(*) filter (
+          where t.voided_at is null and t.piece_id is null and exists (
+            select 1 from handover h where h.thaan_id = t.id and h.received_at is not null
+              and (h.stage = 'Ironing' or h.through_stage = 'Ironing')
+          )
+        )::int                                                as finished_count,
+        max((
+          select max(array_position(${STAGE_ARRAY}, coalesce(h.through_stage, h.stage)))
+          from handover h where h.thaan_id = t.id and h.received_at is not null
+        ))                                                    as stage_index
+      from thaan t where t.colourway_id = cw.id
+    ) pl on true
     left join lookup_value industry           on industry.id = d.industry_id
     left join lookup_value product_type       on product_type.id = d.product_type_id
     left join lookup_value garment_type       on garment_type.id = d.garment_type_id

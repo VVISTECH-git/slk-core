@@ -11,6 +11,7 @@ import {
   type RecordDetail,
 } from "@/lib/attributes";
 import { db } from "@/lib/db";
+import { loadPipelineSummary } from "@/lib/pipeline-records";
 import { publicUrl } from "@/lib/storage";
 
 /**
@@ -132,6 +133,7 @@ export async function loadRecord(
     claims,
     storyRows,
     careRows,
+    pipeline,
   ] = await Promise.all([
     db.execute<Record<string, unknown>>(sql`
       select
@@ -185,6 +187,7 @@ export async function loadRecord(
     loadClaims(colourwayId),
     loadStory(colourwayId),
     loadCare(colourwayId),
+    loadPipelineSummary(colourwayId),
   ]);
 
   const row = rows[0];
@@ -218,6 +221,7 @@ export async function loadRecord(
     tracksInventory: row["tracksInventory"] as boolean,
     continueSellingOos: row["continueSellingOos"] as boolean,
     reviewStatus: row["reviewStatus"] as string,
+    pipeline,
     attributes,
     siblings,
     stock: { ...totals!, byLocation },

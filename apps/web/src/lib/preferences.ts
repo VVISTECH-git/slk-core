@@ -20,13 +20,12 @@ export type Theme = (typeof THEMES)[number];
 export const DEFAULT_PAGE_OPTIONS = [
   { value: "/", label: "Dashboard" },
   { value: "/bales", label: "Bale Intake" },
-  { value: "/thaans", label: "Thaans" },
+  { value: "/thaans", label: "Stock Records" },
   { value: "/handovers", label: "Handovers" },
   { value: "/outstanding", label: "Currently Out" },
   { value: "/vendors", label: "Vendors" },
   { value: "/vendor-ledger", label: "Vendor Ledger" },
   { value: "/records", label: "Product Management" },
-  { value: "/stock", label: "Stock Records" },
 ] as const;
 
 export interface Preferences {

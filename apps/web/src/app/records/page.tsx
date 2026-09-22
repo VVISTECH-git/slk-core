@@ -1,7 +1,7 @@
 import { requirePage } from "@/lib/session";
 import { loadOptions } from "@/lib/editor";
 import { loadPickableLocations } from "@/lib/locations";
-import { loadIndustries, loadRecordPage } from "@/lib/records";
+import { loadIndustries, loadRecordPage, type RecordQuery } from "@/lib/records";
 
 import { RecordsTable } from "./records-table";
 
@@ -16,16 +16,19 @@ export const dynamic = "force-dynamic";
 export default async function RecordsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; industry?: string; archived?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; industry?: string; archived?: string; status?: string; pipeline?: string }>;
 }) {
   const who = await requirePage();
 
   const params = await searchParams;
+  const pipeline: NonNullable<RecordQuery["pipeline"]> =
+    (["in_pipeline", "ready", "shelved"] as const).find((p) => p === params.pipeline) ?? "";
   const initial = {
     q: (params.q ?? "").trim(),
     industry: (params.industry ?? "").trim(),
     archived: params.archived === "1",
     status: (params.status ?? "").trim(),
+    pipeline,
   };
 
   const [page, industries, options, locations] = await Promise.all([

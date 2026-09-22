@@ -46,6 +46,7 @@ import {
 } from "./image-actions";
 import { PhotoCheck } from "./photo-check";
 import { ruleFor } from "./photo-rules";
+import { ProductionTab } from "./production-tab";
 import { createShopifyDraft, publishBatchToChannel } from "./publish-actions";
 import { approve, requestChanges, submitForReview, unapprove } from "./review-actions";
 
@@ -68,6 +69,7 @@ type TabKey =
   | "prices"
   | "images"
   | "stock"
+  | "production"
   | "publish";
 
 /** Which tab a field lives on, so an error can point at one. */
@@ -813,11 +815,14 @@ export function RecordEditor({
     // the rows are written once the colourway exists.
     list.push({ key: "images", label: "Images" });
     list.push({ key: "stock", label: "Stock" });
+    // Only a record made at the door has a production side — Thaans in the
+    // pipeline and a shelf to put them on. Everything else never sees it.
+    if (record !== null && record.pipeline.thaanCount > 0) list.push({ key: "production", label: "Production" });
     // Putting it in front of customers is the last step, and one a record
     // that has not been finished cannot take: there is no consignment yet.
     if (!isNew) list.push({ key: "publish", label: "Publish" });
     return list;
-  }, [isSaree, isGarment, isNew]);
+  }, [isSaree, isGarment, isNew, record]);
 
   const errorTabs = useMemo(() => {
     const set = new Set<TabKey>();
@@ -2158,6 +2163,13 @@ export function RecordEditor({
               composedTitle={composedTitle}
               composedDescription={composedDescription}
               />
+            </>
+          )}
+
+          {showTab("production") && record !== null && record.pipeline.thaanCount > 0 && (
+            <>
+              {singlePage && sectionHeading("production")}
+              <ProductionTab colourwayId={record.id} pipeline={record.pipeline} onChanged={onPhotoChanged} />
             </>
           )}
 

@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { isPileStage, laterStage } from "@/lib/piles";
+import { isPipelineStage, laterStage } from "@/lib/pipeline-records";
 import { stagesFor, type Stage } from "@/lib/stages";
 
 /**
@@ -126,12 +126,13 @@ export type ThaanForReceive = ThaanForSend & {
   throughStage: string | null;
   vendorId: string | null;
   vendorName: string;
-  /** The pile it is already in, if any — it stays there unless moved. */
-  pileId: string | null;
-  pileCode: string | null;
-  pileName: string | null;
-  /** Whether this receive may put it in a pile: only from Print onward. */
-  canPile: boolean;
+  /** The record it is already sorted into, if any — it stays there unless moved. */
+  colourwayId: string | null;
+  recordCode: string | null;
+  recordName: string | null;
+  recordColour: string | null;
+  /** Whether this receive may sort it into a record: only from Print onward. */
+  canRecord: boolean;
 };
 
 /** Whether `code` is out for some stage right now, and what it's returning from if so. */
@@ -151,9 +152,10 @@ export async function checkThaanForReceive(
     throughStage: string | null;
     vendorId: string | null;
     vendorName: string | null;
-    pileId: string | null;
-    pileCode: string | null;
-    pileName: string | null;
+    colourwayId: string | null;
+    recordCode: string | null;
+    recordName: string | null;
+    recordColour: string | null;
   }>(sql`
     select
       t.id, t.code,
@@ -164,15 +166,18 @@ export async function checkThaanForReceive(
       open_h.through_stage                                 as "throughStage",
       open_h.vendor_id                                     as "vendorId",
       v.name                                                as "vendorName",
-      t.pile_id                                             as "pileId",
-      p.code                                                as "pileCode",
-      p.name                                                as "pileName"
+      t.colourway_id                                        as "colourwayId",
+      rec_d.code                                            as "recordCode",
+      rec_d.name                                            as "recordName",
+      rec_colour.label                                      as "recordColour"
     from thaan t
     join bale b on b.id = t.bale_id
     join cloth_item i on i.id = b.item_id
     left join handover open_h on open_h.thaan_id = t.id and open_h.received_at is null
     left join vendor v on v.id = open_h.vendor_id
-    left join pile p on p.id = t.pile_id
+    left join colourway rec_cw on rec_cw.id = t.colourway_id
+    left join design rec_d on rec_d.id = rec_cw.design_id
+    left join lookup_value rec_colour on rec_colour.id = rec_cw.colour_id
     where t.code = ${trimmed}
   `);
 
@@ -195,10 +200,11 @@ export async function checkThaanForReceive(
       throughStage: thaan.throughStage,
       vendorId: thaan.vendorId,
       vendorName: thaan.vendorName ?? "In-house",
-      pileId: thaan.pileId,
-      pileCode: thaan.pileCode,
-      pileName: thaan.pileName,
-      canPile: isPileStage(laterStage(thaan.stage, thaan.throughStage)),
+      colourwayId: thaan.colourwayId,
+      recordCode: thaan.recordCode,
+      recordName: thaan.recordName,
+      recordColour: thaan.recordColour,
+      canRecord: isPipelineStage(laterStage(thaan.stage, thaan.throughStage)),
     },
   };
 }

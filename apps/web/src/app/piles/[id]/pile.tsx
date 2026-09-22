@@ -7,10 +7,20 @@ import { useRouter } from "next/navigation";
 import { Button, Field, Header, ToastBar, inputClass, useToast } from "@/components/ui";
 import { ATTRIBUTES, type AttributeKey, type Options } from "@/lib/attributes";
 import type { PileDraft } from "@/lib/pile-draft";
+import type { ShelfDraft } from "@/lib/pile-shelf";
 import type { ColourOption, PileEventRow, PileRow, PileThaan } from "@/lib/piles";
 
 import { PilePhoto, pileStatusLabel, pileStatusStyle } from "../piles";
-import { assignThaansToPile, completePile, createPile, updatePile, type ActionResult } from "../actions";
+import { assignThaansToPile, completePile, createPile, shelvePile, updatePile, type ActionResult } from "../actions";
+
+/** The five prices a record carries, in the order the Prices tab shows them. Only retail is required. */
+const PRICES: { key: keyof ShelfDraft["prices"]; label: string }[] = [
+  { key: "cost", label: "Cost" },
+  { key: "making", label: "Making" },
+  { key: "wholesale", label: "Wholesale" },
+  { key: "retail", label: "Retail *" },
+  { key: "mrp", label: "MRP" },
+];
 
 /** The "Move ticked to…" choice that means a pile that doesn't exist yet. */
 const NEW_PILE = "__new__";
@@ -25,6 +35,11 @@ function whereNow(t: PileThaan): string {
 function str(detail: Record<string, unknown>, key: string): string | null {
   const v = detail[key];
   return typeof v === "string" && v !== "" ? v : null;
+}
+
+function num(detail: Record<string, unknown>, key: string): number | null {
+  const v = detail[key];
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
 /** The attribute keys a `detail_set` event names, read out as their labels. */
@@ -72,6 +87,12 @@ function describe(e: PileEventRow, colourLabel: (id: string | null) => string | 
     }
     case "photo_set":
       return "Photo added";
+    case "shelved": {
+      const n = num(e.detail, "thaans");
+      const location = str(e.detail, "location");
+      const product = str(e.detail, "product");
+      return `${n ?? "Some"} Thaan${n === 1 ? "" : "s"} onto the shelf${location === null ? "" : ` at ${location}`}${product === null ? "" : ` as product ${product}`}`;
+    }
     case "split":
       return "Pile split";
     default:

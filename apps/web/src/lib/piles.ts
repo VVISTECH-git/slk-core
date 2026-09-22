@@ -48,6 +48,10 @@ export type PileRow = {
   stage: string;
   /** Short names of the required details still empty — "motif", "craft". Empty when complete so far. */
   needs: string[];
+  /** Back from Ironing and not yet stock — what "Put on shelf" would take. */
+  finishedCount: number;
+  /** Already on the shelf as pieces. */
+  shelvedCount: number;
 };
 
 export type PileThaan = {
@@ -58,6 +62,8 @@ export type PileThaan = {
   /** "Out for Nellateeta", "Ready for Udukulu" — where it is now. */
   openStage: string | null;
   completedStages: number;
+  /** Set once the Thaan is on the shelf — equal to its own code. */
+  pieceCode: string | null;
 };
 
 export type PileEventRow = {
@@ -96,6 +102,10 @@ const PILE_COLUMNS = sql`
       d.craft_technique_id                          as "craftTechniqueId",
       d.motif_id                                    as "motifId",
       d.border_style_id                             as "borderStyleId",
+      (select count(*)::int from thaan t where t.pile_id = p.id and t.voided_at is null and t.piece_id is null
+        and exists (select 1 from handover h where h.thaan_id = t.id and h.received_at is not null and (h.stage = 'Ironing' or h.through_stage = 'Ironing')))
+                                                    as "finishedCount",
+      (select count(*)::int from thaan t where t.pile_id = p.id and t.piece_id is not null) as "shelvedCount",
       coalesce(d.fibre_type_id, (
         select i.fibre_type_id from thaan t join bale b on b.id = t.bale_id join cloth_item i on i.id = b.item_id
         where t.pile_id = p.id group by i.fibre_type_id order by count(*) desc limit 1
@@ -181,9 +191,11 @@ export async function loadPile(
       to_char(t.voided_at, 'DD Mon YYYY')                  as "voidedAt",
       case when open_h.through_stage is null then open_h.stage
            else open_h.stage || ' + ' || open_h.through_stage end as "openStage",
-      coalesce(done.n, 0)::int                              as "completedStages"
+      coalesce(done.n, 0)::int                              as "completedStages",
+      pc.code                                               as "pieceCode"
     from thaan t
     join bale b on b.id = t.bale_id
+    left join piece pc on pc.id = t.piece_id
     left join handover open_h on open_h.thaan_id = t.id and open_h.received_at is null
     left join lateral (
       select count(*)::int as n from handover h where h.thaan_id = t.id and h.received_at is not null

@@ -2,7 +2,7 @@ import { boolean, check, date, index, integer, jsonb, numeric, pgTable, text, ti
 import { sql } from "drizzle-orm";
 
 import { actor } from "./access";
-import { colourway } from "./catalogue";
+import { colourway, piece } from "./catalogue";
 import { lookupValue } from "./lookup";
 
 /**
@@ -472,6 +472,14 @@ export const thaan = pgTable(
      */
     pileId: uuid("pile_id").references((): AnyPgColumn => pile.id, { onDelete: "restrict" }),
 
+    /**
+     * The shelf piece this Thaan became once its pile went live — the same
+     * physical cloth, now stock, and the piece's code is this Thaan's own
+     * code so the label stitched on at the start is the one scanned at the
+     * till. Null until then; set once and never moved.
+     */
+    pieceId: uuid("piece_id").references(() => piece.id, { onDelete: "restrict" }),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -482,6 +490,7 @@ export const thaan = pgTable(
   (t) => [
     uniqueIndex("thaan_code_key").on(t.code),
     index("thaan_pile_id_idx").on(t.pileId),
+    uniqueIndex("thaan_piece_id_key").on(t.pieceId),
     // Every bale-scoped read (loadBales' own per-bale counts, Record
     // Cutting/Print QR Labels' shared GET /bales, the Thaan-print lookup,
     // generateQrCodes' own update) filters or groups on this — a full
@@ -846,7 +855,7 @@ export const pileEvent = pgTable(
   (t) => [
     index("pile_event_pile_idx").on(t.pileId, t.at),
     index("pile_event_thaan_idx").on(t.thaanId),
-    check("pile_event_kind_known", sql`${t.kind} in ('created', 'added', 'moved', 'detail_set', 'split', 'photo_set')`),
+    check("pile_event_kind_known", sql`${t.kind} in ('created', 'added', 'moved', 'detail_set', 'split', 'photo_set', 'shelved')`),
   ],
 );
 

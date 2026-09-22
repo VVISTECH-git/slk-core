@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { applyDesignPatch, createRecord } from "@/app/records/actions";
 import type { AttributeKey } from "@/lib/attributes";
 import { inheritedAttributeIds, loadPileDraft } from "@/lib/pile-draft";
+import { loadShelfDraft, shelveInTx, toMinor } from "@/lib/pile-shelf";
 import { assignThaansInTx, createPileInTx, type AssignOutcome, type NewPile } from "@/lib/pile-write";
 import { actingId, guardJobRole } from "@/lib/session";
 import { presignPut, remove, storageConfigured, storageMissing } from "@/lib/storage";
@@ -213,6 +214,73 @@ export async function completePile(
     message: needs.length === 0 ? `${draft.pileCode} is complete for ${after?.stage ?? draft.stage}.` : `Saved. Still needs ${needs.join(", ")}.`,
     colourwayId: result.colourwayId ?? after?.colourwayId ?? undefined,
     needs,
+  };
+}
+
+/**
+ * Puts a pile on the shelf: prices the record (retail is required, the rest
+ * optional) and turns every Thaan back from Ironing into stock in one
+ * location — one consignment, one piece per Thaan carrying the Thaan's own
+ * code. Repeatable: a pile that goes live in parts gets another consignment
+ * each time more of its Thaans finish.
+ */
+export async function shelvePile(
+  pileId: string,
+  input: {
+    prices: { cost: string; making: string; wholesale: string; retail: string; mrp: string };
+    locationId: string;
+  },
+): Promise<ActionResult & { productCode?: string; pieceCodes?: string[] }> {
+  const denied = await guardJobRole(PILE_JOB_ROLES);
+  if (denied !== null) return denied;
+
+  const draft = await loadShelfDraft(pileId);
+  if (draft === null) return { ok: false, message: "That pile no longer exists." };
+  if (draft.blockers.length > 0) return { ok: false, message: `Can't go on the shelf yet: ${draft.blockers.join("; ")}.` };
+  if (draft.colourwayId === null) return { ok: false, message: "Fill in the pile's details first." };
+
+  const minors: Record<string, number | null> = {};
+  for (const [key, value] of Object.entries(input.prices)) {
+    const m = toMinor(value);
+    if (m === undefined) return { ok: false, message: `${key} is not a price.` };
+    minors[key] = m;
+  }
+  if (minors.retail === null) return { ok: false, message: "A selling price is needed." };
+
+  const location = draft.locations.find((l) => l.id === input.locationId);
+  if (location === undefined) return { ok: false, message: "Pick where the stock is going." };
+
+  const actorId = await actingId();
+  const colourwayId = draft.colourwayId;
+  const note = `From pile ${draft.pileCode} (${draft.pileName})`;
+
+  const made = await db.transaction(async (tx) => {
+    await tx.execute(sql`
+      update colourway set
+        cost_minor = ${minors.cost}, making_minor = ${minors.making}, wholesale_minor = ${minors.wholesale},
+        retail_minor = ${minors.retail}, mrp_minor = ${minors.mrp},
+        updated_by_id = ${actorId}, updated_at = now()
+      where id = ${colourwayId}
+    `);
+    const out = await shelveInTx(tx, colourwayId, draft.finished, input.locationId, draft.pieceTracked, note, actorId);
+    await tx.execute(sql`update pile set status = 'live', updated_at = now() where id = ${pileId}`);
+    await tx.execute(sql`
+      insert into pile_event (pile_id, kind, actor_id, detail, at)
+      values (${pileId}, 'shelved', ${actorId}, ${JSON.stringify({ product: out.productCode, thaans: draft.finished.length, location: location.name })}::jsonb, clock_timestamp())
+    `);
+    return out;
+  });
+
+  revalidate();
+  revalidatePath("/records");
+  revalidatePath("/stock");
+
+  const n = draft.finished.length;
+  return {
+    ok: true,
+    message: `${n} Thaan${n === 1 ? "" : "s"} into ${location.name} as product ${made.productCode}${draft.inPipeline > 0 ? ` — ${draft.inPipeline} still in the pipeline` : ""}.`,
+    productCode: made.productCode,
+    pieceCodes: made.pieceCodes,
   };
 }
 

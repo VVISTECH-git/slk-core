@@ -673,6 +673,13 @@
       "when": 1790091440773,
       "tag": "0095_majestic_thor_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1790091441901,
+      "tag": "0096_known_magma",
+      "breakpoints": true
     }
   ]
 }

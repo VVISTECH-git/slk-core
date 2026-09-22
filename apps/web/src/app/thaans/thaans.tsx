@@ -24,7 +24,7 @@ import {
   useColumnWidths,
   useVisibleColumns,
 } from "@/lib/column-widths";
-import type { StageFunnelRow, ThaanPage, ThaanQuery, ThaanRow } from "@/lib/thaans";
+import type { ThaanPage, ThaanQuery, ThaanRow } from "@/lib/thaans";
 import { BALE_TYPES } from "@/app/bales/constants";
 
 import { flagThaanDamaged, restoreThaan, voidThaan, type ActionResult } from "./actions";
@@ -235,12 +235,10 @@ function sortValue(row: ThaanRow, key: ColumnKey): string | number {
 export function Thaans({
   page: served,
   locations,
-  funnel,
   initial,
 }: {
   page: ThaanPage;
   locations: string[];
-  funnel: { eligible: number; stages: StageFunnelRow[] };
   initial: Required<ThaanQuery>;
 }) {
   const rows = served.rows;
@@ -499,12 +497,6 @@ export function Thaans({
         }
         onClearAll={() => setFilters({})}
       />
-
-      {funnel.eligible > 0 && (
-        <div className="mb-4 flex-none rounded-lg border border-rule bg-surface p-4">
-          <StageFunnel eligible={funnel.eligible} stages={funnel.stages} />
-        </div>
-      )}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-rule bg-surface">
         <div className="flex flex-none items-center gap-3 border-b border-rule px-4 py-2.5">
@@ -773,38 +765,3 @@ export function Thaans({
   );
 }
 
-/**
- * How many Thaans have cleared each stage, in pipeline order — a funnel
- * against every Thaan that's entered the pipeline (has a QR code, isn't
- * voided), not just the page below it. Ironing is always the last stage a
- * Thaan can pass through (see `lib/stages.ts`), so its bar is also "how many
- * Thaans are fully finished" — there's no separate bar for that.
- */
-function StageFunnel({ eligible, stages }: { eligible: number; stages: StageFunnelRow[] }) {
-  return (
-    <div className="flex flex-col gap-2.5">
-      <p className="text-[11.5px] font-medium text-muted">
-        Thaans completed per stage, of {eligible} in the pipeline
-      </p>
-      {stages.map((s, i) => (
-        <div key={s.stage} className="flex items-center gap-3">
-          <span className="w-28 flex-none truncate text-[12.5px] text-ink-2">
-            {i === stages.length - 1 ? "Ironing (finished)" : s.stage}
-          </span>
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-3">
-            <div
-              className="h-full rounded-full"
-              style={{
-                width: `${Math.max(s.completed > 0 ? 2 : 0, (s.completed / Math.max(1, eligible)) * 100)}%`,
-                background: i === stages.length - 1 ? "var(--ok)" : "var(--brick)",
-              }}
-            />
-          </div>
-          <span className="w-10 flex-none text-right font-mono text-[12px] tabular-nums text-muted">
-            {s.completed}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}

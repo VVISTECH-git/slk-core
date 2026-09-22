@@ -1,6 +1,5 @@
 import { requirePage } from "@/lib/session";
 import {
-  loadStageFunnel,
   loadThaanLocations,
   loadThaanPage,
   type ThaanQuery,
@@ -43,11 +42,7 @@ export default async function ThaansPage({
     baleType: (params.baleType ?? "").trim(),
   };
 
-  const [page, locations, funnel] = await Promise.all([
-    loadThaanPage(initial),
-    loadThaanLocations(),
-    loadStageFunnel(),
-  ]);
+  const [page, locations] = await Promise.all([loadThaanPage(initial), loadThaanLocations()]);
 
-  return <Thaans page={page} locations={locations} funnel={funnel} initial={initial} />;
+  return <Thaans page={page} locations={locations} initial={initial} />;
 }

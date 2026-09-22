@@ -13,6 +13,16 @@ import { signOut } from "@/app/logout/actions";
  */
 const HIDDEN = new Set<string>([]);
 
+/**
+ * The one group in the sidebar: the reference pages — who we buy from, what
+ * cloth is called, who does the work, the catalogue's lists, where stock
+ * lives, who signs in, where it sells. Set up once, looked at rarely, so
+ * they fold away under one heading and the daily pages keep the space.
+ * Marked on each entry rather than kept as a second list, so an entry's
+ * order, icon and gate stay in one place.
+ */
+const MASTER_DATA = "Master Data";
+
 const NAV = [
   {
     // The dashboard — every bale's Thaans and where they currently sit,
@@ -66,6 +76,7 @@ const NAV = [
     // beside Bale Intake rather than under Master Lists, which manages the
     // catalogue's controlled vocabulary and nothing here.
     href: "/suppliers",
+    group: "Master Data",
     label: "Suppliers",
     icon: "M4 8l2-4h8l2 4 M4 8h12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V8z M8 11h4",
   },
@@ -73,6 +84,7 @@ const NAV = [
     // The specific cloth names a bale's contents are picked from — the same
     // vocabulary reasoning as Suppliers, kept beside it.
     href: "/items",
+    group: "Master Data",
     label: "Cloth Items",
     icon: "M5 3h10v14H5z M5 7h10 M8 10h4 M8 13h4",
   },
@@ -81,6 +93,7 @@ const NAV = [
     // pipeline that will reference this list — see
     // packages/db/src/schema/production.ts.
     href: "/vendors",
+    group: "Master Data",
     label: "Vendors",
     icon: "M7 17v-5a3 3 0 0 1 6 0v5 M5 17h10 M10 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
     // Job-role gated, not Role gated — see vendors/page.tsx's own
@@ -112,6 +125,7 @@ const NAV = [
   },
   {
     href: "/operational-standard",
+    group: "Master Data",
     label: "Master Lists",
     icon: "M4 4h5v5H4z M11 4h5v5h-5z M4 11h5v5H4z M11 11h5v5h-5z",
   },
@@ -119,6 +133,7 @@ const NAV = [
     // Where stock sits. Not vocabulary — a location is a real place with real
     // stock in it — so it stands on its own rather than under the lists.
     href: "/locations",
+    group: "Master Data",
     label: "Locations",
     icon: "M10 17s5.5-4.6 5.5-9a5.5 5.5 0 1 0-11 0c0 4.4 5.5 9 5.5 9z M10 8.5v.01",
   },
@@ -126,6 +141,7 @@ const NAV = [
     // Who can sign in, and from which handsets. Owners only — everyone else is
     // shown a sidebar without it, and the screen refuses them again anyway.
     href: "/staff",
+    group: "Master Data",
     label: "Staff",
     icon: "M7 9a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z M2.5 16c0-2.5 2-4.2 4.5-4.2s4.5 1.7 4.5 4.2 M13 5.2a2.2 2.2 0 0 1 0 4.3 M14 11.6c1.9.4 3.2 1.8 3.2 3.9",
   },
@@ -134,6 +150,7 @@ const NAV = [
     // first — kept beside Staff since that's where the assigning happens.
     // Owner territory, same reasoning as Staff.
     href: "/job-roles",
+    group: "Master Data",
     label: "Job Roles",
     icon: "M6 8V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v3 M3 8h14v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M8 8v4h4V8",
   },
@@ -141,6 +158,7 @@ const NAV = [
     // Every storefront, every consignment on it, and the buttons that put
     // them there — owner territory, same reasoning as Staff. Not floor work.
     href: "/channels",
+    group: "Master Data",
     label: "Channels",
     icon: "M4 6l1-3h10l1 3 M4 6h12v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6z M8 9v2a2 2 0 0 0 4 0V9",
   },
@@ -167,6 +185,7 @@ const NAV = [
 const ADMIN_JOB_ROLE = "Admin";
 
 const RAIL_KEY = "slk.sidebar.rail";
+const MASTER_DATA_KEY = "slk.sidebar.master-data";
 
 /** Wide enough for an icon and its padding; wide enough for the longest label. */
 const RAIL_WIDTH = 56;
@@ -210,6 +229,37 @@ const railStore = {
       // Not remembering the choice is better than failing to make it.
     }
     for (const listener of railStore.listeners) listener();
+  },
+};
+
+/** Whether the Master Data group is open — same shape as railStore, open by default. */
+const groupStore = {
+  listeners: new Set<() => void>(),
+
+  subscribe(listener: () => void) {
+    groupStore.listeners.add(listener);
+    window.addEventListener("storage", listener);
+    return () => {
+      groupStore.listeners.delete(listener);
+      window.removeEventListener("storage", listener);
+    };
+  },
+
+  get(): boolean {
+    try {
+      return window.localStorage.getItem(MASTER_DATA_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  },
+
+  set(value: boolean) {
+    try {
+      window.localStorage.setItem(MASTER_DATA_KEY, value ? "1" : "0");
+    } catch {
+      // Not remembering the choice is better than failing to make it.
+    }
+    for (const listener of groupStore.listeners) listener();
   },
 };
 
@@ -280,6 +330,13 @@ export function Sidebar({ actor }: { actor: SidebarActor }) {
     railStore.set(!railStore.get());
   }, []);
 
+  const groupChosen = useSyncExternalStore(groupStore.subscribe, groupStore.get, () => true);
+  const toggleGroup = useCallback(() => {
+    groupStore.set(!groupStore.get());
+  }, []);
+
+  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+
   const visible = NAV.filter(
     (item) =>
       !HIDDEN.has(item.href) &&
@@ -294,6 +351,9 @@ export function Sidebar({ actor }: { actor: SidebarActor }) {
       (actor.jobRoles.includes(ADMIN_JOB_ROLE) ||
         ("jobRoles" in item && item.jobRoles.some((role) => actor.jobRoles.includes(role)))),
   );
+  const daily = visible.filter((item) => !("group" in item));
+  const master = visible.filter((item) => "group" in item);
+  const groupOpen = groupChosen || master.some((item) => isActive(item.href));
 
   return (
     <nav
@@ -364,47 +424,74 @@ export function Sidebar({ actor }: { actor: SidebarActor }) {
       </div>
 
       <ul className={`flex flex-col gap-0.5 ${railed ? "p-2" : "p-3"}`}>
-        {visible.map((item) => {
-          const active =
-            pathname === item.href || pathname.startsWith(`${item.href}/`);
+        {daily.map((item) => (
+          <li key={item.href}>
+            <NavLink item={item} active={isActive(item.href)} railed={railed} />
+          </li>
+        ))}
 
-          return (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                // The label is the accessible name whether or not it is
-                // drawn. A railed link used to carry only a `title`, which a
-                // screen reader may skip and a touch screen never shows.
-                aria-label={item.label}
-                title={railed ? item.label : undefined}
-                className={`flex items-center gap-2.5 rounded-md text-[13.5px] transition-colors ${
-                  railed ? "justify-center px-2 py-2.5" : "px-3 py-2"
-                } ${
-                  active
-                    ? "bg-surface font-medium text-ink shadow-sm"
-                    : "text-ink-2 hover:bg-surface-3"
-                }`}
+        {master.length > 0 && (
+          <li className="mt-2 border-t border-rule pt-2">
+            {/*
+              One heading for the reference pages. A page inside the group
+              keeps it open whatever was chosen, so the current page is
+              never hidden from its own sidebar.
+            */}
+            <button
+              type="button"
+              onClick={toggleGroup}
+              aria-expanded={groupOpen}
+              aria-label={MASTER_DATA}
+              title={railed ? MASTER_DATA : undefined}
+              className={`flex w-full items-center gap-2.5 rounded-md text-[11.5px] font-medium tracking-wide text-muted uppercase hover:bg-surface-3 hover:text-ink ${
+                railed ? "justify-center px-2 py-2" : "px-3 py-1.5"
+              }`}
+            >
+              <svg
+                width="17"
+                height="17"
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="flex-none"
+                aria-hidden
               >
-                <svg
-                  width="17"
-                  height="17"
-                  viewBox="0 0 20 20"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="flex-none"
-                  aria-hidden
-                >
-                  <path d={item.icon} />
-                </svg>
-                {!railed && <span className="truncate">{item.label}</span>}
-              </Link>
-            </li>
-          );
-        })}
+                <path d="M3 5h5l2 2h7v9H3z" />
+              </svg>
+              {!railed && (
+                <>
+                  <span className="flex-1 text-left">{MASTER_DATA}</span>
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={`flex-none transition-transform ${groupOpen ? "rotate-90" : ""}`}
+                    aria-hidden
+                  >
+                    <path d="M7 5l5 5-5 5" />
+                  </svg>
+                </>
+              )}
+            </button>
+            {groupOpen && (
+              <ul className="mt-0.5 flex flex-col gap-0.5">
+                {master.map((item) => (
+                  <li key={item.href}>
+                    <NavLink item={item} active={isActive(item.href)} railed={railed} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+        )}
       </ul>
 
       {/*
@@ -440,6 +527,46 @@ export function Sidebar({ actor }: { actor: SidebarActor }) {
         )}
       </div>
     </nav>
+  );
+}
+
+
+type NavItem = (typeof NAV)[number];
+
+function NavLink({ item, active, railed }: { item: NavItem; active: boolean; railed: boolean }) {
+  return (
+    <Link
+      href={item.href}
+      aria-current={active ? "page" : undefined}
+      // The label is the accessible name whether or not it is
+      // drawn. A railed link used to carry only a `title`, which a
+      // screen reader may skip and a touch screen never shows.
+      aria-label={item.label}
+      title={railed ? item.label : undefined}
+      className={`flex items-center gap-2.5 rounded-md text-[13.5px] transition-colors ${
+        railed ? "justify-center px-2 py-2.5" : "px-3 py-2"
+      } ${
+        active
+          ? "bg-surface font-medium text-ink shadow-sm"
+          : "text-ink-2 hover:bg-surface-3"
+      }`}
+    >
+      <svg
+        width="17"
+        height="17"
+        viewBox="0 0 20 20"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="flex-none"
+        aria-hidden
+      >
+        <path d={item.icon} />
+      </svg>
+      {!railed && <span className="truncate">{item.label}</span>}
+    </Link>
   );
 }
 

@@ -166,6 +166,21 @@ export async function requireJobRoleActor(needed: string[]): Promise<AuthedActor
   return who;
 }
 
+/**
+ * Where someone lands when a page isn't theirs: the first screen their job
+ * roles do open. Admin has the dashboard; the floor roles each have one
+ * web page of their own. Without this, a Handler who opened the web app
+ * bounced between `/` (Admin only) and `/denied` (which also asked for
+ * Admin) until the browser gave up.
+ */
+export function homeFor(who: AuthedActor): string {
+  if (hasAnyJobRole(who, [])) return "/";
+  if (hasAnyJobRole(who, ["Finance Manager"])) return "/vendors";
+  if (hasAnyJobRole(who, ["Bale Custodian"])) return "/bales";
+  if (hasAnyJobRole(who, ["Handler"])) return "/handovers";
+  return "/denied";
+}
+
 /** Job-role equivalent of [requirePage]. */
 export async function requireJobRolePage(needed: string[]): Promise<AuthedActor> {
   const who = await currentActor();

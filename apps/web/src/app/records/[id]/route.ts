@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { loadRecord } from "@/lib/editor";
+import { NotSignedIn, requireActor } from "@/lib/session";
 
 /**
  * One record, fetched when the editor opens.
@@ -13,6 +14,17 @@ export async function GET(
   _request: Request,
   context: RouteContext<"/records/[id]">,
 ) {
+  // Same door as the page that fetches it. This JSON carries prices, stock by
+  // location and movements, and was reachable by anyone with a record id.
+  try {
+    await requireActor();
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof NotSignedIn ? "Sign in to do that." : "That needs the Admin job role." },
+      { status: error instanceof NotSignedIn ? 401 : 403 },
+    );
+  }
+
   const { id } = await context.params;
 
   // The route also catches non-uuid paths, which would otherwise reach

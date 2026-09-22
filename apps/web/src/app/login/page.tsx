@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { currentActor } from "@/lib/session";
+import { currentActor, homeFor } from "@/lib/session";
 
 import { LoginForm } from "./login-form";
 
@@ -9,7 +9,8 @@ export const dynamic = "force-dynamic";
 export default async function LoginPage() {
   // Already signed in — showing the form would invite someone to sign in
   // again and mint a second token for the same browser.
-  if ((await currentActor()) !== null) redirect("/records");
+  const who = await currentActor();
+  if (who !== null) redirect(homeFor(who));
 
   return (
     <div className="flex min-h-screen items-center justify-center px-6 py-12">

@@ -1,5 +1,7 @@
+import { redirect } from "next/navigation";
+
 import { loadBaleStageHeatmap } from "@/lib/bales";
-import { requirePage } from "@/lib/session";
+import { currentActor, homeFor } from "@/lib/session";
 
 import { Dashboard } from "./dashboard/dashboard";
 
@@ -12,7 +14,12 @@ export const dynamic = "force-dynamic";
  * flaky connection the first of those two is exactly where it can fail.
  */
 export default async function Home() {
-  await requirePage();
+  const who = await currentActor();
+  if (who === null) redirect("/login");
+  // The dashboard is Admin's; everyone else goes straight to their own page
+  // rather than to a "not for you" screen the moment they sign in.
+  const home = homeFor(who);
+  if (home !== "/") redirect(home);
 
   return <Dashboard rows={await loadBaleStageHeatmap()} />;
 }

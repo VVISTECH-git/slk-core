@@ -203,6 +203,22 @@ export async function updateBale(baleId: string, draft: BaleEditDraft): Promise<
   const { type, metresReceived, uom, itemId, baleCount, invoiceDate, invoiceAmount, billEntryDate } =
     parsed;
 
+  // A Thaan's next stage is "the Nth in its bale's stage list", counting the
+  // handovers it has completed. Flipping needs_second_print once any Thaan
+  // has a handover would silently re-map every in-flight Thaan's next stage.
+  const [moving] = await db.execute<{ needsSecondPrint: boolean; code: string }>(sql`
+    select b.needs_second_print as "needsSecondPrint", b.code
+    from bale b
+    where b.id = ${baleId}
+      and exists (select 1 from handover h join thaan t on t.id = h.thaan_id where t.bale_id = b.id)
+  `);
+  if (moving !== undefined && moving.needsSecondPrint !== draft.needsSecondPrint) {
+    return {
+      ok: false,
+      message: `${moving.code}'s Thaans are already moving through stages, so "needs second print" can't be changed now.`,
+    };
+  }
+
   const [row] = await db.execute<{ code: string }>(sql`
     update bale
     set

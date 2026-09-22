@@ -302,6 +302,7 @@ export async function approveVendorTransactions(transactionIds: string[]): Promi
     set approved_at = now(), approved_by_id = ${actorId}, updated_at = now()
     where id in (${sql.join(transactionIds.map((id) => sql`${id}`), sql`, `)})
       and approved_at is null
+      and amount is not null
     returning id
   `);
 
@@ -309,7 +310,7 @@ export async function approveVendorTransactions(transactionIds: string[]): Promi
   revalidatePath("/vendors");
 
   if (rows.length === 0) {
-    return { ok: false, message: "Already approved — nothing changed." };
+    return { ok: false, message: "Nothing to approve — price them first, or they're already approved." };
   }
 
   return { ok: true, message: `Approved ${rows.length} transaction${rows.length === 1 ? "" : "s"}.` };
@@ -411,6 +412,7 @@ export async function payVendorTransactions(
       where id in (${sql.join(transactionIds.map((id) => sql`${id}`), sql`, `)})
         and vendor_id = ${vendorId}
         and approved_at is not null
+        and amount is not null
         and paid_at is null
       for update
     `);
@@ -438,7 +440,7 @@ export async function payVendorTransactions(
   revalidatePath("/vendors");
 
   if (result === null) {
-    return { ok: false, message: "None of those are approved and unpaid anymore." };
+    return { ok: false, message: "None of those are priced, approved and unpaid." };
   }
 
   return {

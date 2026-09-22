@@ -124,6 +124,11 @@ export async function sendBatch(
         where not exists (
           select 1 from handover where thaan_id = ${thaanId} and received_at is null
         )
+        -- The scan-time lookup refuses a voided Thaan; this is the same
+        -- refusal for a stale batch or a crafted POST that skipped the lookup.
+        and not exists (
+          select 1 from thaan where id = ${thaanId} and voided_at is not null
+        )
         and (
           ${through}::text is null
           or coalesce(array_position(${stageArraySql(thaanId)}, ${through}::text), 0)
@@ -201,14 +206,21 @@ export async function receiveBatch(thaanIds: string[]): Promise<ActionResult> {
         throughStage: string | null;
         sentAt: string | Date;
         recordedBy: string | null;
+        voided: boolean;
       }>(sql`
-        update handover
+        update handover h
         set received_at = now(), received_by_id = ${actorId}, updated_at = now()
-        where thaan_id = ${thaanId} and received_at is null
-        returning id, stage, vendor_id as "vendorId", through_stage as "throughStage",
-                  sent_at as "sentAt", recorded_by_id as "recordedBy"
+        from thaan t
+        where h.thaan_id = t.id and h.thaan_id = ${thaanId} and h.received_at is null
+        returning h.id, h.stage, h.vendor_id as "vendorId", h.through_stage as "throughStage",
+                  h.sent_at as "sentAt", h.recorded_by_id as "recordedBy",
+                  (t.voided_at is not null) as "voided"
       `);
       if (row === undefined) continue;
+      // A Thaan voided while out (flagged damaged at the vendor) still comes
+      // back — the handover closes — but the vendor isn't billed for it, and
+      // no later stages of a combined trip are written for it.
+      if (row.voided) continue;
       closed.push({ id: row.id, stage: row.stage, vendorId: row.vendorId });
 
       if (row.throughStage !== null) {

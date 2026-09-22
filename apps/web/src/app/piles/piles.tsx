@@ -201,6 +201,20 @@ export function Piles({ rows }: { rows: PileRow[] }) {
                                 Needs {r.needs.join(", ")}
                               </span>
                             )}
+                            {/* Back from Ironing and waiting — the reason to open the pile and press the button. */}
+                            {r.finishedCount > 0 && (
+                              <span
+                                className="rounded px-1.5 py-0.5 text-[11px] font-medium"
+                                style={{ background: "var(--ok-soft)", color: "var(--ok)" }}
+                              >
+                                {r.finishedCount} ready for shelf
+                              </span>
+                            )}
+                            {r.shelvedCount > 0 && (
+                              <span className="rounded border border-rule-2 px-1.5 py-0.5 text-[11px] text-muted">
+                                {r.shelvedCount} on shelf
+                              </span>
+                            )}
                             {r.designCode !== null && (
                               <span className="font-mono text-[11.5px] text-muted" title={r.recordName ?? undefined}>
                                 {r.designCode}

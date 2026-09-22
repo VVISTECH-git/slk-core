@@ -107,12 +107,14 @@ function describe(e: PileEventRow, colourLabel: (id: string | null) => string | 
  * doesn't exist yet). Between those sits Details: what the cloth item
  * already told us, and the questions the pile's stages so far have asked
  * — the motif at Print, the border at Nellateeta — answered here and saved
- * onto the pile's Product Management record. Prices and photos come after
- * Ironing, in Phase 3.
+ * onto the pile's Product Management record. After Ironing comes Shelf: the
+ * prices, where the stock goes, and the button that turns the finished
+ * Thaans into pieces.
  */
 export function Pile({
   pile,
   draft,
+  shelf,
   options,
   colours,
   others,
@@ -121,6 +123,8 @@ export function Pile({
   pile: PileRow & { thaans: PileThaan[]; events: PileEventRow[] };
   /** The read-only and editable facts for this pile at its current stage. */
   draft: PileDraft;
+  /** What putting the pile on the shelf would take, and what it would put there. */
+  shelf: ShelfDraft;
   /** Every active Master List value, by list code — what the details are picked from. */
   options: Options;
   colours: ColourOption[];
@@ -148,6 +152,10 @@ export function Pile({
     colourId !== (draft.colourId ?? "") ||
     secondaryColourId !== (draft.secondaryColourId ?? "");
   const colourOptions = options["colour"] ?? colours;
+
+  // The shelf form: rupees as typed, and where the stock goes (the first location unless changed).
+  const [prices, setPrices] = useState(shelf.prices);
+  const [locationId, setLocationId] = useState(shelf.locations[0]?.id ?? "");
 
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [target, setTarget] = useState("");
@@ -234,6 +242,10 @@ export function Pile({
 
   const canMove =
     ticked.size > 0 && (target === NEW_PILE ? newName.trim() !== "" : target !== "");
+
+  const finishedCount = shelf.finished.length;
+  const shelvedCount = shelf.shelved.length;
+  const canShelve = shelf.blockers.length === 0 && prices.retail.trim() !== "" && locationId !== "";
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -417,6 +429,73 @@ export function Pile({
             </div>
           </section>
 
+          {/* From pile to shelf: what's finished, what it'll sell for, and where it goes. */}
+          <section className="rounded-lg border border-rule bg-surface">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-rule bg-surface-2 px-4 py-2.5">
+              <h2 className="text-[13px] font-medium text-ink">Shelf</h2>
+              <span className="text-[12px] text-muted">
+                {finishedCount} back from Ironing · {shelvedCount} on the shelf · {shelf.inPipeline} still in the pipeline
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-4 p-5">
+              {finishedCount > 0 && (
+                <p className="text-[13px] text-ink-2">
+                  <span className="text-muted">Going on next: </span>
+                  <span className="font-mono text-[12.5px] text-ink">{shelf.finished.map((t) => t.code).join(", ")}</span>
+                </p>
+              )}
+
+              {!canEdit ? null : shelf.blockers.length > 0 ? (
+                <p className="text-[13px] text-muted">Can&apos;t go on the shelf yet: {shelf.blockers.join("; ")}.</p>
+              ) : (
+                <>
+                  <div className="grid gap-3.5 sm:grid-cols-3 md:grid-cols-5">
+                    {PRICES.map((p) => (
+                      <Field key={p.key} label={p.label}>
+                        <input
+                          className={inputClass}
+                          inputMode="decimal"
+                          value={prices[p.key]}
+                          disabled={pending}
+                          onChange={(e) => setPrices((prev) => ({ ...prev, [p.key]: e.target.value }))}
+                          placeholder="₹"
+                        />
+                      </Field>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div className="min-w-56">
+                      <Field label="Location">
+                        <select
+                          className={inputClass}
+                          value={locationId}
+                          disabled={pending}
+                          onChange={(e) => setLocationId(e.target.value)}
+                        >
+                          {shelf.locations.map((l) => (
+                            <option key={l.id} value={l.id}>{l.name} · {l.code}</option>
+                          ))}
+                        </select>
+                      </Field>
+                    </div>
+                    <Button
+                      tone="primary"
+                      disabled={!canShelve || pending}
+                      onClick={() => run(() => shelvePile(pile.id, { prices, locationId }))}
+                    >
+                      {shelvedCount > 0 ? `Add ${finishedCount} more to the shelf` : `Put ${finishedCount} on the shelf`}
+                    </Button>
+                  </div>
+                  <p className="text-[11.5px] leading-relaxed text-muted">
+                    Each Thaan becomes a piece with its own code — the QR label already on it is the shelf label.
+                  </p>
+                </>
+              )}
+            </div>
+          </section>
+
           {/* The Thaans, with the tick column that moves a wrongly sorted one. */}
           <section className="overflow-hidden rounded-lg border border-rule bg-surface">
             <div className="flex flex-wrap items-center gap-3 border-b border-rule bg-surface-2 px-4 py-2.5">
@@ -485,6 +564,7 @@ export function Pile({
                     <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Code</th>
                     <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Bale</th>
                     <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Where it is now</th>
+                    <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Shelf</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -512,6 +592,8 @@ export function Pile({
                       <td className="px-3 text-ink-2" title={t.voidedAt !== null ? `Voided ${t.voidedAt}` : undefined}>
                         {whereNow(t)}
                       </td>
+                      {/* The piece code is the Thaan's own — set only once it's stock. */}
+                      <td className="px-3 font-mono text-[12.5px] text-ink-2">{t.pieceCode ?? "—"}</td>
                     </tr>
                   ))}
                 </tbody>

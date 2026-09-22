@@ -22,6 +22,7 @@ const COLUMNS: { label: string; right?: boolean }[] = [
   { label: "Weave" },
   { label: "Production" },
   { label: "Audience" },
+  { label: "Craft" },
   { label: "Border" },
   { label: "Pallu" },
   { label: "Blouse" },
@@ -128,6 +129,7 @@ export function ClothItems({ rows, options }: { rows: ClothItemRow[]; options: C
                       <td className="px-3 text-ink-2">{label(r.weaveStructureId)}</td>
                       <td className="px-3 text-ink-2">{label(r.productionMethodId)}</td>
                       <td className="px-3 text-ink-2">{label(r.audienceId)}</td>
+                      <td className="px-3 text-ink-2">{join(label(r.craftTechniqueId), label(r.craftSubTypeId))}</td>
                       <td className="px-3 text-ink-2">{join(label(r.borderStyleId), label(r.borderHeightId))}</td>
                       <td className="px-3 text-ink-2">{r.pallu ?? "—"}</td>
                       <td className="px-3 text-ink-2">
@@ -358,6 +360,18 @@ function ClothItemFields({
           options={options.audiences}
           onChange={(id) => set("audienceId", id)}
         />
+        <Pick
+          label="Craft technique"
+          value={draft.craftTechniqueId}
+          options={options.craftTechniques}
+          onChange={(id) => set("craftTechniqueId", id)}
+        />
+        <Pick
+          label="Craft sub type"
+          value={draft.craftSubTypeId}
+          options={options.craftSubTypes}
+          onChange={(id) => set("craftSubTypeId", id)}
+        />
       </div>
 
       {isSaree && (
@@ -444,6 +458,8 @@ function emptyDraft(options: ClothItemOptions): ClothItemDraft {
     textileMaterialId: null,
     productionMethodId: dflt(options.productionMethods),
     audienceId: dflt(options.audiences),
+    craftTechniqueId: dflt(options.craftTechniques),
+    craftSubTypeId: dflt(options.craftSubTypes),
     borderStyleId: null,
     borderHeightId: null,
     blouseStyleId: null,
@@ -518,6 +534,8 @@ function EditDrawer({
     textileMaterialId: item.textileMaterialId,
     productionMethodId: item.productionMethodId,
     audienceId: item.audienceId,
+    craftTechniqueId: item.craftTechniqueId,
+    craftSubTypeId: item.craftSubTypeId,
     borderStyleId: item.borderStyleId,
     borderHeightId: item.borderHeightId,
     blouseStyleId: item.blouseStyleId,

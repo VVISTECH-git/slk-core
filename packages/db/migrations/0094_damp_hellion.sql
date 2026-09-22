@@ -1,0 +1,4 @@
+ALTER TABLE "cloth_item" ADD COLUMN "craft_technique_id" uuid;--> statement-breakpoint
+ALTER TABLE "cloth_item" ADD COLUMN "craft_sub_type_id" uuid;--> statement-breakpoint
+ALTER TABLE "cloth_item" ADD CONSTRAINT "cloth_item_craft_technique_id_lookup_value_id_fk" FOREIGN KEY ("craft_technique_id") REFERENCES "public"."lookup_value"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "cloth_item" ADD CONSTRAINT "cloth_item_craft_sub_type_id_lookup_value_id_fk" FOREIGN KEY ("craft_sub_type_id") REFERENCES "public"."lookup_value"("id") ON DELETE restrict ON UPDATE no action;

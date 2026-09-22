@@ -256,6 +256,8 @@ export type ClothItemRow = {
   textileMaterialLabel: string | null;
   productionMethodId: string | null;
   audienceId: string | null;
+  craftTechniqueId: string | null;
+  craftSubTypeId: string | null;
   borderStyleId: string | null;
   borderHeightId: string | null;
   blouseStyleId: string | null;
@@ -284,6 +286,8 @@ export async function loadClothItems(): Promise<ClothItemRow[]> {
       material.label                       as "textileMaterialLabel",
       i.production_method_id               as "productionMethodId",
       i.audience_id                        as "audienceId",
+      i.craft_technique_id                 as "craftTechniqueId",
+      i.craft_sub_type_id                  as "craftSubTypeId",
       i.border_style_id                    as "borderStyleId",
       i.border_height_id                   as "borderHeightId",
       i.blouse_style_id                    as "blouseStyleId",
@@ -312,6 +316,8 @@ export type ClothItemOptions = {
   textileMaterials: LookupOption[];
   productionMethods: LookupOption[];
   audiences: LookupOption[];
+  craftTechniques: LookupOption[];
+  craftSubTypes: LookupOption[];
   borderStyles: LookupOption[];
   borderHeights: LookupOption[];
   blouseStyles: LookupOption[];
@@ -335,7 +341,8 @@ export async function loadClothItemOptions(): Promise<ClothItemOptions> {
     join lookup_list ll on ll.id = lv.list_id
     where ll.code in (
       'fibre_type', 'weave_structure', 'textile_material', 'production_method',
-      'audience_type', 'border_style', 'border_height', 'blouse_style', 'blouse_material'
+      'audience_type', 'craft_technique', 'craft_sub_type',
+      'border_style', 'border_height', 'blouse_style', 'blouse_material'
     )
       and lv.status = 'active' and ll.is_enabled = true
     order by lv.label
@@ -350,6 +357,8 @@ export async function loadClothItemOptions(): Promise<ClothItemOptions> {
     textileMaterials: of("textile_material"),
     productionMethods: of("production_method"),
     audiences: of("audience_type"),
+    craftTechniques: of("craft_technique"),
+    craftSubTypes: of("craft_sub_type"),
     borderStyles: of("border_style"),
     borderHeights: of("border_height"),
     blouseStyles: of("blouse_style"),

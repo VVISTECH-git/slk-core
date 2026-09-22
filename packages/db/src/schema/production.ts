@@ -118,8 +118,7 @@ export const clothItem = pgTable(
     /**
      * Saree-specific facts about the raw cloth itself — true the day the
      * bale arrives, before any cutting or finishing, unlike the
-     * design-level choices Product Management owns (Audience, Print
-     * Technique, colour...). Null for anything that isn't a saree cloth,
+     * design-level choices Product Management owns (motif, colour...). Null for anything that isn't a saree cloth,
      * and null on a saree cloth until someone sets it.
      */
     hasBlouse: boolean("has_blouse"),
@@ -162,6 +161,16 @@ export const clothItem = pgTable(
     textileMaterialId: uuid("textile_material_id").references(() => lookupValue.id, { onDelete: "restrict" }),
     productionMethodId: uuid("production_method_id").references(() => lookupValue.id, { onDelete: "restrict" }),
     audienceId: uuid("audience_id").references(() => lookupValue.id, { onDelete: "restrict" }),
+
+    /**
+     * How this cloth will be printed — Kalamkari, Block Print... and by
+     * hand block or hand screen. Decided when the cloth is bought, not when
+     * it comes back from Print: a bale is ordered for a print method. From
+     * Product Management's `craft_technique` and `craft_sub_type` lists, so
+     * a pile made from this cloth already carries both.
+     */
+    craftTechniqueId: uuid("craft_technique_id").references(() => lookupValue.id, { onDelete: "restrict" }),
+    craftSubTypeId: uuid("craft_sub_type_id").references(() => lookupValue.id, { onDelete: "restrict" }),
 
     /**
      * The raw cloth's own measurements, in centimetres — saree cloth only,

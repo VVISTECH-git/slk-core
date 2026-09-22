@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import {
   BALE_TYPE_TO_PRODUCT,
   FIELD_SHORT,
+  ITEM_FALLBACK_FIELDS,
+  ITEM_FALLBACK_REQUIRED,
   fieldsThrough,
   laterOf,
   requiredThrough,
@@ -13,8 +15,9 @@ import { STAGES, type Stage } from "@/lib/stages";
 
 /**
  * What "Complete a pile" shows: the facts already known from the bale's
- * cloth item (read-only), the facts the pile's stages so far decide
- * (editable), and what's still missing. Once the pile has a colourway, the
+ * cloth item (read-only), the facts decided at Print (editable), and what's
+ * still missing. A fact the item normally fixes but this one didn't — craft,
+ * border — is asked here instead of being left empty. Once the pile has a colourway, the
  * current values come from the design itself rather than the cloth item —
  * the record is the truth from then on.
  */
@@ -65,6 +68,8 @@ async function inheritedFromItem(pileId: string): Promise<{
     textileMaterialId: string | null;
     productionMethodId: string | null;
     audienceId: string | null;
+    craftTechniqueId: string | null;
+    craftSubTypeId: string | null;
     borderStyleId: string | null;
     borderHeightId: string | null;
     blouseStyleId: string | null;
@@ -80,6 +85,8 @@ async function inheritedFromItem(pileId: string): Promise<{
       i.textile_material_id                    as "textileMaterialId",
       i.production_method_id                   as "productionMethodId",
       i.audience_id                            as "audienceId",
+      i.craft_technique_id                     as "craftTechniqueId",
+      i.craft_sub_type_id                      as "craftSubTypeId",
       i.border_style_id                        as "borderStyleId",
       i.border_height_id                       as "borderHeightId",
       i.blouse_style_id                        as "blouseStyleId",
@@ -105,6 +112,8 @@ async function inheritedFromItem(pileId: string): Promise<{
   put("textileMaterial", row.textileMaterialId);
   put("productionMethod", row.productionMethodId);
   put("audienceType", row.audienceId);
+  put("craftTechnique", row.craftTechniqueId);
+  put("craftSubType", row.craftSubTypeId);
   put("borderStyle", row.borderStyleId);
   put("borderHeight", row.borderHeightId);
   put("blouseStyle", row.blouseStyleId);
@@ -212,12 +221,15 @@ export async function loadPileDraft(pileId: string): Promise<PileDraft | null> {
     recordName = d["designName"] ?? null;
   }
 
-  // Anything the record can't be created without, and the item didn't fix, is asked for too.
-  const mustHave: AttributeKey[] = ["fibreType", current.industry === undefined ? "productType" : (current.homeProductType !== undefined ? "homeProductType" : "productType")];
-  for (const key of mustHave) {
+  // What the cloth item normally fixes, when this one didn't: asked here
+  // instead, and required where the record can't be created without it.
+  const productTypeKey: AttributeKey =
+    current.industry === undefined ? "productType" : current.homeProductType !== undefined ? "homeProductType" : "productType";
+  const fallback: AttributeKey[] = ["fibreType", productTypeKey, ...ITEM_FALLBACK_FIELDS];
+  for (const key of fallback) {
     if (!editable.includes(key) && (current[key] === undefined || current[key] === null)) {
       editable.push(key);
-      required.add(key);
+      if (key === "fibreType" || key === productTypeKey || ITEM_FALLBACK_REQUIRED.includes(key)) required.add(key);
     }
   }
 

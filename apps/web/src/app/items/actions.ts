@@ -25,6 +25,9 @@ export interface ClothItemDraft {
   textileMaterialId: string | null;
   productionMethodId: string | null;
   audienceId: string | null;
+  /** How it will be printed — decided when the cloth is bought. Not saree-specific: any cloth can be printed. */
+  craftTechniqueId: string | null;
+  craftSubTypeId: string | null;
   /** Saree cloth only. */
   borderStyleId: string | null;
   borderHeightId: string | null;
@@ -118,6 +121,8 @@ async function prepare(draft: ClothItemDraft): Promise<{ ok: false; message: str
     checkLookup(draft.textileMaterialId, "textile_material", "textile material"),
     checkLookup(draft.productionMethodId, "production_method", "production method"),
     checkLookup(draft.audienceId, "audience_type", "audience"),
+    checkLookup(draft.craftTechniqueId, "craft_technique", "craft technique"),
+    checkLookup(draft.craftSubTypeId, "craft_sub_type", "craft sub type"),
     isSaree ? checkLookup(draft.borderStyleId, "border_style", "border style") : { parentId: null },
     isSaree ? checkLookup(draft.borderHeightId, "border_height", "border height") : { parentId: null },
     withBlouse ? checkLookup(draft.blouseStyleId, "blouse_style", "blouse style") : { parentId: null },
@@ -143,6 +148,8 @@ async function prepare(draft: ClothItemDraft): Promise<{ ok: false; message: str
       textileMaterialId: draft.textileMaterialId,
       productionMethodId: draft.productionMethodId,
       audienceId: draft.audienceId,
+      craftTechniqueId: draft.craftTechniqueId,
+      craftSubTypeId: draft.craftSubTypeId,
       borderStyleId: isSaree ? draft.borderStyleId : null,
       borderHeightId: isSaree ? draft.borderHeightId : null,
       blouseStyleId: withBlouse ? draft.blouseStyleId : null,
@@ -174,7 +181,7 @@ export async function createClothItem(draft: ClothItemDraft): Promise<ActionResu
     insert into cloth_item (
       name, code, cloth_types, has_blouse, pallu, fibre_type_id,
       weave_structure_id, textile_material_id, production_method_id, audience_id,
-      border_style_id, border_height_id, blouse_style_id, blouse_material_id,
+      craft_technique_id, craft_sub_type_id, border_style_id, border_height_id, blouse_style_id, blouse_material_id,
       saree_length_cm, saree_width_cm, pallu_length_cm, blouse_length_cm
     )
     values (
@@ -188,6 +195,8 @@ export async function createClothItem(draft: ClothItemDraft): Promise<ActionResu
       ${it.textileMaterialId},
       ${it.productionMethodId},
       ${it.audienceId},
+      ${it.craftTechniqueId},
+      ${it.craftSubTypeId},
       ${it.borderStyleId},
       ${it.borderHeightId},
       ${it.blouseStyleId},
@@ -241,6 +250,8 @@ export async function updateClothItem(
         textile_material_id = ${it.textileMaterialId},
         production_method_id = ${it.productionMethodId},
         audience_id = ${it.audienceId},
+        craft_technique_id = ${it.craftTechniqueId},
+        craft_sub_type_id = ${it.craftSubTypeId},
         border_style_id = ${it.borderStyleId},
         border_height_id = ${it.borderHeightId},
         blouse_style_id = ${it.blouseStyleId},

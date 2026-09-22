@@ -3,9 +3,13 @@ import { STAGES, type Stage } from "@/lib/stages";
 
 /**
  * Which Product Management facts each stage decides — the one table behind
- * "Piles to complete". A pile at Nellateeta is asked for Print's fields too,
- * cumulatively, so anything missed at the door can still be filled in
- * later; changing what a stage asks for is one edit here.
+ * "Piles to complete". Only Print decides anything: what the cloth itself
+ * is (fibre, weave, border, how it will be printed) is fixed on the cloth
+ * item before the bale is cut, and the stages after Print — Nellateeta is a
+ * water wash, Udukulu a boil, then Ironing — change nothing a record is
+ * filed under. So a pile can be completed in full the day it is made, at
+ * receipt from Print, and what it was asked there stays editable at every
+ * later stage.
  *
  * Colour is not in this table: a pile's main colour is fixed when it is
  * made and becomes the colourway's colour; the secondary colour is asked
@@ -15,9 +19,9 @@ export const PILE_STAGE_FIELDS: Record<Stage, AttributeKey[]> = {
   "Label Stitching": [],
   Salava: [],
   Karakkaya: [],
-  Print: ["craftTechnique", "craftSubType", "motifCategory", "motif", "sareeStyle"],
+  Print: ["motifCategory", "motif", "sareeStyle"],
   "Second Print": [],
-  Nellateeta: ["borderStyle", "borderHeight"],
+  Nellateeta: [],
   Udukulu: [],
   // Prices, product photos and stock come after Ironing — Phase 3, not a lookup field.
   Ironing: [],
@@ -28,12 +32,22 @@ export const PILE_STAGE_REQUIRED: Record<Stage, AttributeKey[]> = {
   "Label Stitching": [],
   Salava: [],
   Karakkaya: [],
-  Print: ["craftTechnique", "motif"],
+  Print: ["motif"],
   "Second Print": [],
-  Nellateeta: ["borderStyle"],
+  Nellateeta: [],
   Udukulu: [],
   Ironing: [],
 };
+
+/**
+ * Facts the cloth item fixes as a rule, which a pile inherits without
+ * asking. When the item left one empty — an item made before the field
+ * existed, say — the pile asks for it itself rather than leaving a hole in
+ * the record. Craft technique is required because a record can't be filed
+ * without one; the rest are offered.
+ */
+export const ITEM_FALLBACK_FIELDS: AttributeKey[] = ["craftTechnique", "craftSubType", "borderStyle", "borderHeight"];
+export const ITEM_FALLBACK_REQUIRED: AttributeKey[] = ["craftTechnique"];
 
 /** Every field asked for up to and including `stage`, in pipeline order. */
 export function fieldsThrough(stage: Stage): AttributeKey[] {

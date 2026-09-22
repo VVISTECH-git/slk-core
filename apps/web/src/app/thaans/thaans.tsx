@@ -73,6 +73,8 @@ export function Thaans({
               (r.code ?? "").toLowerCase().startsWith(term) ||
               r.supplierName.toLowerCase().includes(term) ||
               r.itemName.toLowerCase().includes(term) ||
+              (r.pileCode ?? "").toLowerCase().startsWith(term) ||
+              (r.pileName ?? "").toLowerCase().includes(term) ||
               (r.fibre ?? "").toLowerCase().includes(term) ||
               (r.textileMaterial ?? "").toLowerCase().includes(term) ||
               r.baleType.toLowerCase().includes(term) ||
@@ -156,6 +158,7 @@ export function Thaans({
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Bale</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Supplier</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Item</th>
+                      <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Pile</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Fibre</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Textile material</th>
                       <th scope="col" className="px-3 py-2 text-[11.5px] font-medium text-muted">Weave</th>
@@ -202,6 +205,9 @@ export function Thaans({
                         </td>
                         <td className="px-3 text-ink-2">{r.supplierName}</td>
                         <td className="px-3 text-ink-2">{r.itemName}</td>
+                        <td className="px-3 text-ink-2">
+                          {r.pileCode === null ? "—" : <><span className="font-mono text-[12.5px]">{r.pileCode}</span> · {r.pileName}</>}
+                        </td>
                         <td className="px-3 text-ink-2">{r.fibre ?? "—"}</td>
                         <td className="px-3 text-ink-2">{r.textileMaterial ?? "—"}</td>
                         <td className="px-3 text-ink-2">{r.weave ?? "—"}</td>

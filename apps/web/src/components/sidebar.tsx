@@ -43,6 +43,17 @@ const NAV = [
     icon: "M4 4h5v12H4z M11 4h5v12h-5z M4 4l5 12 M16 4l-5 12",
   },
   {
+    // What Thaans become once Print has done its work: the ones that came
+    // back printed the same way, grouped as the floor already groups them.
+    // Kept right after Thaans since that is what a pile is made of.
+    href: "/piles",
+    label: "Piles",
+    icon: "M4 14h12v3H4z M5 10h10v3H5z M6 6h8v3H6z M7 3h6v2H7z",
+    // Job-role gated, not Role gated — see piles/page.tsx's own
+    // PILE_JOB_ROLES, which this must match.
+    jobRoles: ["Bale Custodian", "Handler", "Production Manager", "Operations Manager"],
+  },
+  {
     // A Thaan's trip through the stage pipeline, tracked by scanning its
     // own QR code — kept right after Thaans since that's what a Thaan
     // becomes once it exists.

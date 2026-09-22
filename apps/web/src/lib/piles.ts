@@ -1,6 +1,8 @@
 import { sql } from "drizzle-orm";
 
+import type { AttributeKey } from "@/lib/attributes";
 import { db } from "@/lib/db";
+import { FIELD_SHORT, requiredThrough } from "@/lib/pile-fields";
 import { STAGES, type Stage } from "@/lib/stages";
 import { publicUrl, storageConfigured } from "@/lib/storage";
 
@@ -38,6 +40,14 @@ export type PileRow = {
   baleCodes: string[];
   createdAt: string;
   createdByName: string | null;
+  /** The Product Management record this pile is, once completed. */
+  colourwayId: string | null;
+  designCode: string | null;
+  recordName: string | null;
+  /** The furthest stage its Thaans have come back from. */
+  stage: string;
+  /** Short names of the required details still empty — "motif", "craft". Empty when complete so far. */
+  needs: string[];
 };
 
 export type PileThaan = {
@@ -60,6 +70,9 @@ export type PileEventRow = {
   at: string;
 };
 
+/** The stage list as a Postgres array literal, for array_position. */
+const STAGE_ARRAY = sql`${"{" + STAGES.map((s) => `"${s}"`).join(",") + "}"}::text[]`;
+
 const PILE_COLUMNS = sql`
       p.id,
       p.code,
@@ -76,33 +89,77 @@ const PILE_COLUMNS = sql`
         where t.pile_id = p.id
       ), '{}')                                      as "baleCodes",
       to_char(p.created_at, 'DD Mon YYYY, HH12:MI AM') as "createdAt",
-      by.name                                       as "createdByName"`;
+      by.name                                       as "createdByName",
+      p.colourway_id                                as "colourwayId",
+      d.code                                        as "designCode",
+      d.name                                        as "recordName",
+      d.craft_technique_id                          as "craftTechniqueId",
+      d.motif_id                                    as "motifId",
+      d.border_style_id                             as "borderStyleId",
+      coalesce((
+        select max(array_position(${STAGE_ARRAY}, s.stage))
+        from (
+          select h.stage from handover h join thaan t on t.id = h.thaan_id where t.pile_id = p.id and h.received_at is not null
+          union all
+          select h.through_stage from handover h join thaan t on t.id = h.thaan_id where t.pile_id = p.id and h.received_at is not null and h.through_stage is not null
+        ) s
+      ), array_position(${STAGE_ARRAY}, p.created_stage)) as "stageIndex"`;
 
 const PILE_JOINS = sql`
     left join lookup_value colour on colour.id = p.main_colour_id
-    left join actor by on by.id = p.created_by_id`;
+    left join actor by on by.id = p.created_by_id
+    left join colourway cw on cw.id = p.colourway_id
+    left join design d on d.id = cw.design_id`;
 
-function withUrl<T extends { photoKey: string | null }>(row: T): Omit<T, "photoKey"> & { photoUrl: string | null } {
-  const { photoKey, ...rest } = row;
-  return { ...rest, photoUrl: photoKey !== null && storageConfigured() ? publicUrl(photoKey) : null };
+type PileRaw = Omit<PileRow, "photoUrl" | "stage" | "needs"> & {
+  photoKey: string | null;
+  craftTechniqueId: string | null;
+  motifId: string | null;
+  borderStyleId: string | null;
+  stageIndex: number | null;
+};
+
+/**
+ * What a listed pile still needs, judged from the design's own columns —
+ * the same rule `loadPileDraft` applies field by field, kept cheap here so a
+ * list of a hundred piles is one query. A pile with no record yet needs
+ * everything its stage requires.
+ */
+function shape(row: PileRaw): PileRow {
+  const { photoKey, craftTechniqueId, motifId, borderStyleId, stageIndex, ...rest } = row;
+  const stage = STAGES[Math.max(0, (stageIndex ?? 1) - 1)] ?? "Print";
+  const have: Partial<Record<AttributeKey, string | null>> = {
+    craftTechnique: craftTechniqueId,
+    motif: motifId,
+    borderStyle: borderStyleId,
+  };
+  const needs = requiredThrough(stage)
+    .filter((key) => rest.colourwayId === null || !have[key])
+    .map((key) => FIELD_SHORT[key] ?? key);
+  return {
+    ...rest,
+    photoUrl: photoKey !== null && storageConfigured() ? publicUrl(photoKey) : null,
+    stage,
+    needs,
+  };
 }
 
 /** Every pile, newest first — optionally only one status. */
 export async function loadPiles(status?: "draft" | "ready" | "live"): Promise<PileRow[]> {
-  const rows = await db.execute<Omit<PileRow, "photoUrl"> & { photoKey: string | null }>(sql`
+  const rows = await db.execute<PileRaw>(sql`
     select ${PILE_COLUMNS}
     from pile p ${PILE_JOINS}
     ${status === undefined ? sql`` : sql`where p.status = ${status}`}
     order by p.created_at desc
   `);
-  return rows.map(withUrl);
+  return rows.map(shape);
 }
 
 /** One pile with its Thaans and its history, or null. */
 export async function loadPile(
   id: string,
 ): Promise<(PileRow & { thaans: PileThaan[]; events: PileEventRow[] }) | null> {
-  const [row] = await db.execute<Omit<PileRow, "photoUrl"> & { photoKey: string | null }>(sql`
+  const [row] = await db.execute<PileRaw>(sql`
     select ${PILE_COLUMNS}
     from pile p ${PILE_JOINS}
     where p.id = ${id}
@@ -141,7 +198,7 @@ export async function loadPile(
     limit 200
   `);
 
-  return { ...withUrl(row), thaans, events };
+  return { ...shape(row), thaans, events };
 }
 
 export type ColourOption = { id: string; label: string };

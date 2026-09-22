@@ -4,6 +4,9 @@ import { sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/lib/db";
+import { applyDesignPatch, createRecord } from "@/app/records/actions";
+import type { AttributeKey } from "@/lib/attributes";
+import { inheritedAttributeIds, loadPileDraft } from "@/lib/pile-draft";
 import { assignThaansInTx, createPileInTx, type AssignOutcome, type NewPile } from "@/lib/pile-write";
 import { actingId, guardJobRole } from "@/lib/session";
 import { presignPut, remove, storageConfigured, storageMissing } from "@/lib/storage";
@@ -123,6 +126,94 @@ export async function confirmPilePhoto(pileId: string, key: string): Promise<Act
 
   revalidate();
   return { ok: true, message: "Photo added." };
+}
+
+/**
+ * "Complete a pile": the answers to the questions its stages so far have
+ * asked. The first time, this makes the Product Management record — a
+ * design and a draft colourway, seeded with everything the bale's cloth
+ * item already knew — and links the pile to it. After that it patches the
+ * same record. Either way the pile's main colour is the colourway's colour
+ * unless told otherwise here.
+ */
+export async function completePile(
+  pileId: string,
+  patch: {
+    attributes: Partial<Record<AttributeKey, string | null>>;
+    colourId?: string | null;
+    secondaryColourId?: string | null;
+  },
+): Promise<ActionResult & { colourwayId?: string; needs?: string[] }> {
+  const denied = await guardJobRole(PILE_JOB_ROLES);
+  if (denied !== null) return denied;
+
+  const draft = await loadPileDraft(pileId);
+  if (draft === null) return { ok: false, message: "That pile no longer exists." };
+
+  // Only the questions this pile is actually being asked may be answered here.
+  const allowed = new Set(draft.fields.map((f) => f.key));
+  for (const key of Object.keys(patch.attributes)) {
+    if (!allowed.has(key as AttributeKey)) return { ok: false, message: `${key} isn't decided at ${draft.stage}.` };
+  }
+
+  const actorId = await actingId();
+  const colourId = patch.colourId === undefined ? draft.colourId : patch.colourId;
+  const secondaryColourId = patch.secondaryColourId === undefined ? draft.secondaryColourId : patch.secondaryColourId;
+
+  let result: ActionResult & { colourwayId?: string };
+  if (draft.colourwayId === null) {
+    // Everything the cloth item knew, with this pile's answers on top.
+    const attributes: Partial<Record<AttributeKey, string | null>> = { ...(await inheritedAttributeIds(pileId)) };
+    for (const [k, v] of Object.entries(patch.attributes)) {
+      if (v === null || v === "") delete attributes[k as AttributeKey];
+      else attributes[k as AttributeKey] = v;
+    }
+
+    result = await createRecord(
+      {
+        attributes,
+        descriptors: [],
+        colourId,
+        secondaryColourId,
+        prices: { cost: "", making: "", wholesale: "", retail: "", mrp: "" },
+        quantity: "",
+        openingStock: [],
+        imageSlots: [],
+        notes: `From pile ${draft.pileCode} (${draft.pileName}).`,
+        name: "",
+        nameIsCustom: false,
+        extra: { lengthCm: draft.extra.lengthCm, widthCm: draft.extra.widthCm },
+      },
+      { fromPileId: pileId },
+    );
+  } else {
+    result = await applyDesignPatch(draft.colourwayId, patch.attributes, { colourId, secondaryColourId });
+    if (result.ok) {
+      await db.execute(sql`
+        insert into pile_event (pile_id, stage, kind, actor_id, detail, at)
+        values (${pileId}, ${draft.stage}, 'detail_set', ${actorId}, ${JSON.stringify({ fields: Object.keys(patch.attributes) })}::jsonb, clock_timestamp())
+      `);
+    }
+    result = { ...result, colourwayId: draft.colourwayId };
+  }
+  if (!result.ok) return result;
+
+  const after = await loadPileDraft(pileId);
+  const needs = after?.needs ?? [];
+  // A pile with every question so far answered is "ready" — waiting only on Ironing, prices and photos.
+  await db.execute(sql`
+    update pile set status = ${needs.length === 0 ? "ready" : "draft"}, updated_at = now()
+    where id = ${pileId} and status <> 'live'
+  `);
+
+  revalidate();
+  revalidatePath("/records");
+  return {
+    ok: true,
+    message: needs.length === 0 ? `${draft.pileCode} is complete for ${after?.stage ?? draft.stage}.` : `Saved. Still needs ${needs.join(", ")}.`,
+    colourwayId: result.colourwayId ?? after?.colourwayId ?? undefined,
+    needs,
+  };
 }
 
 /** Rename a pile or change its main colour — the two things fixed at the door that can be wrong. */

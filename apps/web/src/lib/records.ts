@@ -85,6 +85,8 @@ export type RecordRow = {
 
   /** "draft" | "submitted" | "needs_changes" | "approved" — see the approval workflow. */
   reviewStatus: string;
+  /** The pile this record was made from, when it came off the print table rather than arriving as a consignment. */
+  pileCode: string | null;
 };
 
 /**
@@ -316,12 +318,14 @@ const SELECT = sql`
         where cl.batch_id = latest.id
       ), 'none')                                        as "syncStatus",
       (d.status = 'archived' or not cw.is_active)       as "isArchived",
-      cw.review_status                                  as "reviewStatus"
+      cw.review_status                                  as "reviewStatus",
+      from_pile.code                                    as "pileCode"
 `;
 
 const FROM = sql`
     from colourway cw
     join design d                     on d.id = cw.design_id
+    left join pile from_pile          on from_pile.colourway_id = cw.id
     left join lookup_value industry           on industry.id = d.industry_id
     left join lookup_value product_type       on product_type.id = d.product_type_id
     left join lookup_value garment_type       on garment_type.id = d.garment_type_id

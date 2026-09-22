@@ -1,7 +1,7 @@
 "use server";
 
 import { allows } from "@/lib/roles";
-import { actingId, currentActor, guard } from "@/lib/session";
+import { actingId, currentActor, guard, guardJobRole } from "@/lib/session";
 import { eq, sql, type SQL } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
@@ -265,7 +265,10 @@ function toMinor(value: string): number | null {
   return Math.round(amount * 100);
 }
 
-async function validate(draft: RecordDraft): Promise<Record<string, string>> {
+async function validate(
+  draft: RecordDraft,
+  opts: { allowUnpriced?: boolean } = {},
+): Promise<Record<string, string>> {
   const errors: Record<string, string> = {};
 
   for (const { key, label } of REQUIRED) {
@@ -309,7 +312,7 @@ async function validate(draft: RecordDraft): Promise<Record<string, string>> {
     }
   }
 
-  if (draft.prices.retail.trim() === "") {
+  if (draft.prices.retail.trim() === "" && opts.allowUnpriced !== true) {
     errors["retail"] = "A selling price is needed";
   }
 
@@ -799,11 +802,25 @@ export async function deleteRecord(colourwayId: string): Promise<ActionResult> {
 }
 
 /** A brand-new design, minted with the next sequence number. */
-export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
-  const denied = await guard("floor");
+/**
+ * `fromPileId`: this record is a pile coming off the print table, not a
+ * consignment arriving at the shop — it has no price and no stock yet, and
+ * both are allowed to be blank. The colourway is linked to the pile so
+ * "Piles to complete" and the record are the same thing from then on.
+ * Gated on the pile roles as well as the floor: whoever receives a
+ * delivery is who fills these in.
+ */
+export async function createRecord(
+  draft: RecordDraft,
+  opts: { fromPileId?: string } = {},
+): Promise<ActionResult> {
+  const fromPile = opts.fromPileId !== undefined;
+  const denied = fromPile
+    ? await guardJobRole(["Bale Custodian", "Handler"])
+    : await guard("floor");
   if (denied !== null) return denied;
 
-  const errors = await validate(draft);
+  const errors = await validate(draft, { allowUnpriced: fromPile });
 
   /*
     recordOpeningStock silently drops a blank, zero or negative line rather
@@ -817,7 +834,7 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
   const hasOpeningQuantity = draft.openingStock.some(
     (line) => line.locationId !== "" && Number(line.qty) > 0,
   );
-  if (!hasOpeningQuantity) {
+  if (!hasOpeningQuantity && !fromPile) {
     errors["openingStock"] =
       "At least one location needs a quantity greater than zero.";
   }
@@ -1039,6 +1056,17 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
   if (cw !== undefined) {
     await setImageSlots(cw.id, draft.imageSlots);
     await upsertStoryAndCare(db, cw.id, draft, actorId);
+    if (opts.fromPileId !== undefined) {
+      await db.execute(sql`
+        update pile set colourway_id = ${cw.id}, updated_at = now()
+        where id = ${opts.fromPileId} and colourway_id is null
+      `);
+      await db.execute(sql`
+        insert into pile_event (pile_id, kind, actor_id, detail, at)
+        values (${opts.fromPileId}, 'detail_set', ${actorId}, ${JSON.stringify({ record: code })}::jsonb, clock_timestamp())
+      `);
+      revalidatePath("/piles");
+    }
   }
 
   const opening =
@@ -1062,6 +1090,63 @@ export async function createRecord(draft: RecordDraft): Promise<ActionResult> {
     colourwayId: cw?.id,
     productCodes: opening.codes,
   };
+}
+
+/**
+ * Changes several lookup-backed fields on a design at once, plus the
+ * colourway's colours — what "Complete a pile" saves once the record
+ * exists. Same rules as setRecordField, one write: each value must be an
+ * active member of that field's own list, and the composed name is rebuilt
+ * unless someone typed over it.
+ */
+export async function applyDesignPatch(
+  colourwayId: string,
+  attributes: Partial<Record<AttributeKey, string | null>>,
+  colours: { colourId?: string | null; secondaryColourId?: string | null },
+): Promise<ActionResult> {
+  const denied = await guardJobRole(["Bale Custodian", "Handler"]);
+  if (denied !== null) return denied;
+
+  const [cw] = await db.execute<{ designId: string; nameIsCustom: boolean }>(sql`
+    select cw.design_id as "designId", d.name_is_custom as "nameIsCustom"
+    from colourway cw join design d on d.id = cw.design_id where cw.id = ${colourwayId}
+  `);
+  if (cw === undefined) return { ok: false, message: "That record no longer exists." };
+
+  const assignments: SQL[] = [];
+  for (const [k, value] of Object.entries(attributes)) {
+    const key = k as AttributeKey;
+    const spec = ATTRIBUTES[key];
+    if (spec === undefined) return { ok: false, message: `Unknown field ${k}.` };
+    if (value !== null && value !== "") {
+      const [ok] = await db.execute<{ id: string }>(sql`
+        select lv.id from lookup_value lv join lookup_list ll on ll.id = lv.list_id
+        where lv.id = ${value} and ll.code = ${spec.list} and lv.status = 'active'
+      `);
+      if (ok === undefined) return { ok: false, message: `That ${spec.label} is not on the list.` };
+    }
+    assignments.push(sql`${sql.identifier(spec.column)} = ${value === "" ? null : value}`);
+  }
+
+  const actorId = await actingId();
+  if (assignments.length > 0) {
+    await db.execute(sql`
+      update design set ${sql.join(assignments, sql`, `)}, updated_at = now() where id = ${cw.designId}
+    `);
+  }
+  const colourSets: SQL[] = [];
+  if (colours.colourId !== undefined) colourSets.push(sql`colour_id = ${colours.colourId}`);
+  if (colours.secondaryColourId !== undefined) colourSets.push(sql`secondary_colour_id = ${colours.secondaryColourId}`);
+  if (colourSets.length > 0) {
+    await db.execute(sql`
+      update colourway set ${sql.join(colourSets, sql`, `)}, updated_by_id = ${actorId}, updated_at = now()
+      where id = ${colourwayId}
+    `);
+  }
+  await recomposeName(cw.designId, cw.nameIsCustom);
+  revalidatePath("/records");
+
+  return { ok: true, message: "Saved." };
 }
 
 /**

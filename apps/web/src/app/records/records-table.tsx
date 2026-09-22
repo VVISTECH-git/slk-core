@@ -879,8 +879,13 @@ export function RecordsTable({
 
                       if (c.key === "reviewStatus") {
                         return (
-                          <Cell key={c.key} title={value || "Not set"}>
-                            <ReviewStatusBadge status={row.reviewStatus} />
+                          <Cell key={c.key} title={row.pileCode === null ? value || "Not set" : `From pile ${row.pileCode}`}>
+                            <span className="inline-flex items-center gap-1.5">
+                              <ReviewStatusBadge status={row.reviewStatus} />
+                              {row.pileCode !== null && (
+                                <span className="font-mono text-[11px] text-muted">{row.pileCode}</span>
+                              )}
+                            </span>
                           </Cell>
                         );
                       }

@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
+import { isPileStage, laterStage } from "@/lib/piles";
 import { stagesFor, type Stage } from "@/lib/stages";
 
 /**
@@ -125,6 +126,12 @@ export type ThaanForReceive = ThaanForSend & {
   throughStage: string | null;
   vendorId: string | null;
   vendorName: string;
+  /** The pile it is already in, if any — it stays there unless moved. */
+  pileId: string | null;
+  pileCode: string | null;
+  pileName: string | null;
+  /** Whether this receive may put it in a pile: only from Print onward. */
+  canPile: boolean;
 };
 
 /** Whether `code` is out for some stage right now, and what it's returning from if so. */
@@ -144,6 +151,9 @@ export async function checkThaanForReceive(
     throughStage: string | null;
     vendorId: string | null;
     vendorName: string | null;
+    pileId: string | null;
+    pileCode: string | null;
+    pileName: string | null;
   }>(sql`
     select
       t.id, t.code,
@@ -153,12 +163,16 @@ export async function checkThaanForReceive(
       open_h.stage,
       open_h.through_stage                                 as "throughStage",
       open_h.vendor_id                                     as "vendorId",
-      v.name                                                as "vendorName"
+      v.name                                                as "vendorName",
+      t.pile_id                                             as "pileId",
+      p.code                                                as "pileCode",
+      p.name                                                as "pileName"
     from thaan t
     join bale b on b.id = t.bale_id
     join cloth_item i on i.id = b.item_id
     left join handover open_h on open_h.thaan_id = t.id and open_h.received_at is null
     left join vendor v on v.id = open_h.vendor_id
+    left join pile p on p.id = t.pile_id
     where t.code = ${trimmed}
   `);
 
@@ -181,6 +195,10 @@ export async function checkThaanForReceive(
       throughStage: thaan.throughStage,
       vendorId: thaan.vendorId,
       vendorName: thaan.vendorName ?? "In-house",
+      pileId: thaan.pileId,
+      pileCode: thaan.pileCode,
+      pileName: thaan.pileName,
+      canPile: isPileStage(laterStage(thaan.stage, thaan.throughStage)),
     },
   };
 }

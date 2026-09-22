@@ -58,6 +58,10 @@ export type ThaanRow = {
   sareeWidthCm: number | null;
   palluLengthCm: number | null;
   blouseLengthCm: number | null;
+  /** The pile it was sorted into after Print, if any. */
+  pileId: string | null;
+  pileCode: string | null;
+  pileName: string | null;
   /** Metres received ÷ Thaans cut from that bale — this Thaan's own share. */
   perThaanMetres: number | null;
   qrGeneratedAt: string | null;
@@ -93,7 +97,10 @@ const ITEM_COLUMNS = sql`,
       i.saree_length_cm::double precision                     as "sareeLengthCm",
       i.saree_width_cm::double precision                      as "sareeWidthCm",
       i.pallu_length_cm::double precision                     as "palluLengthCm",
-      i.blouse_length_cm::double precision                    as "blouseLengthCm"`;
+      i.blouse_length_cm::double precision                    as "blouseLengthCm",
+      t.pile_id                                               as "pileId",
+      pile.code                                               as "pileCode",
+      pile.name                                               as "pileName"`;
 
 const ITEM_JOINS = sql`
     left join lookup_value fibre on fibre.id = i.fibre_type_id
@@ -104,7 +111,8 @@ const ITEM_JOINS = sql`
     left join lookup_value border_style on border_style.id = i.border_style_id
     left join lookup_value border_height on border_height.id = i.border_height_id
     left join lookup_value blouse_style on blouse_style.id = i.blouse_style_id
-    left join lookup_value blouse_material on blouse_material.id = i.blouse_material_id`;
+    left join lookup_value blouse_material on blouse_material.id = i.blouse_material_id
+    left join pile on pile.id = t.pile_id`;
 
 export async function loadThaans(): Promise<ThaanRow[]> {
   const rows = await db.execute<

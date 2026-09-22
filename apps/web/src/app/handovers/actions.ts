@@ -6,6 +6,8 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { checkThaanForReceive, checkThaanForSend, type ThaanForReceive, type ThaanForSend } from "@/lib/handovers";
 import { actingId, guardJobRole } from "@/lib/session";
+import { assignThaansInTx, createPileInTx, type NewPile } from "@/lib/pile-write";
+import { laterStage } from "@/lib/piles";
 import { STAGES, stagesFor, type Stage } from "@/lib/stages";
 
 /** Who may scan a Thaan out and back — see handovers/page.tsx's own copy. */
@@ -182,7 +184,19 @@ export async function sendBatch(
  * (`priceVendorTransactions`). Named in the result so it doesn't go
  * unnoticed.
  */
-export async function receiveBatch(thaanIds: string[]): Promise<ActionResult> {
+/**
+ * A pile a delivery is sorted into as it is received: an existing one, or a
+ * new one made right here (name, main colour, the photo already uploaded),
+ * and the Thaans that go in it. Only Thaans coming back from Print or later
+ * qualify; the rest are received but left un-piled and named in the message.
+ */
+export interface ReceivePile {
+  pileId: string | null;
+  newPile: NewPile | null;
+  thaanIds: string[];
+}
+
+export async function receiveBatch(thaanIds: string[], piles: ReceivePile[] = []): Promise<ActionResult> {
   const denied = await guardJobRole(HANDOVER_JOB_ROLES);
   if (denied !== null) return denied;
 
@@ -194,6 +208,9 @@ export async function receiveBatch(thaanIds: string[]): Promise<ActionResult> {
 
   const result = await db.transaction(async (tx) => {
     const closed: { id: string; stage: string; vendorId: string | null }[] = [];
+    // The stage each Thaan is coming back from (the last of a combined trip)
+    // — a pile made now is stamped with it, and only Print onward qualifies.
+    const stageOf = new Map<string, string>();
     // The stages a combined trip covers after its first — written here as
     // already-received rows so they're billed exactly like the first.
     const alsoDone: { id: string; stage: string; vendorId: string | null }[] = [];
@@ -217,6 +234,7 @@ export async function receiveBatch(thaanIds: string[]): Promise<ActionResult> {
                   (t.voided_at is not null) as "voided"
       `);
       if (row === undefined) continue;
+      stageOf.set(thaanId, laterStage(row.stage, row.throughStage));
       // A Thaan voided while out (flagged damaged at the vendor) still comes
       // back — the handover closes — but the vendor isn't billed for it, and
       // no later stages of a combined trip are written for it.
@@ -284,12 +302,40 @@ export async function receiveBatch(thaanIds: string[]): Promise<ActionResult> {
       }
     }
 
-    return { received: closed.length, billed, needsPricing };
+    // Piles, in the same transaction as the receive that made them.
+    const piled: string[] = [];
+    const unpiled: string[] = [];
+    for (const spec of piles) {
+      const ids = spec.thaanIds.filter((id) => stageOf.has(id));
+      if (ids.length === 0) continue;
+      const stage = ids.map((id) => stageOf.get(id)!).reduce((a, b) => laterStage(a, b));
+      let pileId = spec.pileId;
+      let code: string;
+      if (pileId === null) {
+        if (spec.newPile === null) continue;
+        const made = await createPileInTx(tx, spec.newPile, stage, actorId);
+        if (!made.ok) throw new Error(made.message);
+        pileId = made.id;
+        code = made.code;
+      } else {
+        const [p] = await tx.execute<{ code: string }>(sql`select code from pile where id = ${pileId}`);
+        if (p === undefined) throw new Error("That pile no longer exists.");
+        code = p.code;
+      }
+      const outcome = await assignThaansInTx(tx, pileId, ids, stage, actorId);
+      const n = outcome.added + outcome.moved;
+      if (n > 0) piled.push(`${code}: ${n}`);
+      unpiled.push(...outcome.refused.map((r) => r.code));
+    }
+
+    return { received: closed.length, billed, needsPricing, piled, unpiled };
   });
 
   revalidatePath("/handovers");
   revalidatePath("/vendors");
   revalidatePath("/vendor-ledger");
+  revalidatePath("/piles");
+  revalidatePath("/thaans");
 
   if (result.received === 0) {
     return { ok: false, message: "None of those are currently out for a stage." };
@@ -297,7 +343,10 @@ export async function receiveBatch(thaanIds: string[]): Promise<ActionResult> {
 
   // Billing detail lives on Vendors and Vendor Ledger; this just flags it
   // right away when something needs Finance's attention.
-  const base = `Received ${result.received} Thaan${result.received === 1 ? "" : "s"}.`;
+  const pileNote =
+    (result.piled.length > 0 ? ` Piles — ${result.piled.join(", ")}.` : "") +
+    (result.unpiled.length > 0 ? ` Not piled (not back from Print yet): ${result.unpiled.join(", ")}.` : "");
+  const base = `Received ${result.received} Thaan${result.received === 1 ? "" : "s"}.${pileNote}`;
   if (result.needsPricing.length === 0) {
     return { ok: true, message: base };
   }

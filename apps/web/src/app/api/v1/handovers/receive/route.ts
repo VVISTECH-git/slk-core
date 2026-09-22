@@ -1,4 +1,4 @@
-import { receiveBatch } from "@/app/handovers/actions";
+import { receiveBatch, type ReceivePile } from "@/app/handovers/actions";
 import { ApiError, body, guardedJobRole } from "@/lib/api";
 
 /**
@@ -12,7 +12,25 @@ export const POST = guardedJobRole(["Bale Custodian", "Handler"], async (request
   const raw = await body(request);
   const thaanIds = Array.isArray(raw.thaanIds) ? raw.thaanIds.map(String) : [];
 
-  const result = await receiveBatch(thaanIds);
+  // Optional, from Print onward: `piles: [{ pileId } | { newPile: { name, mainColourId, photoKey } }, thaanIds ]`.
+  const piles: ReceivePile[] = Array.isArray(raw.piles)
+    ? raw.piles.flatMap((p: unknown): ReceivePile[] => {
+        if (typeof p !== "object" || p === null) return [];
+        const o = p as Record<string, unknown>;
+        const np = typeof o.newPile === "object" && o.newPile !== null ? (o.newPile as Record<string, unknown>) : null;
+        return [{
+          pileId: typeof o.pileId === "string" && o.pileId !== "" ? o.pileId : null,
+          newPile: np === null ? null : {
+            name: typeof np.name === "string" ? np.name : "",
+            mainColourId: typeof np.mainColourId === "string" && np.mainColourId !== "" ? np.mainColourId : null,
+            photoKey: typeof np.photoKey === "string" && np.photoKey !== "" ? np.photoKey : null,
+          },
+          thaanIds: Array.isArray(o.thaanIds) ? o.thaanIds.map(String) : [],
+        }];
+      })
+    : [];
+
+  const result = await receiveBatch(thaanIds, piles);
   if (!result.ok) throw new ApiError(result.message, 422);
 
   return { message: result.message };

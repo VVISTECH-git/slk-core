@@ -1,7 +1,8 @@
-import { boolean, check, date, index, integer, numeric, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, date, index, integer, jsonb, numeric, pgTable, text, timestamp, uniqueIndex, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 import { actor } from "./access";
+import { colourway } from "./catalogue";
 import { lookupValue } from "./lookup";
 
 /**
@@ -463,6 +464,14 @@ export const thaan = pgTable(
     voidedAt: timestamp("voided_at", { withTimezone: true }),
     voidedBy: uuid("voided_by_id").references(() => actor.id, { onDelete: "restrict" }),
 
+    /**
+     * The pile this Thaan was sorted into once it came back printed — see
+     * `pile`. Null before Print, and for a Thaan received "just as Thaans"
+     * that nobody has sorted yet. The pile follows the Thaan through every
+     * later stage unless someone moves it (`pile_event` keeps the trail).
+     */
+    pileId: uuid("pile_id").references((): AnyPgColumn => pile.id, { onDelete: "restrict" }),
+
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -472,6 +481,7 @@ export const thaan = pgTable(
   },
   (t) => [
     uniqueIndex("thaan_code_key").on(t.code),
+    index("thaan_pile_id_idx").on(t.pileId),
     // Every bale-scoped read (loadBales' own per-bale counts, Record
     // Cutting/Print QR Labels' shared GET /bales, the Thaan-print lookup,
     // generateQrCodes' own update) filters or groups on this — a full
@@ -755,6 +765,93 @@ export const thaanDamage = pgTable(
     ),
   ],
 );
+
+/**
+ * A pile: the Thaans that came back from Print printed the same way — one
+ * design, one colour combination. Made at the door as a delivery is
+ * received (a photo of one Thaan, a name, the main colour), then filled in
+ * stage by stage: motif and craft after Print, border after Nellateeta,
+ * price and stock after Ironing. Underneath it is a draft colourway of a
+ * design (`colourwayId`, set once someone completes it in Phase 2), so
+ * nothing about a finished product is ever typed twice.
+ *
+ * Only from Print onward — the earlier stages don't decide anything a
+ * product is filed under. Enforced in the actions, not here: "has a
+ * received Print handover" is a fact about `handover`, not this row.
+ */
+export const pile = pgTable(
+  "pile",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+
+    /** "P1001" — assigned by `pile_code_seq` when the pile is made. */
+    code: text("code").notNull(),
+
+    /** What the floor calls it — the design's name, or whatever they recognise it by. */
+    name: text("name").notNull(),
+
+    /** The R2 key of the pile's photo (one Thaan from the pile, taken at the door). */
+    photoKey: text("photo_key"),
+
+    /** The main colour, from Product Management's own `colour` list. */
+    mainColourId: uuid("main_colour_id").references(() => lookupValue.id, { onDelete: "restrict" }),
+
+    /** The stage whose receive created this pile — Print, usually. */
+    createdStage: text("created_stage").notNull(),
+
+    /** draft: details still being filled in · ready: complete, waiting on Ironing · live: on the shelf as stock. */
+    status: text("status").notNull().default("draft"),
+
+    /** The Product Management colourway this pile is, once completed (Phase 2). */
+    colourwayId: uuid("colourway_id").references(() => colourway.id, { onDelete: "restrict" }),
+
+    createdBy: uuid("created_by_id").references(() => actor.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("pile_code_key").on(t.code),
+    index("pile_status_idx").on(t.status, t.createdAt),
+    check("pile_status_known", sql`${t.status} in ('draft', 'ready', 'live')`),
+    check(
+      "pile_created_stage_known",
+      sql`${t.createdStage} in ('Print', 'Second Print', 'Nellateeta', 'Udukulu', 'Ironing')`,
+    ),
+  ],
+);
+
+/**
+ * Everything that ever happened to a pile, one row each: made, a Thaan
+ * added, a Thaan moved out, a detail filled in, split. The answer to
+ * "who put T00002053 in the red pile, and when?" — which matters exactly
+ * when a pile turns out to be wrong.
+ */
+export const pileEvent = pgTable(
+  "pile_event",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    pileId: uuid("pile_id")
+      .notNull()
+      .references(() => pile.id, { onDelete: "cascade" }),
+    /** The Thaan concerned, for added/moved; null for events about the pile itself. */
+    thaanId: uuid("thaan_id").references(() => thaan.id, { onDelete: "restrict" }),
+    /** The stage being received when this happened, if any. */
+    stage: text("stage"),
+    kind: text("kind").notNull(),
+    /** Free-form specifics: the pile a Thaan moved from, the field a detail set. */
+    detail: jsonb("detail").notNull().default({}),
+    actorId: uuid("actor_id").references(() => actor.id, { onDelete: "restrict" }),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("pile_event_pile_idx").on(t.pileId, t.at),
+    index("pile_event_thaan_idx").on(t.thaanId),
+    check("pile_event_kind_known", sql`${t.kind} in ('created', 'added', 'moved', 'detail_set', 'split', 'photo_set')`),
+  ],
+);
+
+export type Pile = typeof pile.$inferSelect;
+export type PileEvent = typeof pileEvent.$inferSelect;
 
 export type Supplier = typeof supplier.$inferSelect;
 export type ClothItem = typeof clothItem.$inferSelect;

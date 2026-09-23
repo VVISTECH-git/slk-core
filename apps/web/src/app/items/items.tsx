@@ -23,6 +23,7 @@ const COLUMNS: { label: string; right?: boolean }[] = [
   { label: "Production" },
   { label: "Audience" },
   { label: "Craft" },
+  { label: "Needs" },
   { label: "Border" },
   { label: "Pallu" },
   { label: "Blouse" },
@@ -130,6 +131,23 @@ export function ClothItems({ rows, options }: { rows: ClothItemRow[]; options: C
                       <td className="px-3 text-ink-2">{label(r.productionMethodId)}</td>
                       <td className="px-3 text-ink-2">{label(r.audienceId)}</td>
                       <td className="px-3 text-ink-2">{join(label(r.craftTechniqueId), label(r.craftSubTypeId))}</td>
+                      <td className="px-3">
+                        {(() => {
+                          // What a record made from this item's bales would still be
+                          // missing — the door never blocks on it, so it is flagged here.
+                          const needs = [
+                            r.fibreTypeId === null ? "fibre" : null,
+                            r.craftTechniqueId === null ? "craft" : null,
+                          ].filter((n): n is string => n !== null);
+                          return needs.length === 0 ? (
+                            <span className="text-[11.5px] text-muted">—</span>
+                          ) : (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+                              Needs {needs.join(", ")}
+                            </span>
+                          );
+                        })()}
+                      </td>
                       <td className="px-3 text-ink-2">{join(label(r.borderStyleId), label(r.borderHeightId))}</td>
                       <td className="px-3 text-ink-2">{r.pallu ?? "—"}</td>
                       <td className="px-3 text-ink-2">

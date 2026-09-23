@@ -217,7 +217,25 @@ export async function createPipelineRecordInTx(
     notes: `From production — received after ${stage}.`,
     actorId,
   });
+  await wantDefaultPhotos(tx, made.id, attributes.productType ?? attributes.homeProductType ?? null);
   return { ok: true, id: made.id, code: made.code, name: made.name };
+}
+
+/**
+ * The photographs a record made at the door will ask for: the same set
+ * the entry forms tick for its product type — every slot not scoped to a
+ * type, plus those scoped to this one — so "Photograph it" after the
+ * shelf has something to shoot. Empty slots only; nothing is overwritten.
+ */
+export async function wantDefaultPhotos(ex: Executor, colourwayId: string, productTypeId: string | null): Promise<void> {
+  await ex.execute(sql`
+    insert into image (colourway_id, slot_id, sort_order)
+    select ${colourwayId}, lv.id, (row_number() over (order by lv.sort_order, lv.label) - 1)::int
+    from lookup_value lv join lookup_list ll on ll.id = lv.list_id
+    where ll.code = 'image_slot' and lv.status = 'active'
+      and (lv.parent_value_id is null or lv.parent_value_id = ${productTypeId}::uuid)
+    on conflict (colourway_id, slot_id) do nothing
+  `);
 }
 
 export interface AssignOutcome {

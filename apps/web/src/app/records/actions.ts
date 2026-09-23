@@ -1423,7 +1423,7 @@ async function recomposeName(
   const [d] = await db.execute<Record<string, string | null>>(sql`
     select
       (
-        select string_agg(dv.label, char(31) order by dv.sort_order, dv.label)
+        select string_agg(dv.label, chr(31) order by dv.sort_order, dv.label)
         from design_descriptor dd
         join lookup_value dv on dv.id = dd.descriptor_id
         where dd.design_id = d.id

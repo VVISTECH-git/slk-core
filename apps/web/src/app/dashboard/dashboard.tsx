@@ -220,7 +220,9 @@ export function Dashboard({ rows }: { rows: BaleHeatmapRow[] }) {
                       {pageRows.map((r) => (
                         <tr key={r.baleId} className="border-b border-rule last:border-b-0 hover:bg-surface-2">
                           <td className="px-4 py-2">
-                            <div className="font-medium text-ink">{r.baleCode}</div>
+                            <div className="font-medium text-ink">
+                              {r.baleCode} <span className="font-normal text-ink-2">· {r.baleType}</span>
+                            </div>
                             <div className="text-[11px] text-muted">
                               {r.thaanCount} Thaan{r.thaanCount === 1 ? "" : "s"}
                             </div>

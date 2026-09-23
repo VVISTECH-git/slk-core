@@ -135,6 +135,8 @@ export async function loadBaleCuttingHistory(baleId: string): Promise<BaleCuttin
 export type BaleHeatmapRow = {
   baleId: string;
   baleCode: string;
+  /** "Sarees", "Fabric"... — what the bale is cut into. */
+  baleType: string;
   cuttingComplete: boolean;
   thaanCount: number;
   /** "Not started", each of `STAGES`, or "Finished" — however many thaans currently sit there. */
@@ -153,10 +155,11 @@ export async function loadBaleStageHeatmap(): Promise<BaleHeatmapRow[]> {
   const bales = await db.execute<{
     id: string;
     code: string;
+    type: string;
     status: string;
     needsSecondPrint: boolean;
   }>(sql`
-    select id, code, status, needs_second_print as "needsSecondPrint"
+    select id, code, type, status, needs_second_print as "needsSecondPrint"
     from bale
     order by bill_entry_date desc, code desc
   `);
@@ -202,6 +205,7 @@ export async function loadBaleStageHeatmap(): Promise<BaleHeatmapRow[]> {
     return {
       baleId: b.id,
       baleCode: b.code,
+      baleType: b.type,
       cuttingComplete: b.status === "cut",
       thaanCount: Object.values(buckets).reduce((sum, n) => sum + n, 0),
       buckets,

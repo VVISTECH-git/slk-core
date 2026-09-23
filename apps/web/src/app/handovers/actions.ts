@@ -335,7 +335,7 @@ export async function receiveBatch(thaanIds: string[], records: ReceiveRecord[] 
         const made = await createPipelineRecordInTx(tx, { ...spec.newRecord, thaanIds: ids }, stage, actorId);
         if (!made.ok) throw new Refused(made.message);
         colourwayId = made.id;
-        code = made.code;
+        code = `${made.code} (product ${made.productCode})`;
       } else {
         const [r] = await tx.execute<{ code: string }>(sql`
           select d.code from colourway cw join design d on d.id = cw.design_id where cw.id = ${colourwayId}

@@ -183,7 +183,7 @@ export async function createPipelineRecordInTx(
   spec: NewPipelineRecord,
   stage: string,
   actorId: string | null,
-): Promise<{ ok: true; id: string; code: string; name: string } | { ok: false; message: string }> {
+): Promise<{ ok: true; id: string; code: string; name: string; productCode: string } | { ok: false; message: string }> {
   if (spec.thaanIds.length === 0) return { ok: false, message: "No Thaans to make a record from." };
   if (!isPipelineStage(stage)) return { ok: false, message: `Records are made at Print — not at ${stage}.` };
 
@@ -214,7 +214,8 @@ export async function createPipelineRecordInTx(
     actorId,
   });
   await wantDefaultPhotos(tx, made.id, attributes.productType ?? attributes.homeProductType ?? null);
-  return { ok: true, id: made.id, code: made.code, name: made.name };
+  const batch = await openProductionBatchInTx(tx, made.id, spec.thaanIds.length, `Opened at ${stage} — nothing on a shelf yet.`);
+  return { ok: true, id: made.id, code: made.code, name: made.name, productCode: batch.code };
 }
 
 /**
@@ -234,6 +235,63 @@ export async function wantDefaultPhotos(ex: Executor, colourwayId: string, produ
   `);
 }
 
+/** The external location production stock comes from — where a consignment sits until it reaches a shelf. */
+async function productionLocation(ex: Executor): Promise<string> {
+  const [row] = await rows<{ id: string }>(ex, sql`
+    select id from location where code = 'PRODUCTION'
+    union all
+    select id from location where not is_internal and code <> 'PRODUCTION'
+    limit 1
+  `);
+  if (row === undefined) throw new Error("No external location is set up to receive stock from.");
+  return row.id;
+}
+
+/**
+ * A record made at the door gets its product code there and then: one
+ * consignment, opened at Production with the Thaans that went in, so the
+ * code exists from the first day and the shelf step only says where it
+ * landed. Until then it holds no pieces and appears in no stock count.
+ */
+export async function openProductionBatchInTx(
+  tx: Executor,
+  colourwayId: string,
+  qty: number,
+  note: string,
+): Promise<{ id: string; code: string }> {
+  const source = await productionLocation(tx);
+  const [batch] = await rows<{ id: string; code: string }>(tx, sql`
+    insert into batch (colourway_id, code, qty, location_id, reference, note)
+    values (${colourwayId}, nextval('product_code_seq')::text, ${qty}, ${source}, null, ${note})
+    returning id, code
+  `);
+  if (batch === undefined) throw new Error("Could not open a consignment.");
+  return batch;
+}
+
+/** The record's consignment still at Production — no pieces yet — if it has one. */
+async function openProductionBatch(ex: Executor, colourwayId: string): Promise<{ id: string; code: string } | null> {
+  const [row] = await rows<{ id: string; code: string }>(ex, sql`
+    select b.id, b.code from batch b
+    join location l on l.id = b.location_id
+    where b.colourway_id = ${colourwayId} and l.code = 'PRODUCTION'
+      and not exists (select 1 from piece p where p.batch_id = b.id)
+    order by b.received_at desc limit 1
+  `);
+  return row ?? null;
+}
+
+/** Keeps the production consignment's count equal to the Thaans not yet shelved, as they are sorted in and out. */
+async function syncProductionBatch(ex: Executor, colourwayId: string): Promise<void> {
+  const open = await openProductionBatch(ex, colourwayId);
+  if (open === null) return;
+  await ex.execute(sql`
+    update batch set qty = (
+      select count(*)::int from thaan t where t.colourway_id = ${colourwayId} and t.voided_at is null and t.piece_id is null
+    ) where id = ${open.id}
+  `);
+}
+
 export interface AssignOutcome {
   added: number;
   moved: number;
@@ -249,6 +307,7 @@ export interface AssignOutcome {
  */
 export async function assignThaansToRecordInTx(tx: Executor, colourwayId: string, thaanIds: string[]): Promise<AssignOutcome> {
   const out: AssignOutcome = { added: 0, moved: 0, refused: [] };
+  const touched = new Set<string>([colourwayId]);
 
   for (const thaanId of thaanIds) {
     const [t] = await rows<{ code: string | null; voided: boolean; printed: boolean; shelved: boolean; colourwayId: string | null }>(tx, sql`
@@ -272,8 +331,12 @@ export async function assignThaansToRecordInTx(tx: Executor, colourwayId: string
 
     await tx.execute(sql`update thaan set colourway_id = ${colourwayId}, updated_at = now() where id = ${thaanId}`);
     if (t.colourwayId === null) out.added++;
-    else out.moved++;
+    else {
+      out.moved++;
+      touched.add(t.colourwayId);
+    }
   }
+  for (const id of touched) await syncProductionBatch(tx, id);
   return out;
 }
 
@@ -606,20 +669,26 @@ export async function shelveInTx(
   note: string,
   actorId: string | null,
 ): Promise<{ productCode: string; pieceCodes: string[] }> {
-  const [source] = await rows<{ id: string }>(tx, sql`
-    select id from location where code = 'PRODUCTION'
-    union all
-    select id from location where not is_internal and code <> 'PRODUCTION'
-    limit 1
-  `);
-  if (source === undefined) throw new Error("No external location is set up to receive stock from.");
+  const sourceId = await productionLocation(tx);
 
-  const [batch] = await rows<{ id: string; code: string }>(tx, sql`
-    insert into batch (colourway_id, code, qty, location_id, reference, note)
-    values (${colourwayId}, nextval('product_code_seq')::text, ${thaans.length}, ${locationId}, null, ${note})
-    returning id, code
-  `);
-  if (batch === undefined) throw new Error("Could not open a consignment.");
+  // The consignment opened with the record lands here, keeping the product
+  // code it has carried since Print. A record whose first consignment has
+  // already landed gets another for the Thaans that finished later.
+  let batch = await openProductionBatch(tx, colourwayId);
+  if (batch !== null) {
+    await tx.execute(sql`
+      update batch set location_id = ${locationId}, qty = ${thaans.length}, received_at = now(), note = ${note}
+      where id = ${batch.id}
+    `);
+  } else {
+    const [made] = await rows<{ id: string; code: string }>(tx, sql`
+      insert into batch (colourway_id, code, qty, location_id, reference, note)
+      values (${colourwayId}, nextval('product_code_seq')::text, ${thaans.length}, ${locationId}, null, ${note})
+      returning id, code
+    `);
+    if (made === undefined) throw new Error("Could not open a consignment.");
+    batch = made;
+  }
 
   const pieceCodes: string[] = [];
   if (pieceTracked) {
@@ -642,7 +711,7 @@ export async function shelveInTx(
 
   await tx.execute(sql`
     insert into movement (colourway_id, batch_id, qty, kind, from_location_id, to_location_id, occurred_at, reason, actor_id)
-    values (${colourwayId}, ${batch.id}, ${thaans.length}, 'received', ${source.id}, ${locationId}, now(), ${note}, ${actorId})
+    values (${colourwayId}, ${batch.id}, ${thaans.length}, 'received', ${sourceId}, ${locationId}, now(), ${note}, ${actorId})
   `);
 
   return { productCode: batch.code, pieceCodes };

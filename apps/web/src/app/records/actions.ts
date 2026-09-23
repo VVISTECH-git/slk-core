@@ -1081,6 +1081,20 @@ export async function applyDesignPatch(
       update design set ${sql.join(assignments, sql`, `)}, updated_at = now() where id = ${cw.designId}
     `);
   }
+  // A record made at the door may have had no product type; once one is
+  // filled in, whether it is counted in pieces or metres follows from it,
+  // the same way it would at creation.
+  if (attributes.productType !== undefined || attributes.homeProductType !== undefined || attributes.garmentType !== undefined) {
+    const [d] = await db.execute<{ productTypeId: string | null; garmentTypeId: string | null }>(sql`
+      select coalesce(product_type_id, home_product_type_id) as "productTypeId", garment_type_id as "garmentTypeId"
+      from design where id = ${cw.designId}
+    `);
+    if (d !== undefined) {
+      const serialised = await isSerialised(d.productTypeId);
+      const uomId = await resolveUom(d.productTypeId, d.garmentTypeId);
+      await db.execute(sql`update design set is_serialised = ${serialised}, uom_id = ${uomId} where id = ${cw.designId}`);
+    }
+  }
   const colourSets: SQL[] = [];
   if (colours.colourId !== undefined) colourSets.push(sql`colour_id = ${colours.colourId}`);
   if (colours.secondaryColourId !== undefined) colourSets.push(sql`secondary_colour_id = ${colours.secondaryColourId}`);

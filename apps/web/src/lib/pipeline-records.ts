@@ -173,8 +173,10 @@ export interface NewPipelineRecord {
  * Makes the draft record for a group of Thaans, inside `tx` — the receive
  * that closes their handovers calls this in the same transaction, so a
  * record can never exist without the receive that made it having happened.
- * Refused when the cloth item never said what fibre it is: the design code
- * is composed from the fibre and is permanent, so it can't be guessed.
+ * A cloth item that never said its fibre or product type doesn't stop the
+ * record: the door must not be blocked by master data, so the record is
+ * made with what is known and asks for the rest ("Needs fibre") until
+ * someone fills it in.
  */
 export async function createPipelineRecordInTx(
   tx: Executor,
@@ -187,12 +189,6 @@ export async function createPipelineRecordInTx(
 
   const inherited = await inheritedFromThaans(tx, spec.thaanIds);
   const attributes: Partial<Record<AttributeKey, string | null>> = { ...inherited.attributes };
-  if (!attributes.fibreType) {
-    return { ok: false, message: "Set the fibre on the bale's cloth item first — the record's code is made from it." };
-  }
-  if (!attributes.productType && !attributes.homeProductType) {
-    return { ok: false, message: "The bale's type doesn't match a product type — check it on the bale." };
-  }
 
   const colour = await activeMember(tx, spec.colourId, "colour");
   if (colour === null) return { ok: false, message: "That colour is not on the list." };

@@ -24,6 +24,14 @@ export interface ActionResult {
 }
 
 /**
+ * A refusal raised inside the receive transaction — "set the fibre on the
+ * cloth item first" — so the whole receive rolls back and the reason reaches
+ * the person at the door, rather than being logged as a crash and shown as
+ * "something went wrong".
+ */
+class Refused extends Error {}
+
+/**
  * Every scan calls this first — the same check `sendBatch` re-runs at
  * commit time, just early enough to tell the reader right away rather than
  * after they've scanned another twenty.
@@ -212,7 +220,9 @@ export async function receiveBatch(thaanIds: string[], records: ReceiveRecord[] 
 
   const actorId = await actingId();
 
-  const result = await db.transaction(async (tx) => {
+  let result: { received: number; billed: string[]; needsPricing: string[]; sorted: string[]; unsorted: string[] };
+  try {
+    result = await db.transaction(async (tx) => {
     const closed: { id: string; stage: string; vendorId: string | null }[] = [];
     // The stage each Thaan is coming back from (the last of a combined trip)
     // — only Print onward may be sorted into a record.
@@ -323,14 +333,14 @@ export async function receiveBatch(thaanIds: string[], records: ReceiveRecord[] 
       if (colourwayId === null) {
         if (spec.newRecord === null) continue;
         const made = await createPipelineRecordInTx(tx, { ...spec.newRecord, thaanIds: ids }, stage, actorId);
-        if (!made.ok) throw new Error(made.message);
+        if (!made.ok) throw new Refused(made.message);
         colourwayId = made.id;
         code = made.code;
       } else {
         const [r] = await tx.execute<{ code: string }>(sql`
           select d.code from colourway cw join design d on d.id = cw.design_id where cw.id = ${colourwayId}
         `);
-        if (r === undefined) throw new Error("That record no longer exists.");
+        if (r === undefined) throw new Refused("That record no longer exists.");
         code = r.code;
       }
       const outcome = await assignThaansToRecordInTx(tx, colourwayId, ids);
@@ -340,7 +350,11 @@ export async function receiveBatch(thaanIds: string[], records: ReceiveRecord[] 
     }
 
     return { received: closed.length, billed, needsPricing, sorted, unsorted };
-  });
+    });
+  } catch (e) {
+    if (e instanceof Refused) return { ok: false, message: e.message };
+    throw e;
+  }
 
   revalidatePath("/handovers");
   revalidatePath("/vendors");

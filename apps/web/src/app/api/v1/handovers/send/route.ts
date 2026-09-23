@@ -2,6 +2,13 @@ import { sendBatch } from "@/app/handovers/actions";
 import { ApiError, body, guardedJobRole } from "@/lib/api";
 
 /**
+ * A lorry-load in one tap: one transaction, a few queries per Thaan, so a
+ * batch of a few hundred needs longer than the platform's default window.
+ * Cut short, the whole receive rolls back and the phone shows an error.
+ */
+export const maxDuration = 300;
+
+/**
  * Sends a scanned batch off for one stage, to one vendor (or in-house) —
  * wraps the same action the web Send screen's confirm button calls. No
  * idempotency key: re-checked per Thaan inside the insert itself (see

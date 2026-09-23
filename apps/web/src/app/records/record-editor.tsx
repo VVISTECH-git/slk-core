@@ -2169,7 +2169,7 @@ export function RecordEditor({
           {showTab("production") && record !== null && record.pipeline.thaanCount > 0 && (
             <>
               {singlePage && sectionHeading("production")}
-              <ProductionTab colourwayId={record.id} pipeline={record.pipeline} onChanged={onPhotoChanged} />
+              <ProductionTab colourwayId={record.id} recordCode={record.code} pipeline={record.pipeline} onChanged={onPhotoChanged} />
             </>
           )}
 

@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
 import { db } from "@/lib/db";
+import { cascadeItemFacts, itemFacts } from "@/lib/pipeline-records";
 import { guard } from "@/lib/session";
 
 export interface ActionResult {
@@ -238,6 +239,9 @@ export async function updateClothItem(
     return { ok: false, message: `"${clash.name}" is already on the list.` };
   }
 
+  // What the item said before, so records that inherited it can follow the change.
+  const before = await itemFacts(db, itemId);
+
   const [row] = await db.execute<{ name: string }>(sql`
     update cloth_item
     set name = ${it.name},
@@ -269,7 +273,12 @@ export async function updateClothItem(
     return { ok: false, message: "That item no longer exists." };
   }
 
+  // Records already made from this item's Thaans follow what changed.
+  const caughtUp = await cascadeItemFacts(db, itemId, before);
+  if (caughtUp.length > 0) revalidatePath("/records");
+
   revalidate();
 
-  return { ok: true, message: `${row.name} updated.` };
+  const suffix = caughtUp.length === 0 ? "" : ` Updated ${caughtUp.length === 1 ? "record" : "records"} ${caughtUp.join(", ")} to match.`;
+  return { ok: true, message: `${row.name} updated.${suffix}` };
 }

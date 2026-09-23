@@ -13,7 +13,7 @@ import {
   stageAt,
   type PipelineSummary,
 } from "@/lib/pipeline-fields";
-import { insertDesignWithColourway, type Executor } from "@/lib/record-write";
+import { insertDesignWithColourway, recomposeDesignName, type Executor } from "@/lib/record-write";
 import { STAGES, type Stage } from "@/lib/stages";
 
 /**
@@ -64,6 +64,73 @@ async function activeMember(ex: Executor, id: string, list: string): Promise<{ i
 
 // ---------------------------------------------------------------------------
 // What the cloth item already fixed
+
+/** design column → cloth_item column, for every fact a record inherits from its item. */
+const ITEM_FACTS: [design: string, item: string][] = [
+  ["fibre_type_id", "fibre_type_id"],
+  ["weave_structure_id", "weave_structure_id"],
+  ["textile_material_id", "textile_material_id"],
+  ["production_method_id", "production_method_id"],
+  ["audience_type_id", "audience_id"],
+  ["craft_technique_id", "craft_technique_id"],
+  ["craft_sub_type_id", "craft_sub_type_id"],
+  ["border_style_id", "border_style_id"],
+  ["border_height_id", "border_height_id"],
+  ["blouse_style_id", "blouse_style_id"],
+  ["blouse_material_id", "blouse_material_id"],
+];
+
+/** The item's inherited facts as they stand — read before an edit so the cascade knows what changed. */
+export async function itemFacts(ex: Executor, itemId: string): Promise<Record<string, string | null> | null> {
+  const [row] = await rows<Record<string, string | null>>(ex, sql`
+    select ${sql.join(ITEM_FACTS.map(([, item]) => sql.identifier(item)), sql`, `)}
+    from cloth_item where id = ${itemId}
+  `);
+  return row ?? null;
+}
+
+/**
+ * A cloth item edited after its Thaans already made records: the records
+ * follow. For every fact a record inherits from its item — fibre, weave,
+ * material, method, audience, craft, craft sub type, border, blouse — each
+ * design whose Thaans came from this item's bales is brought in line when
+ * its value is blank or still the one it inherited (`before`). A value
+ * someone chose on the record itself is left alone, and clearing a fact on
+ * the item clears nothing on a record. Composed names are rebuilt to match.
+ * Returns the codes of the records that changed.
+ */
+export async function cascadeItemFacts(
+  ex: Executor,
+  itemId: string,
+  before: Record<string, string | null> | null,
+): Promise<string[]> {
+  const follows = (design: string, item: string): SQL => {
+    const was = before?.[item] ?? null;
+    return sql`case
+      when i.${sql.identifier(item)} is null then d.${sql.identifier(design)}
+      when d.${sql.identifier(design)} is null or d.${sql.identifier(design)} is not distinct from ${was} then i.${sql.identifier(item)}
+      else d.${sql.identifier(design)}
+    end`;
+  };
+  const sets = ITEM_FACTS.map(([design, item]) => sql`${sql.identifier(design)} = ${follows(design, item)}`);
+  const moved = ITEM_FACTS.map(([design, item]) => sql`(${follows(design, item)}) is distinct from d.${sql.identifier(design)}`);
+
+  const changed = await rows<{ id: string; code: string; nameIsCustom: boolean }>(ex, sql`
+    update design d set ${sql.join(sets, sql`, `)}, updated_at = now()
+    from cloth_item i
+    where i.id = ${itemId}
+      and d.id in (
+        select cw.design_id from thaan t
+        join bale b on b.id = t.bale_id
+        join colourway cw on cw.id = t.colourway_id
+        where b.item_id = i.id and t.voided_at is null
+      )
+      and (${sql.join(moved, sql` or `)})
+    returning d.id, d.code, d.name_is_custom as "nameIsCustom"
+  `);
+  for (const d of changed) await recomposeDesignName(ex, d.id, d.nameIsCustom);
+  return changed.map((d) => d.code);
+}
 
 /**
  * The facts a record inherits from the cloth item of the bale most of the
@@ -561,6 +628,10 @@ export interface RecordShelf {
   prices: { cost: string; making: string; wholesale: string; retail: string; mrp: string };
   /** Where stock can be put — every active location we own. */
   locations: { id: string; name: string; code: string }[];
+  /** The product code of the consignment opened at Print, still at Production; null once it has landed, or for a record made before codes were minted there. */
+  productCode: string | null;
+  /** The bales the Thaans were cut from, most Thaans first. */
+  bales: { id: string; code: string; count: number }[];
   /** What the record still needs before it can be filed — blocks the shelf. */
   needs: string[];
   /** Short reasons this record can't go on the shelf yet; empty means it can. */
@@ -614,6 +685,14 @@ export async function loadRecordShelf(colourwayId: string): Promise<RecordShelf 
     select id, name, code from location where is_active and is_internal order by name
   `);
   const summary = await loadPipelineSummary(colourwayId);
+  const open = await openProductionBatch(db, colourwayId);
+  const bales = await rows<{ id: string; code: string; count: number }>(db, sql`
+    select b.id, b.code, count(*)::int as count
+    from thaan t join bale b on b.id = t.bale_id
+    where t.colourway_id = ${colourwayId} and t.voided_at is null
+    group by b.id, b.code
+    order by count(*) desc, b.code
+  `);
 
   const finished = thaans.filter((t) => t.finished && !t.shelved).map(({ id, code }) => ({ id, code }));
   const shelved = thaans.filter((t) => t.shelved).map(({ id, code }) => ({ id, code }));
@@ -640,6 +719,8 @@ export async function loadRecordShelf(colourwayId: string): Promise<RecordShelf 
       mrp: rupees(record.mrp),
     },
     locations,
+    productCode: open?.code ?? null,
+    bales,
     needs: summary.needs,
     blockers,
   };

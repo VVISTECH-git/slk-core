@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState, useTransition } from "react";
 
 import { Button, Field, inputClass } from "@/components/ui";
@@ -89,10 +90,13 @@ const TH = "px-3 py-2 text-[11.5px] font-medium text-muted";
 
 export function ProductionTab({
   colourwayId,
+  recordCode,
   pipeline,
   onChanged,
 }: {
   colourwayId: string;
+  /** The design code — what Stock Records is searched by to show this record's Thaans. */
+  recordCode: string;
   /** The record's own summary — the needs chips read from it, so they refresh with the record. */
   pipeline: PipelineSummary;
   /** Something was done that changed the record: the row re-fetches it and shows the message. Never closes the editor. */
@@ -305,6 +309,33 @@ export function ProductionTab({
             <Tile label="In pipeline" value={inPipeline} />
           </div>
 
+          {/* The chain, in one line: which bales the Thaans were cut from and the product code they carry. */}
+          {shelf !== null && (shelf.bales.length > 0 || shelf.productCode !== null) && (
+            <p className="text-[12.5px] leading-relaxed text-muted">
+              {shelf.bales.length > 0 && (
+                <>
+                  From {shelf.bales.length === 1 ? "bale" : "bales"}{" "}
+                  {shelf.bales.map((b, i) => (
+                    <span key={b.id}>
+                      {i > 0 && ", "}
+                      <Link href={`/bales#bale-${b.code}`} className="font-mono text-ink underline">
+                        {b.code}
+                      </Link>{" "}
+                      ({b.count})
+                    </span>
+                  ))}
+                  .{" "}
+                </>
+              )}
+              {shelf.productCode !== null && (
+                <>
+                  Product code <span className="font-mono text-ink">{shelf.productCode}</span> — opened at Print, lands on the shelf with these
+                  Thaans.
+                </>
+              )}
+            </p>
+          )}
+
           {shelf === null || prices === null ? (
             loadError === null && <p className="text-[13px] text-muted">Loading…</p>
           ) : (
@@ -394,7 +425,15 @@ export function ProductionTab({
             Thaans <span className="font-mono text-[12px] text-muted">{thaans?.length ?? pipeline.thaanCount}</span>
           </>
         }
-        aside={live.length > 0 ? <span className="ml-auto text-[12px] text-muted">{ticked.size} ticked</span> : undefined}
+        aside={
+          <span className="ml-auto flex items-center gap-3 text-[12px] text-muted">
+            {live.length > 0 && <span>{ticked.size} ticked</span>}
+            {/* The same Thaans, one row each with their bale, item and shelf state. */}
+            <Link href={`/thaans?q=${encodeURIComponent(recordCode)}`} className="text-accent hover:underline">
+              Open in Stock Records
+            </Link>
+          </span>
+        }
       >
         {ticked.size > 0 && (
           <div className="flex flex-col gap-2 border-b border-rule px-4 py-3">

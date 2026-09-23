@@ -26,6 +26,7 @@ import { MOVEMENT_KINDS, type MovementDraft } from "@/lib/movements";
 import {
   isSerialised as isSerialisedIn,
   labelsFor as labelsForIn,
+  recomposeDesignName,
   resolveUom as resolveUomIn,
 } from "@/lib/record-write";
 
@@ -1428,52 +1429,8 @@ async function setColour(
 }
 
 /** Rebuilds the composed name after an attribute changes. */
-async function recomposeName(
-  designId: string,
-  nameIsCustom: boolean,
-): Promise<void> {
-  if (nameIsCustom) return;
-
-  const [d] = await db.execute<Record<string, string | null>>(sql`
-    select
-      (
-        select string_agg(dv.label, chr(31) order by dv.sort_order, dv.label)
-        from design_descriptor dd
-        join lookup_value dv on dv.id = dd.descriptor_id
-        where dd.design_id = d.id
-      ) as descriptors,
-      craft.label as craft, region.label as region,
-      silk.label as silk, cotton.label as cotton, fibre.label as fibre,
-      garment.label as garment,
-      coalesce(pt.label, hpt.label) as "productType"
-    from design d
-    left join lookup_value craft      on craft.id      = d.craft_technique_id
-    left join lookup_value region     on region.id     = d.regional_style_id
-    left join lookup_value silk       on silk.id       = d.silk_sub_family_id
-    left join lookup_value cotton     on cotton.id     = d.cotton_sub_family_id
-    left join lookup_value fibre      on fibre.id      = d.fibre_type_id
-    left join lookup_value garment    on garment.id    = d.garment_type_id
-    left join lookup_value pt         on pt.id         = d.product_type_id
-    left join lookup_value hpt        on hpt.id        = d.home_product_type_id
-    where d.id = ${designId}
-  `);
-
-  if (d === undefined) return;
-
-  const name = designName({
-    // Aggregated in the query with a separator no label can contain,
-    // because a design can carry several and they compose in list order.
-    descriptors: (d["descriptors"] ?? "").split("").filter(Boolean),
-    craftTechnique: d["craft"] ?? null,
-    regionalStyle: d["region"] ?? null,
-    silkSubFamily: d["silk"] ?? null,
-    cottonSubFamily: d["cotton"] ?? null,
-    fibreType: d["fibre"] ?? null,
-    garmentType: d["garment"] ?? null,
-    productType: d["productType"] ?? null,
-  });
-
-  await db.execute(sql`update design set name = ${name} where id = ${designId}`);
+async function recomposeName(designId: string, nameIsCustom: boolean): Promise<void> {
+  await recomposeDesignName(db, designId, nameIsCustom);
 }
 
 

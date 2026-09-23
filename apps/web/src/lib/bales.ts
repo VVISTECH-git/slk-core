@@ -50,6 +50,25 @@ export type BaleRow = {
   qrGeneratedCount: number;
   /** Metres received ÷ Thaans — the spreadsheet's own "Per Thaan Mtr". Null until cut. */
   perThaanMetres: number | null;
+  /**
+   * Where the Thaans went: each Product Management record they were sorted
+   * into at Print, with the product code its consignment carries and how
+   * many of this bale's Thaans are in it. Empty until the first receive
+   * from Print. One bale can feed several records (different colours) and
+   * one record can draw on several bales.
+   */
+  records: BaleRecordLink[];
+};
+
+export type BaleRecordLink = {
+  colourwayId: string;
+  /** The design code — SAR-GEN-COT-0002. */
+  code: string;
+  name: string;
+  /** The newest consignment's product code; null only for a record made before codes were minted at Print. */
+  productCode: string | null;
+  /** This bale's Thaans in that record, voided ones aside. */
+  count: number;
 };
 
 export async function loadBales(): Promise<BaleRow[]> {
@@ -85,7 +104,8 @@ export async function loadBales(): Promise<BaleRow[]> {
       case when coalesce(t.thaan_count, 0) > 0
         then round(b.metres_received / t.thaan_count, 2)
         else null
-      end::double precision                          as "perThaanMetres"
+      end::double precision                          as "perThaanMetres",
+      coalesce(r.records, '[]'::json)                as "records"
     from bale b
     join supplier s on s.id = b.supplier_id
     join cloth_item i on i.id = b.item_id
@@ -102,6 +122,23 @@ export async function loadBales(): Promise<BaleRow[]> {
       left join actor qr_by on qr_by.id = th.qr_generated_by_id
       group by th.bale_id
     ) t on t.bale_id = b.id
+    -- The records this bale's Thaans were sorted into, newest consignment's
+    -- product code beside each. json so the row stays one row per bale.
+    left join lateral (
+      select json_agg(json_build_object(
+        'colourwayId', x.colourway_id, 'code', x.code, 'name', x.name,
+        'productCode', x.product_code, 'count', x.n
+      ) order by x.code) as records
+      from (
+        select cw.id as colourway_id, d.code, d.name, count(*)::int as n,
+          (select bt.code from batch bt where bt.colourway_id = cw.id order by bt.received_at desc, bt.code desc limit 1) as product_code
+        from thaan th
+        join colourway cw on cw.id = th.colourway_id
+        join design d on d.id = cw.design_id
+        where th.bale_id = b.id and th.voided_at is null
+        group by cw.id, d.code, d.name
+      ) x
+    ) r on true
     order by b.bill_entry_date desc, b.code desc
   `);
 }

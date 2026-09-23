@@ -80,6 +80,7 @@ const COLUMNS = [
   { key: "invoiceAmount", label: "Bill Amount", width: 120 },
   { key: "status", label: "Status", width: 210 },
   { key: "thaans", label: "Thaans", width: 150 },
+  { key: "records", label: "Records", width: 260 },
   { key: "notes", label: "Remarks", width: 180 },
 ] as const;
 
@@ -127,6 +128,8 @@ function cellText(row: BaleRow, key: ColumnKey): string {
       return STATUS_LABEL[row.status];
     case "thaans":
       return String(row.thaanCount);
+    case "records":
+      return row.records.map((r) => r.code).join(", ");
     case "notes":
       return row.notes ?? "";
   }
@@ -140,6 +143,8 @@ function sortValue(row: BaleRow, key: ColumnKey): string | number {
       return row.baleCount;
     case "thaans":
       return row.thaanCount;
+    case "records":
+      return row.records.length;
     case "perThaanMetres":
       return row.perThaanMetres ?? -1;
     case "invoiceAmount":
@@ -406,6 +411,7 @@ export function Bales({
                   pageRows.map((r) => (
                     <tr
                       key={r.id}
+                      id={`bale-${r.code}`}
                       onClick={() => setEditing(r)}
                       className="h-11 cursor-pointer border-b border-rule last:border-b-0 hover:bg-surface-2"
                     >
@@ -440,6 +446,35 @@ export function Bales({
                               >
                                 {STATUS_LABEL[r.status]}
                               </span>
+                            </Cell>
+                          );
+                        }
+
+                        if (c.key === "records") {
+                          // Bale → record → product code, each a link; the
+                          // bale's own rows in Stock Records are one more.
+                          return (
+                            <Cell key={c.key} title={r.records.map((x) => `${x.code} ${x.name}`).join("; ")}>
+                              {r.records.length === 0 ? (
+                                "—"
+                              ) : (
+                                <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                  {r.records.map((x) => (
+                                    <span key={x.colourwayId} className="whitespace-nowrap">
+                                      <Link href={`/records?q=${encodeURIComponent(x.code)}`} className="font-mono text-brick underline">
+                                        {x.code}
+                                      </Link>
+                                      {x.productCode !== null && (
+                                        <span className="font-mono text-muted"> · {x.productCode}</span>
+                                      )}
+                                      <span className="text-muted"> ({x.count})</span>
+                                    </span>
+                                  ))}
+                                  <Link href={`/thaans?q=${encodeURIComponent(r.code)}`} className="text-[11.5px] text-muted underline">
+                                    Stock Records
+                                  </Link>
+                                </span>
+                              )}
                             </Cell>
                           );
                         }

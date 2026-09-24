@@ -1,5 +1,6 @@
 import { requirePage } from "@/lib/session";
 import {
+  THAAN_LIMIT,
   loadThaanLocations,
   loadThaanPage,
   type ThaanQuery,
@@ -28,21 +29,25 @@ const STATUSES: readonly NonNullable<ThaanQuery["status"]>[] = [
 export default async function ThaansPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; location?: string; baleType?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; location?: string; baleType?: string; page?: string; per?: string }>;
 }) {
   await requirePage();
 
   const params = await searchParams;
   const status = STATUSES.find((s) => s === params.status) ?? "all";
 
-  const initial: Required<ThaanQuery> = {
+  const asked: Required<ThaanQuery> = {
     q: (params.q ?? "").trim(),
     status,
     location: (params.location ?? "").trim(),
     baleType: (params.baleType ?? "").trim(),
+    page: Number.parseInt(params.page ?? "1", 10) || 1,
+    perPage: Number.parseInt(params.per ?? "", 10) || THAAN_LIMIT,
   };
 
-  const [page, locations] = await Promise.all([loadThaanPage(initial), loadThaanLocations()]);
+  const [page, locations] = await Promise.all([loadThaanPage(asked), loadThaanLocations()]);
+  // What the server actually did — a page past the end comes back clamped.
+  const initial: Required<ThaanQuery> = { ...asked, page: page.page, perPage: page.perPage };
 
   return <Thaans page={page} locations={locations} initial={initial} />;
 }

@@ -24,6 +24,7 @@ import {
   useColumnWidths,
   useVisibleColumns,
 } from "@/lib/column-widths";
+import { THAAN_LIMIT } from "@/lib/thaan-paging";
 import type { ThaanPage, ThaanQuery, ThaanRow } from "@/lib/thaans";
 import { BALE_TYPES } from "@/app/bales/constants";
 
@@ -252,12 +253,17 @@ export function Thaans({
   const [status, setStatus] = useState<Status>(initial.status);
   const [location, setLocation] = useState(initial.location);
   const [baleType, setBaleType] = useState(initial.baleType);
+  /** The page asked for; the server clamps it and `initial.page` says where we ended up. */
+  const [page, setPage] = useState(initial.page);
 
   /*
     Typing waits a beat before asking the server; the dropdowns go through
     the same door so there is one door. A barcode scanner types a whole code
     in a few milliseconds and then presses Enter, well inside the delay.
   */
+  const { preferences } = usePreferences();
+  const PER_PAGE = preferences.pageSize;
+
   useEffect(() => {
     const wanted = new URLSearchParams();
     const q = query.trim();
@@ -265,12 +271,20 @@ export function Thaans({
     if (status !== "all") wanted.set("status", status);
     if (location !== "") wanted.set("location", location);
     if (baleType !== "") wanted.set("baleType", baleType);
+    // Never ask for a page past the end: the server would clamp it and the
+    // URL would disagree with the page shown, forever.
+    const lastPage = Math.max(1, Math.ceil(served.total / served.perPage));
+    const wantPage = Math.min(page, lastPage);
+    if (wantPage > 1) wanted.set("page", String(wantPage));
+    if (PER_PAGE !== THAAN_LIMIT) wanted.set("per", String(PER_PAGE));
 
     const current = new URLSearchParams();
     if (initial.q !== "") current.set("q", initial.q);
     if (initial.status !== "all") current.set("status", initial.status);
     if (initial.location !== "") current.set("location", initial.location);
     if (initial.baleType !== "") current.set("baleType", initial.baleType);
+    if (initial.page > 1) current.set("page", String(initial.page));
+    if (initial.perPage !== THAAN_LIMIT) current.set("per", String(initial.perPage));
 
     if (wanted.toString() === current.toString()) return;
 
@@ -282,16 +296,12 @@ export function Thaans({
     }, 250);
 
     return () => clearTimeout(timer);
-  }, [query, status, location, baleType, initial, pathname, router]);
+  }, [query, status, location, baleType, page, PER_PAGE, served.total, served.perPage, initial, pathname, router]);
 
   const [filters, setFilters] = useState<Filters<ColumnKey>>({});
   const [sort, setSort] = useState<{ key: ColumnKey; dir: 1 | -1 } | null>(null);
-  const [page, setPage] = useState(1);
   const [voiding, setVoiding] = useState<ThaanRow | null>(null);
   const [flagging, setFlagging] = useState<ThaanRow | null>(null);
-
-  const { preferences } = usePreferences();
-  const PER_PAGE = preferences.pageSize;
 
   const {
     visible,
@@ -340,8 +350,6 @@ export function Thaans({
     return out;
   }, [rows, filters, sort]);
 
-  /** Whether the server had more matches than it sent. */
-  const truncated = served.total > rows.length;
 
   /** No search, no dropdowns, and still nothing: no Thaans at all. */
   const nothingAtAll =
@@ -351,10 +359,9 @@ export function Thaans({
     initial.baleType === "" &&
     served.total === 0;
 
-  const pages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
-  const current = Math.min(page, pages);
-  const from = (current - 1) * PER_PAGE;
-  const pageRows = filtered.slice(from, from + PER_PAGE);
+  // Paging is the server's: this is one page, and the column filters and
+  // the sort work within it.
+  const pageRows = filtered;
 
   /** Distinct values actually present, so a filter can never return nothing. */
   const valuesFor = (key: ColumnKey): string[] =>
@@ -446,6 +453,7 @@ export function Thaans({
           onChange={(e) => {
             setQuery(e.target.value);
             setPage(1);
+            setPage(1);
           }}
           placeholder="Scan or type a code…"
           aria-label="Search Thaans"
@@ -463,11 +471,9 @@ export function Thaans({
           filters={filters}
           onChange={(key, values) => {
             setFilters((prev) => ({ ...prev, [key]: values }));
-            setPage(1);
           }}
           onClearAll={() => {
             setFilters({});
-            setPage(1);
           }}
         />
 
@@ -508,13 +514,7 @@ export function Thaans({
             {!pending && location && ` at ${location}`}
             {!pending && baleType && ` · ${baleType}`}
             {!pending && initial.q !== "" && ` matching “${initial.q}”`}
-            {!pending && truncated && (
-              <>
-                {" — showing the newest "}
-                {rows.length.toLocaleString("en-IN")}
-                {". Type a code or a word to find any Thaan."}
-              </>
-            )}
+            {!pending && served.total > served.perPage && " — newest first. Type a code or a word to find any Thaan."}
           </span>
         </div>
 
@@ -728,7 +728,7 @@ export function Thaans({
           </table>
         </div>
 
-        <Pager total={filtered.length} page={current} perPage={PER_PAGE} onPage={setPage} />
+        <Pager total={served.total} page={initial.page} perPage={initial.perPage} onPage={setPage} />
       </div>
 
       {voiding !== null && (

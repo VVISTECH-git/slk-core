@@ -278,17 +278,25 @@ export interface ThaanQuery {
   location?: string;
   /** "Sarees", "Fabric"... — the bale's type. */
   baleType?: string;
+  /** One-based page of the matches; 1 by default. */
+  page?: number;
+  /** Rows per page; THAAN_LIMIT by default, clamped to PER_PAGE_MIN..PER_PAGE_MAX. */
+  perPage?: number;
 }
 
 export interface ThaanPage {
   rows: ThaanRow[];
-  /** How many Thaans match, beyond the page fetched. */
+  /** How many Thaans match, across every page. */
   total: number;
-  limit: number;
+  /** The page served, one-based, already clamped to the last page. */
+  page: number;
+  /** Rows per page the server used. */
+  perPage: number;
 }
 
-/** How many rows a visit fetches — the search goes to the database, so a code finds its row wherever it is. */
-export const THAAN_LIMIT = 100;
+import { PER_PAGE_MAX, PER_PAGE_MIN, THAAN_LIMIT } from "@/lib/thaan-paging";
+
+export { THAAN_LIMIT } from "@/lib/thaan-paging";
 
 function like(term: string): string {
   return `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -301,6 +309,8 @@ function like(term: string): string {
  */
 export async function loadThaanPage(query: ThaanQuery = {}): Promise<ThaanPage> {
   const q = (query.q ?? "").trim();
+  const perPage = Math.min(PER_PAGE_MAX, Math.max(PER_PAGE_MIN, Math.floor(query.perPage ?? THAAN_LIMIT) || THAAN_LIMIT));
+  const wantedPage = Math.max(1, Math.floor(query.page ?? 1) || 1);
   const status = query.status ?? "all";
   const location = (query.location ?? "").trim();
   const baleType = (query.baleType ?? "").trim();
@@ -329,21 +339,26 @@ export async function loadThaanPage(query: ThaanQuery = {}): Promise<ThaanPage> 
   if (baleType !== "") conditions.push(sql`b.type = ${baleType}`);
   const where = sql.join(conditions, sql` and `);
 
-  const [rows, counts] = await Promise.all([
-    db.execute<ThaanRaw>(sql`
-      select ${THAAN_COLUMNS}
-      ${THAAN_FROM}
-      where ${where}
-      order by t.created_at desc, t.code
-      limit ${THAAN_LIMIT}
-    `),
-    db.execute<{ total: number }>(sql`
-      select count(*)::int as total
-      ${THAAN_FROM}
-      where ${where}
-    `),
-  ]);
-  return { rows: rows.map(shapeThaan), total: counts[0]?.total ?? 0, limit: THAAN_LIMIT };
+  const [counts] = await db.execute<{ total: number }>(sql`
+    select count(*)::int as total
+    ${THAAN_FROM}
+    where ${where}
+  `);
+  const total = counts?.total ?? 0;
+  // A page past the end — a filter narrowed the list under the pager —
+  // serves the last page rather than an empty one.
+  const page = Math.min(wantedPage, Math.max(1, Math.ceil(total / perPage)));
+
+  // Newest first: codes are minted in order, so the code is the clock, and
+  // it also keeps a bale cut in one go in a stable order across pages.
+  const rows = await db.execute<ThaanRaw>(sql`
+    select ${THAAN_COLUMNS}
+    ${THAAN_FROM}
+    where ${where}
+    order by t.code desc nulls last, t.created_at desc
+    limit ${perPage} offset ${(page - 1) * perPage}
+  `);
+  return { rows: rows.map(shapeThaan), total, page, perPage };
 }
 
 /** The locations shelved Thaans are actually in — for the page's dropdown. */

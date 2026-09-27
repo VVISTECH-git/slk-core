@@ -84,7 +84,7 @@ export function ControlTower({ snap }: { snap: TowerSnapshot }) {
       <header className="flex items-end gap-[1.6vw]">
         <div className="mr-auto min-w-0">
           <p className="tracking-[0.16em] uppercase" style={{ color: C.muted, fontSize: fs.small }}>
-            Sree Lakshmi Kalamkari · Kora to Shelf
+            Sree Lakshmi Kalamkari Works - Operations Dashboard
           </p>
           <h1 className="leading-none font-semibold tracking-tight" style={{ fontSize: fs.title }}>
             Control Tower

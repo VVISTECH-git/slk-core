@@ -75,6 +75,11 @@ export function Dashboard({ rows }: { rows: BaleHeatmapRow[] }) {
   const pct = (n: number) => (totalThaans > 0 ? Math.round((n / totalThaans) * 100) : 0);
 
   const stageTotals = COLUMNS.map((c) => rows.reduce((sum, r) => sum + (r.buckets[c] ?? 0), 0));
+  // Each stage's bar in two parts: out for it now, and back and waiting to be sent for it.
+  const outTotals = COLUMNS.map((c) => rows.reduce((sum, r) => sum + (r.split[c]?.out ?? 0), 0));
+  const readyTotals = COLUMNS.map((c, i) =>
+    c === "Not started" || c === "Finished" ? stageTotals[i] ?? 0 : rows.reduce((sum, r) => sum + (r.split[c]?.ready ?? 0), 0),
+  );
 
   const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
   const current = Math.min(page, pages);
@@ -92,21 +97,46 @@ export function Dashboard({ rows }: { rows: BaleHeatmapRow[] }) {
         labels: COLUMNS,
         datasets: [
           {
-            label: "Thaans",
-            data: stageTotals,
-            backgroundColor: c.brick,
-            borderRadius: 4,
+            // Back from the stage before, in hand, not yet sent for this one.
+            label: "Ready for",
+            data: readyTotals,
+            backgroundColor: COLUMNS.map((col) => (col === "Not started" ? c.off : col === "Finished" ? c.ok : c.brick)),
+            borderColor: c.surface,
+            borderWidth: { top: 1 },
             maxBarThickness: 36,
+            stack: "stage",
+          },
+          {
+            // With the vendor (or in-house) for this stage right now.
+            label: "Out for",
+            data: outTotals,
+            backgroundColor: c.warn,
+            borderColor: c.surface,
+            borderWidth: { top: 1 },
+            maxBarThickness: 36,
+            stack: "stage",
           },
         ],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (item) => {
+                const col = COLUMNS[item.dataIndex] ?? "";
+                const n = Number(item.raw ?? 0);
+                if (col === "Not started" || col === "Finished") return `${col}: ${n}`;
+                return `${item.dataset.label} ${col}: ${n}`;
+              },
+            },
+          },
+        },
         scales: {
-          x: { ticks: { color: c.muted, autoSkip: false, maxRotation: 35, minRotation: 20 }, grid: { display: false } },
-          y: { ticks: { color: c.muted, precision: 0 }, grid: { color: c.rule } },
+          x: { stacked: true, ticks: { color: c.muted, autoSkip: false, maxRotation: 35, minRotation: 20 }, grid: { display: false } },
+          y: { stacked: true, ticks: { color: c.muted, precision: 0 }, grid: { color: c.rule } },
         },
       },
     });
@@ -159,10 +189,21 @@ export function Dashboard({ rows }: { rows: BaleHeatmapRow[] }) {
           {totalThaans > 0 && (
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.6fr_1fr]">
               <div className="rounded-lg border border-rule bg-surface p-5">
-                <h2 className="mb-3 text-[13px] font-medium text-ink-2">Thaans by current stage</h2>
-                <div className="relative h-64">
-                  <canvas ref={barRef} role="img" aria-label="Bar chart of Thaan counts by current pipeline stage" />
+                <div className="mb-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                  <h2 className="text-[13px] font-medium text-ink-2">Thaans by current stage</h2>
+                  <div className="ml-auto flex flex-wrap gap-4 text-[11.5px] text-muted">
+                    <LegendDot tone="warn" label={`Out for the stage (${outTotals.reduce((a, n) => a + n, 0)})`} />
+                    <LegendDot tone="brick" label={`Ready for the stage (${readyTotals.reduce((a, n, i) => a + (COLUMNS[i] === "Not started" || COLUMNS[i] === "Finished" ? 0 : n), 0)})`} />
+                  </div>
                 </div>
+                <div className="relative h-64">
+                  <canvas
+                    ref={barRef}
+                    role="img"
+                    aria-label="Stacked bar chart of Thaans at each pipeline stage, split into out for the stage and ready for the stage"
+                  />
+                </div>
+                <SplitTable columns={COLUMNS} out={outTotals} ready={readyTotals} />
               </div>
               <div className="rounded-lg border border-rule bg-surface p-5">
                 <h2 className="mb-3 text-[13px] font-medium text-ink-2">Thaans by status</h2>
@@ -271,6 +312,42 @@ function Tile({ tone, label, value, sub }: { tone: keyof typeof TILE_TONE; label
       <p className="text-[11px] font-medium tracking-wide uppercase opacity-80">{label}</p>
       <p className="mt-1 text-[26px] leading-none font-semibold tracking-tight tabular-nums">{value}</p>
       <p className="mt-1 text-[11.5px] opacity-80">{sub}</p>
+    </div>
+  );
+}
+
+/**
+ * The numbers behind the stacked bars, one column per stage that has any
+ * Thaans: how many are out for it, how many are back and ready to be sent
+ * for it. "Not started" and "Finished" have no split and are left out.
+ */
+function SplitTable({ columns, out, ready }: { columns: string[]; out: number[]; ready: number[] }) {
+  const shown = columns
+    .map((col, i) => ({ col, out: out[i] ?? 0, ready: ready[i] ?? 0 }))
+    .filter((c) => c.col !== "Not started" && c.col !== "Finished" && c.out + c.ready > 0);
+  if (shown.length === 0) return null;
+  return (
+    <div className="mt-4 overflow-x-auto">
+      <table className="w-full text-[12.5px] tabular-nums">
+        <thead>
+          <tr className="text-left text-muted">
+            <th className="py-1 pr-3 font-medium">Stage</th>
+            <th className="py-1 pr-3 text-right font-medium">Out for</th>
+            <th className="py-1 pr-3 text-right font-medium">Ready for</th>
+            <th className="py-1 text-right font-medium">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((c) => (
+            <tr key={c.col} className="border-t border-rule">
+              <td className="py-1.5 pr-3 text-ink">{c.col}</td>
+              <td className="py-1.5 pr-3 text-right text-ink">{c.out}</td>
+              <td className="py-1.5 pr-3 text-right text-ink">{c.ready}</td>
+              <td className="py-1.5 text-right text-muted">{c.out + c.ready}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

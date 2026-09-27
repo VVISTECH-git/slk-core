@@ -178,6 +178,13 @@ export type BaleHeatmapRow = {
   thaanCount: number;
   /** "Not started", each of `STAGES`, or "Finished" — however many thaans currently sit there. */
   buckets: Record<string, number>;
+  /**
+   * The same stage buckets split by sub status: of the Thaans at a stage,
+   * how many are out for it right now (with the vendor or in-house) and how
+   * many are back from the one before and waiting to be sent for it.
+   * Keyed by stage; "Not started" and "Finished" have no split.
+   */
+  split: Record<string, { out: number; ready: number }>;
 };
 
 /**
@@ -222,6 +229,7 @@ export async function loadBaleStageHeatmap(): Promise<BaleHeatmapRow[]> {
 
   const needsSecondPrintByBale = new Map(bales.map((b) => [b.id, b.needsSecondPrint]));
   const bucketsByBale = new Map<string, Record<string, number>>();
+  const splitByBale = new Map<string, Record<string, { out: number; ready: number }>>();
 
   for (const t of thaanRows) {
     const stages = stagesFor(needsSecondPrintByBale.get(t.baleId) ?? true);
@@ -235,6 +243,15 @@ export async function loadBaleStageHeatmap(): Promise<BaleHeatmapRow[]> {
     const counts = bucketsByBale.get(t.baleId) ?? {};
     counts[bucket] = (counts[bucket] ?? 0) + 1;
     bucketsByBale.set(t.baleId, counts);
+
+    if (bucket !== "Not started" && bucket !== "Finished") {
+      const split = splitByBale.get(t.baleId) ?? {};
+      const cell = split[bucket] ?? { out: 0, ready: 0 };
+      if (t.openStage !== null) cell.out++;
+      else cell.ready++;
+      split[bucket] = cell;
+      splitByBale.set(t.baleId, split);
+    }
   }
 
   return bales.map((b) => {
@@ -246,6 +263,7 @@ export async function loadBaleStageHeatmap(): Promise<BaleHeatmapRow[]> {
       cuttingComplete: b.status === "cut",
       thaanCount: Object.values(buckets).reduce((sum, n) => sum + n, 0),
       buckets,
+      split: splitByBale.get(b.id) ?? {},
     };
   });
 }

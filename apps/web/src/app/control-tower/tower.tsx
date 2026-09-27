@@ -398,7 +398,7 @@ function Flow({ days }: { days: TowerSnapshot["days"] }) {
   const bar = slot * 0.3;
   const y = (v: number) => base - (v / max) * (base - top);
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="h-full w-full" preserveAspectRatio="none" role="img" aria-label="Thaans sent and received per day over the last seven days">
+    <svg viewBox={`0 0 ${W} ${H}`} className="h-full w-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Thaans sent and received per day over the last seven days">
       <line x1="0" x2={W} y1={base} y2={base} stroke={C.rule} strokeWidth="2" />
       {days.map((d, i) => {
         const cx = i * slot + slot / 2;

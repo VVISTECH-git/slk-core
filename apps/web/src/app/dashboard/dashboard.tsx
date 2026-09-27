@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
   ArcElement,
@@ -174,6 +175,14 @@ export function Dashboard({ rows }: { rows: BaleHeatmapRow[] }) {
       <Header
         title="Dashboard"
         lede={`Every bale's Thaans, where they currently sit, and whether cutting is done. ${withThaans.length} of ${rows.length} bale${rows.length === 1 ? "" : "s"} have Thaans cut.`}
+        actions={
+          <Link
+            href="/floor"
+            className="rounded-lg border border-rule-2 bg-surface px-3 py-2 text-[13.5px] text-ink hover:bg-surface-2"
+          >
+            Open Floor Monitor
+          </Link>
+        }
       />
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-8 py-6">

@@ -57,6 +57,14 @@ const NAV = [
     // A Thaan's trip through the stage pipeline, tracked by scanning its
     // own QR code — kept right after Thaans since that's what a Thaan
     // becomes once it exists.
+    // The pipeline on a wall screen — big numbers, no sidebar, refreshes
+    // itself. Same job roles as may list pipeline records.
+    href: "/floor",
+    label: "Floor Monitor",
+    icon: "M2.5 4h15v10h-15z M7 17h6 M10 14v3",
+    jobRoles: ["Bale Custodian", "Handler", "Production Manager", "Operations Manager"],
+  },
+  {
     href: "/handovers",
     label: "Handovers",
     icon: "M4 6h5v5H4z M11 9h5v5h-5z M9 8.5l2 1 M6.5 6V4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1",
@@ -354,6 +362,9 @@ export function Sidebar({ actor }: { actor: SidebarActor }) {
   const daily = visible.filter((item) => !("group" in item));
   const master = visible.filter((item) => "group" in item);
   const groupOpen = groupChosen || master.some((item) => isActive(item.href));
+
+  // The floor monitor is a wall screen: the whole width is the board.
+  if (pathname === "/floor") return null;
 
   return (
     <nav

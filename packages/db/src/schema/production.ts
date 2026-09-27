@@ -787,6 +787,32 @@ export const thaanDamage = pgTable(
   ],
 );
 
+/**
+ * The operation's own turnaround standard, one row per stage: how many days
+ * a Thaan may stay out for the stage before it counts as overdue, and how
+ * many days it may wait in the warehouse, back from the stage before, before
+ * it counts as idle. The Control Tower judges every group against these.
+ * A stage with no row falls back to the defaults in lib/control-tower.ts.
+ */
+export const stageTarget = pgTable(
+  "stage_target",
+  {
+    stage: text("stage").primaryKey(),
+    outDays: numeric("out_days", { precision: 5, scale: 1 }).notNull(),
+    waitDays: numeric("wait_days", { precision: 5, scale: 1 }).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedById: uuid("updated_by_id").references(() => actor.id, { onDelete: "restrict" }),
+  },
+  (t) => [
+    check(
+      "stage_target_stage_known",
+      sql`${t.stage} in (
+        'Label Stitching', 'Salava', 'Karakkaya', 'Print', 'Second Print', 'Nellateeta', 'Udukulu', 'Ironing'
+      )`,
+    ),
+    check("stage_target_days_positive", sql`${t.outDays} > 0 and ${t.waitDays} > 0`),
+  ],
+);
 
 export type Supplier = typeof supplier.$inferSelect;
 export type ClothItem = typeof clothItem.$inferSelect;
@@ -798,3 +824,4 @@ export type VendorTransaction = typeof vendorTransaction.$inferSelect;
 export type VendorPayment = typeof vendorPayment.$inferSelect;
 export type Handover = typeof handover.$inferSelect;
 export type ThaanDamage = typeof thaanDamage.$inferSelect;
+export type StageTarget = typeof stageTarget.$inferSelect;

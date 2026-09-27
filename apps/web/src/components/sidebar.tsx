@@ -57,10 +57,11 @@ const NAV = [
     // A Thaan's trip through the stage pipeline, tracked by scanning its
     // own QR code — kept right after Thaans since that's what a Thaan
     // becomes once it exists.
-    // The pipeline on a wall screen — big numbers, no sidebar, refreshes
-    // itself. Same job roles as may list pipeline records.
-    href: "/floor",
-    label: "Floor Monitor",
+    // Every Thaan's life cycle on a wall screen, against the turnaround
+    // standard — no sidebar, refreshes itself. Same job roles as may list
+    // pipeline records.
+    href: "/control-tower",
+    label: "Control Tower",
     icon: "M2.5 4h15v10h-15z M7 17h6 M10 14v3",
     jobRoles: ["Bale Custodian", "Handler", "Production Manager", "Operations Manager"],
   },
@@ -169,6 +170,13 @@ const NAV = [
     group: "Master Data",
     label: "Channels",
     icon: "M4 6l1-3h10l1 3 M4 6h12v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6z M8 9v2a2 2 0 0 0 4 0V9",
+  },
+  {
+    // The days each stage may take before the Control Tower turns it red.
+    href: "/control-tower/standards",
+    group: "Master Data",
+    label: "Turnaround Standards",
+    icon: "M10 3a7 7 0 1 0 0 14a7 7 0 0 0 0-14z M10 6v4l3 2",
   },
   {
     // What the photograph bucket costs. Not floor work — nobody photographing
@@ -364,7 +372,7 @@ export function Sidebar({ actor }: { actor: SidebarActor }) {
   const groupOpen = groupChosen || master.some((item) => isActive(item.href));
 
   // The floor monitor is a wall screen: the whole width is the board.
-  if (pathname === "/floor") return null;
+  if (pathname === "/control-tower" || pathname === "/floor") return null;
 
   return (
     <nav

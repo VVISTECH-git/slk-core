@@ -680,6 +680,13 @@
       "when": 1790091441901,
       "tag": "0096_known_magma",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1790495663898,
+      "tag": "0097_steep_stellaris",
+      "breakpoints": true
     }
   ]
 }

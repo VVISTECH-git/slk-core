@@ -177,10 +177,10 @@ export function Dashboard({ rows }: { rows: BaleHeatmapRow[] }) {
         lede={`Every bale's Thaans, where they currently sit, and whether cutting is done. ${withThaans.length} of ${rows.length} bale${rows.length === 1 ? "" : "s"} have Thaans cut.`}
         actions={
           <Link
-            href="/floor"
+            href="/control-tower"
             className="rounded-lg border border-rule-2 bg-surface px-3 py-2 text-[13.5px] text-ink hover:bg-surface-2"
           >
-            Open Floor Monitor
+            Open Control Tower
           </Link>
         }
       />
